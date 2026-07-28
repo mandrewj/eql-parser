@@ -1,9 +1,15 @@
-import type { Fight, Filters, FightSummary } from "./types";
+import type { Fight, Filters, FightSummary, MetricKind } from "./types";
 import { ALL_TYPES } from "./types";
-import { computeRows, durationSec } from "./filters";
+import { computeRows, durationSec, metricMeta } from "./filters";
 
 const fmt = (n: number) => n.toLocaleString();
 const time = (ms: number) => new Date(ms).toLocaleTimeString();
+
+const METRICS: Array<{ key: MetricKind; label: string }> = [
+  { key: "damage", label: "Damage" },
+  { key: "healing", label: "Healing" },
+  { key: "taken", label: "Tanking" },
+];
 
 // ---------------------------------------------------------------------------
 
@@ -17,11 +23,19 @@ export function FilterBar({
   stances: string[];
 }) {
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
-  const toggleType = (t: (typeof ALL_TYPES)[number]) =>
-    set({ types: { ...filters.types, [t]: !filters.types[t] } });
+  const toggleType = (t: (typeof ALL_TYPES)[number]) => set({ types: { ...filters.types, [t]: !filters.types[t] } });
+  const { typed, stance: allowStance } = metricMeta(filters.metric);
 
   return (
     <div className="filterbar">
+      <div className="fgroup">
+        <span className="flabel">Metric</span>
+        {METRICS.map((m) => (
+          <button key={m.key} className={filters.metric === m.key ? "chip on" : "chip"} onClick={() => set({ metric: m.key })}>
+            {m.label}
+          </button>
+        ))}
+      </div>
       <div className="fgroup">
         <span className="flabel">Who</span>
         <button className={filters.showPlayers ? "chip on" : "chip"} onClick={() => set({ showPlayers: !filters.showPlayers })}>
@@ -31,25 +45,29 @@ export function FilterBar({
           NPCs
         </button>
       </div>
-      <div className="fgroup">
-        <span className="flabel">Damage</span>
-        {ALL_TYPES.map((t) => (
-          <button key={t} className={filters.types[t] ? "chip on" : "chip"} onClick={() => toggleType(t)}>
-            {t}
-          </button>
-        ))}
-      </div>
-      <div className="fgroup">
-        <span className="flabel">Stance (self)</span>
-        <select value={filters.stance ?? ""} onChange={(e) => set({ stance: e.target.value || null })}>
-          <option value="">All</option>
-          {stances.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
+      {typed && (
+        <div className="fgroup">
+          <span className="flabel">Type</span>
+          {ALL_TYPES.map((t) => (
+            <button key={t} className={filters.types[t] ? "chip on" : "chip"} onClick={() => toggleType(t)}>
+              {t}
+            </button>
           ))}
-        </select>
-      </div>
+        </div>
+      )}
+      {allowStance && (
+        <div className="fgroup">
+          <span className="flabel">Stance (self)</span>
+          <select value={filters.stance ?? ""} onChange={(e) => set({ stance: e.target.value || null })}>
+            <option value="">All</option>
+            {stances.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }
@@ -71,6 +89,7 @@ export function Meter({
 
   const rows = computeRows(fight, filters);
   const dur = Math.round(durationSec(fight));
+  const { unit, label } = metricMeta(filters.metric);
   const max = Math.max(1, ...rows.map((r) => r.total));
 
   return (
@@ -80,14 +99,15 @@ export function Meter({
           {fight.title} {fight.active && <span className="live-dot" title="active">⚔</span>}
         </span>
         <span className="muted">
-          {time(fight.startMs)} · {dur}s · {fight.npcs.length} NPC{fight.npcs.length === 1 ? "" : "s"}
+          {label} · {time(fight.startMs)} · {dur}s
         </span>
       </div>
 
-      {rows.length === 0 && <div className="idle small">No rows match the current filters.</div>}
+      {rows.length === 0 && <div className="idle small">No {label.toLowerCase()} matches the current filters.</div>}
 
       {rows.map((r) => {
         const isOpen = expanded.has(r.key);
+        const top = r.entries.slice(0, 10);
         return (
           <div key={r.key} className={`row-wrap ${isOpen ? "open" : ""}`}>
             <div className={`bar ${r.kind}`} onClick={() => onToggle(r.key)}>
@@ -99,45 +119,60 @@ export function Meter({
                   {r.stanceFiltered && <span className="tag">{filters.stance}</span>}
                 </span>
                 <span className="nums">
-                  {fmt(r.dps)} dps · {fmt(r.total)} · {r.pct}%
+                  {fmt(r.perSec)} {unit} · {fmt(r.total)} · {r.pct}%
                 </span>
               </div>
             </div>
             {isOpen && (
               <div className="drill">
                 <div className="drill-meta">
-                  {r.hits} hits · {r.crits} crit · {r.misses} miss
-                  {!r.stanceFiltered && (
-                    <>
-                      {" "}
-                      · melee {fmt(fightByType(fight, r.name, "melee"))} / spell{" "}
-                      {fmt(fightByType(fight, r.name, "spell"))} / dot {fmt(fightByType(fight, r.name, "dot"))}
-                    </>
-                  )}
+                  {r.hits} hits · {r.crits} crit
+                  {filters.metric === "damage" && <> · {r.avoided} miss</>}
+                  {filters.metric === "taken" && <> · {r.avoided} avoided</>}
                 </div>
-                {!r.stanceFiltered &&
-                  r.abilities.map((a) => (
-                    <div key={a.name} className="ability">
-                      <span>
-                        <span className={`typedot ${a.damageType}`} /> {a.name}
-                      </span>
-                      <span className="muted">
-                        {fmt(a.total)} · x{a.hits}
-                        {a.crits ? ` · ${a.crits} crit` : ""}
-                      </span>
-                    </div>
-                  ))}
-                {r.isSelf && !r.stanceFiltered && r.stances && r.stances.length > 0 && (
+                {!r.stanceFiltered && top.length > 0 && (
+                  <table className="cats">
+                    <thead>
+                      <tr>
+                        <th>Category</th>
+                        <th className="r">Total</th>
+                        <th className="r">%</th>
+                        <th className="r">Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {top.map((e) => (
+                        <tr key={e.name}>
+                          <td>
+                            {e.damageType !== "unknown" && <span className={`typedot ${e.damageType}`} />}
+                            {e.name}
+                          </td>
+                          <td className="r">{fmt(e.total)}</td>
+                          <td className="r muted">{r.total > 0 ? Math.round((e.total / r.total) * 100) : 0}%</td>
+                          <td className="r muted">
+                            ×{e.hits}
+                            {e.crits ? ` · ${e.crits}c` : ""}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {filters.metric === "damage" && r.isSelf && !r.stanceFiltered && r.stances && r.stances.length > 0 && (
                   <div className="stances">
-                    <div className="stances-label">By stance</div>
-                    {r.stances.map((s) => (
-                      <div key={s.stance} className="ability">
-                        <span>⛨ {s.stance}</span>
-                        <span className="muted">
-                          {fmt(s.total)} · {fmt(s.dps)} dps · {s.activeSeconds}s
-                        </span>
-                      </div>
-                    ))}
+                    <div className="stances-label">Damage by stance</div>
+                    <table className="cats">
+                      <tbody>
+                        {r.stances.map((s) => (
+                          <tr key={s.stance}>
+                            <td>⛨ {s.stance}</td>
+                            <td className="r">{fmt(s.total)}</td>
+                            <td className="r muted">{fmt(s.dps)} dps</td>
+                            <td className="r muted">{s.activeSeconds}s</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -147,10 +182,6 @@ export function Meter({
       })}
     </div>
   );
-}
-
-function fightByType(fight: Fight, name: string, t: "melee" | "spell" | "dot"): number {
-  return fight.combatants.find((c) => c.name === name)?.byType[t] ?? 0;
 }
 
 // ---------------------------------------------------------------------------

@@ -35,7 +35,7 @@ test("melee — other attacker, multi-word name splits correctly", () => {
   assert.equal(e?.type, "melee");
   if (e?.type !== "melee") return;
   assert.equal(e.attacker, "Orc legionnaire");
-  assert.equal(e.verb, "hits");
+  assert.equal(e.verb, "hit"); // third-person "hits" normalized to base "hit"
   assert.equal(e.target, "Feydie");
   assert.equal(e.amount, 1);
 });
@@ -91,6 +91,34 @@ test("dot — spell by caster", () => {
   assert.equal(e.caster, "Frogorson");
   assert.equal(e.spell, "Tainted Breath");
   assert.equal(e.amount, 15);
+});
+
+test("heal — simple effective amount", () => {
+  const e = parseLine(TS + "Frogorson healed you for 7 hit points.");
+  assert.equal(e?.type, "heal");
+  if (e?.type !== "heal") return;
+  assert.equal(e.healer, "Frogorson");
+  assert.equal(e.target, "You");
+  assert.equal(e.amount, 7);
+});
+
+test("heal — reflexive target maps to healer", () => {
+  const e = parseLine(TS + "Frogorson healed himself for 16 hit points.");
+  assert.equal(e?.type, "heal");
+  if (e?.type !== "heal") return;
+  assert.equal(e.target, "Frogorson");
+  assert.equal(e.amount, 16);
+});
+
+test("heal — effective (raw) with spell name", () => {
+  const e = parseLine(TS + "Bloodgurgler pet healed orc legionnaire for 0 (20) hit points by Courage.");
+  assert.equal(e?.type, "heal");
+  if (e?.type !== "heal") return;
+  assert.equal(e.healer, "Bloodgurgler pet");
+  assert.equal(e.target, "orc legionnaire");
+  assert.equal(e.amount, 0); // effective (all overheal)
+  assert.equal(e.attempted, 20);
+  assert.equal(e.spell, "Courage");
 });
 
 test("miss — you", () => {

@@ -47,8 +47,14 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 - Settings UI (log dir, port, inactivity timeout).
 - **Done when:** a fresh machine runs it by double-clicking one file, nothing else installed.
 
-## Backlog (post-v1; engine already supports the shape)
-- Healing-per-second (HPS) and tank/damage-taken metrics.
+## Post-v1 — Healing & tanking  ✅
+- `HealEvent` parsing (effective/overheal, reflexive targets, `by <Spell>`); group heals visible.
+- Engine gives each combatant three metric groups — damage done, healing done, damage taken —
+  each with total + per-category breakdown; heals also inform friend/foe classification.
+- Melee verbs normalized to base form so `kick`/`kicks` merge into one category.
+- UI: Damage/Healing/Tanking selector; drill-down is a table (total + top ~10 categories).
+
+## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Pet-damage attribution to owners.
 - Fight export/share (JSON/image) and run-over-run comparison.

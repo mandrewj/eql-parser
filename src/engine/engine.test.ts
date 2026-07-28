@@ -32,17 +32,17 @@ test("single fight: self + group DPS, self classified, mob is NPC", () => {
 
   const self = f.combatants.find((c) => c.isSelf)!;
   assert.equal(self.kind, "self");
-  assert.equal(self.total, 200); // 100 + 100 (crit)
-  assert.equal(self.crits, 1);
+  assert.equal(self.damage.total, 200); // 100 + 100 (crit)
+  assert.equal(self.damage.crits, 1);
 
   const feydie = f.combatants.find((c) => c.name === "Feydie")!;
   assert.equal(feydie.kind, "player");
-  assert.equal(feydie.total, 50);
+  assert.equal(feydie.damage.total, 50);
 
   // The orc is an NPC and does not appear among friendly damage dealers.
   const orc = f.combatants.find((c) => c.name.toLowerCase() === "orc")!;
   assert.equal(orc.kind, "npc");
-  assert.equal(orc.total, 10); // its outgoing damage is tracked separately
+  assert.equal(orc.damage.total, 10); // its outgoing damage is tracked separately
 });
 
 test("case-insensitive entity keys merge sentence-start capitalization", () => {
@@ -79,11 +79,11 @@ test("damage-type split and per-ability drill-down", () => {
     L("01:00:03", "You have slain orc!"),
   ]);
   const self = engine.fights()[0]!.combatants.find((c) => c.isSelf)!;
-  assert.equal(self.byType.melee, 30);
-  assert.equal(self.byType.spell, 20);
-  assert.equal(self.byType.dot, 15);
-  assert.equal(self.total, 65);
-  const dot = self.abilities.find((a) => a.name === "Chords of Dissonance III")!;
+  assert.equal(self.damage.byType.melee, 30);
+  assert.equal(self.damage.byType.spell, 20);
+  assert.equal(self.damage.byType.dot, 15);
+  assert.equal(self.damage.total, 65);
+  const dot = self.damage.entries.find((a) => a.name === "Chords of Dissonance III")!;
   assert.equal(dot.damageType, "dot");
   assert.equal(dot.total, 15);
 });
@@ -109,7 +109,39 @@ test("miss events count toward accuracy without adding damage", () => {
     L("01:00:02", "You have slain orc!"),
   ]);
   const self = engine.fights()[0]!.combatants.find((c) => c.isSelf)!;
-  assert.equal(self.misses, 1);
-  assert.equal(self.hits, 1);
-  assert.equal(self.total, 20);
+  assert.equal(self.damage.avoided, 1); // one swing missed
+  assert.equal(self.damage.hits, 1);
+  assert.equal(self.damage.total, 20);
+});
+
+test("healing done is tracked per healer, with spell breakdown", () => {
+  const engine = feed([
+    L("01:00:00", "You strike orc for 30 points of damage."), // opens fight, marks orc NPC
+    L("01:00:01", "Frogorson healed you for 40 hit points."),
+    L("01:00:02", "Frogorson healed Feydie for 10 hit points by Light."),
+    L("01:00:03", "You have slain orc!"),
+  ]);
+  const f = engine.fights()[0]!;
+  const frog = f.combatants.find((c) => c.name === "Frogorson")!;
+  assert.equal(frog.kind, "player"); // healed a friendly ⇒ friendly
+  assert.equal(frog.healing.total, 50);
+  assert.equal(frog.damage.total, 0);
+  const light = frog.healing.entries.find((e) => e.name === "Light")!;
+  assert.equal(light.total, 10);
+});
+
+test("damage taken (tanking) aggregates incoming damage per target", () => {
+  const engine = feed([
+    L("01:00:00", "You strike orc for 30 points of damage."),
+    L("01:00:01", "Orc hits You for 12 points of damage."),
+    L("01:00:02", "Orc hits You for 8 points of damage."),
+    L("01:00:03", "Orc tries to hit You, but misses!"),
+    L("01:00:04", "You have slain orc!"),
+  ]);
+  const self = engine.fights()[0]!.combatants.find((c) => c.isSelf)!;
+  assert.equal(self.taken.total, 20); // 12 + 8
+  assert.equal(self.taken.byType.melee, 20);
+  assert.equal(self.taken.avoided, 1); // dodged one swing
+  const hit = self.taken.entries.find((e) => e.name === "hit")!;
+  assert.equal(hit.total, 20);
 });

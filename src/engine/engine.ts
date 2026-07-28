@@ -1,12 +1,14 @@
 // Combat engine: consumes CombatEvents in chronological order and produces
-// fights with per-combatant DPS, damage-type + per-ability drill-down, and a
-// self stance breakdown.
+// fights with three per-combatant metric groups — damage done, healing done,
+// and damage taken (tanking) — each with a total + per-category breakdown, plus
+// a self damage-by-stance view.
 //
 // Friend/foe classification from a single client's log is inherently fuzzy, so
 // we don't trust names' capitalization (EQ capitalizes the first word of a line,
 // making "Orc legionnaire" and "orc legionnaire" the same mob). Entities are
 // keyed case-insensitively and classified by iterative propagation from strong
-// seeds: the self only attacks/is attacked by NPCs, and "You have slain X" ⇒ X is an NPC.
+// seeds: the self only attacks/is attacked by NPCs, "You have slain X" ⇒ X is an
+// NPC, and heals connect same-faction pairs.
 
 import type {
   AbilityBreakdown,
@@ -15,6 +17,7 @@ import type {
   DamageType,
   Fight,
   FightSummary,
+  MetricStat,
   StanceSegment,
 } from "../types.js";
 
@@ -31,16 +34,22 @@ interface AbilityAgg {
   crits: number;
 }
 
-interface CombatantAgg {
-  key: string;
-  name: string;
+interface MetricAcc {
   total: number;
   hits: number;
   crits: number;
-  misses: number;
+  avoided: number;
   byType: Record<DamageType, number>;
   abilities: Map<string, AbilityAgg>;
-  stanceTotals: Map<string, number>; // self only
+}
+
+interface CombatantAgg {
+  key: string;
+  name: string;
+  done: MetricAcc; // damage done
+  heal: MetricAcc; // healing done
+  taken: MetricAcc; // damage taken
+  stanceTotals: Map<string, number>; // self only, damage done by stance
 }
 
 interface FightState {
@@ -50,13 +59,38 @@ interface FightState {
   lastActivityMs: number;
   combatants: Map<string, CombatantAgg>;
   damagePairs: Array<[string, string]>; // [attackerKey, targetKey], incl. misses
+  healPairs: Array<[string, string]>; // [healerKey, targetKey] — same faction
   deaths: Array<{ victim: string; killer: string | null; killerSelf: boolean }>;
-  npcSeeds: Set<string>; // strong NPC seeds (self targets/attackers, you-slain)
+  npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
-  aliveEngaged: Set<string>; // seeded NPCs not yet slain
+  aliveEngaged: Set<string>;
 }
 
 const emptyByType = (): Record<DamageType, number> => ({ melee: 0, spell: 0, dot: 0, unknown: 0 });
+const newMetric = (): MetricAcc => ({
+  total: 0,
+  hits: 0,
+  crits: 0,
+  avoided: 0,
+  byType: emptyByType(),
+  abilities: new Map(),
+});
+
+function addAbility(m: MetricAcc, name: string, type: DamageType, amount: number, crit: boolean): void {
+  m.total += amount;
+  m.hits++;
+  if (crit) m.crits++;
+  if (type !== "unknown") m.byType[type] += amount;
+  const key = `${type}:${name.toLowerCase()}`;
+  let a = m.abilities.get(key);
+  if (!a) {
+    a = { name, damageType: type, total: 0, hits: 0, crits: 0 };
+    m.abilities.set(key, a);
+  }
+  a.total += amount;
+  a.hits++;
+  if (crit) a.crits++;
+}
 
 export class Engine {
   private readonly opts: EngineOptions;
@@ -84,6 +118,10 @@ export class Engine {
       return;
     }
     this.maybeCloseForInactivity(ev.tsMs);
+    if (ev.type === "heal") {
+      this.recordHeal(ev.healer, ev.target, ev.amount, ev.spell, ev.tsMs);
+      return;
+    }
     switch (ev.type) {
       case "melee":
       case "spell":
@@ -91,7 +129,7 @@ export class Engine {
         this.recordDamage(ev);
         break;
       case "miss":
-        this.recordInteraction(ev.attacker, ev.target, ev.tsMs, { miss: true });
+        this.recordMiss(ev.attacker, ev.target, ev.tsMs);
         break;
       case "death":
         this.recordDeath(ev.victim, ev.killer, ev.tsMs);
@@ -99,7 +137,6 @@ export class Engine {
     }
   }
 
-  /** Flush any open fight — call once after replaying a whole file. */
   endInput(): void {
     if (this.current) this.closeFight(this.current.lastActivityMs);
   }
@@ -108,7 +145,6 @@ export class Engine {
     return this.currentStance;
   }
 
-  /** All fights (finished + the current one), newest last. */
   fights(): Fight[] {
     const states = this.current ? [...this.finished, this.current] : [...this.finished];
     return states.map((s) => this.buildFight(s));
@@ -140,7 +176,7 @@ export class Engine {
   }
 
   private see(key: string, name: string): void {
-    if (key === this.selfKey) return; // display already the resolved self name
+    if (key === this.selfKey) return;
     if (!this.display.has(key)) this.display.set(key, name);
   }
 
@@ -159,6 +195,7 @@ export class Engine {
       lastActivityMs: tsMs,
       combatants: new Map(),
       damagePairs: [],
+      healPairs: [],
       deaths: [],
       npcSeeds: new Set(),
       targetIncoming: new Map(),
@@ -176,39 +213,26 @@ export class Engine {
 
   private maybeCloseForInactivity(tsMs: number): void {
     if (!this.current) return;
-    const gapMs = tsMs - this.current.lastActivityMs;
-    if (gapMs > this.opts.inactivityTimeoutSec * 1000) {
+    if (tsMs - this.current.lastActivityMs > this.opts.inactivityTimeoutSec * 1000) {
       this.closeFight(this.current.lastActivityMs);
     }
   }
 
   // --- recording ----------------------------------------------------------
 
-  private combatant(f: FightState, key: string, name: string): CombatantAgg {
+  private combatant(f: FightState, key: string): CombatantAgg {
     let c = f.combatants.get(key);
     if (!c) {
-      c = {
-        key,
-        name,
-        total: 0,
-        hits: 0,
-        crits: 0,
-        misses: 0,
-        byType: emptyByType(),
-        abilities: new Map(),
-        stanceTotals: new Map(),
-      };
+      c = { key, name: this.nameOf(key), done: newMetric(), heal: newMetric(), taken: newMetric(), stanceTotals: new Map() };
       f.combatants.set(key, c);
     }
     return c;
   }
 
-  /** Shared classification bookkeeping for both hits and misses. */
   private recordInteraction(
     attacker: string,
     target: string,
     tsMs: number,
-    opt: { miss?: boolean } = {},
   ): { f: FightState; aKey: string; tKey: string } {
     const f = this.openFight(tsMs);
     f.lastActivityMs = tsMs;
@@ -217,8 +241,6 @@ export class Engine {
     this.see(aKey, attacker);
     this.see(tKey, target);
     f.damagePairs.push([aKey, tKey]);
-
-    // Strong NPC seeds: the self only fights NPCs.
     if (aKey === this.selfKey && tKey !== this.selfKey) {
       f.npcSeeds.add(tKey);
       f.aliveEngaged.add(tKey);
@@ -227,46 +249,47 @@ export class Engine {
       f.npcSeeds.add(aKey);
       f.aliveEngaged.add(aKey);
     }
-
-    if (opt.miss) {
-      this.combatant(f, aKey, this.nameOf(aKey)).misses++;
-    }
     return { f, aKey, tKey };
   }
 
-  private recordDamage(
-    ev: Extract<CombatEvent, { type: "melee" | "spell" | "dot" }>,
-  ): void {
+  private recordDamage(ev: Extract<CombatEvent, { type: "melee" | "spell" | "dot" }>): void {
     const attacker = ev.type === "melee" ? ev.attacker : ev.type === "spell" ? ev.owner : ev.caster;
     const { f, aKey, tKey } = this.recordInteraction(attacker, ev.target, ev.tsMs);
 
-    // target incoming (for headline / NPC view)
     const inc = f.targetIncoming.get(tKey) ?? { name: this.nameOf(tKey), total: 0 };
     inc.total += ev.amount;
     f.targetIncoming.set(tKey, inc);
 
-    const c = this.combatant(f, aKey, this.nameOf(aKey));
-    c.total += ev.amount;
-    c.hits++;
-    c.byType[ev.type] += ev.amount;
+    const abilityName = ev.type === "melee" ? ev.verb : ev.type === "spell" ? ev.effect : ev.spell;
     const crit = ev.type === "melee" ? ev.crit : false;
-    if (crit) c.crits++;
 
-    const abilityName =
-      ev.type === "melee" ? ev.verb : ev.type === "spell" ? ev.effect : ev.spell;
-    const akey = `${ev.type}:${abilityName.toLowerCase()}`;
-    let a = c.abilities.get(akey);
-    if (!a) {
-      a = { name: abilityName, damageType: ev.type, total: 0, hits: 0, crits: 0 };
-      c.abilities.set(akey, a);
-    }
-    a.total += ev.amount;
-    a.hits++;
-    if (crit) a.crits++;
+    addAbility(this.combatant(f, aKey).done, abilityName, ev.type, ev.amount, crit);
+    addAbility(this.combatant(f, tKey).taken, abilityName, ev.type, ev.amount, false);
 
     if (aKey === this.selfKey) {
+      const c = this.combatant(f, aKey);
       c.stanceTotals.set(this.currentStance, (c.stanceTotals.get(this.currentStance) ?? 0) + ev.amount);
     }
+  }
+
+  private recordMiss(attacker: string, target: string, tsMs: number): void {
+    const { f, aKey, tKey } = this.recordInteraction(attacker, target, tsMs);
+    this.combatant(f, aKey).done.avoided++;
+    this.combatant(f, tKey).taken.avoided++;
+  }
+
+  private recordHeal(healer: string, target: string, amount: number, spell: string | undefined, tsMs: number): void {
+    // Attribute heals to an ongoing fight, but don't let healing alone keep a
+    // fight alive (that would bridge separate pulls). Out-of-combat heals — where
+    // the inactivity check above has already closed the fight — are ignored.
+    if (!this.current) return;
+    const f = this.current;
+    const hKey = this.keyOf(healer);
+    const tKey = this.keyOf(target);
+    this.see(hKey, healer);
+    this.see(tKey, target);
+    f.healPairs.push([hKey, tKey]);
+    addAbility(this.combatant(f, hKey).heal, spell ?? "Heal", "unknown", amount, false);
   }
 
   private recordDeath(victim: string, killer: string | null, tsMs: number): void {
@@ -278,10 +301,7 @@ export class Engine {
     this.see(vKey, victim);
     if (kKey && killer) this.see(kKey, killer);
     f.deaths.push({ victim: vKey, killer: kKey, killerSelf });
-
     if (killerSelf) f.npcSeeds.add(vKey);
-
-    // If a seeded NPC dies, drop it; when none remain, the pull is over.
     if (f.aliveEngaged.delete(vKey) && f.aliveEngaged.size === 0 && f.npcSeeds.size > 0) {
       this.closeFight(tsMs);
     }
@@ -289,7 +309,6 @@ export class Engine {
 
   // --- classification + view building -------------------------------------
 
-  /** Resolve friend/foe for a fight via iterative propagation from seeds. */
   private resolveKinds(f: FightState): { friendly: Set<string>; npc: Set<string> } {
     const friendly = new Set<string>([this.selfKey]);
     const npc = new Set<string>(f.npcSeeds);
@@ -301,6 +320,13 @@ export class Engine {
         if (npc.has(t) && !npc.has(a) && !friendly.has(a)) (friendly.add(a), (changed = true));
         if (npc.has(a) && !npc.has(t) && !friendly.has(t)) (friendly.add(t), (changed = true));
         if (friendly.has(a) && a !== t && !friendly.has(t) && !npc.has(t)) (npc.add(t), (changed = true));
+      }
+      // Heals connect same-faction pairs.
+      for (const [h, t] of f.healPairs) {
+        if (friendly.has(h) && !friendly.has(t) && !npc.has(t)) (friendly.add(t), (changed = true));
+        if (friendly.has(t) && !friendly.has(h) && !npc.has(h)) (friendly.add(h), (changed = true));
+        if (npc.has(h) && !npc.has(t) && !friendly.has(t)) (npc.add(t), (changed = true));
+        if (npc.has(t) && !npc.has(h) && !friendly.has(h)) (npc.add(h), (changed = true));
       }
       for (const d of f.deaths) {
         if (d.killer && friendly.has(d.killer) && !friendly.has(d.victim) && !npc.has(d.victim))
@@ -319,53 +345,44 @@ export class Engine {
     return Math.max(1, (end - f.startMs) / 1000);
   }
 
+  private toStat(m: MetricAcc, dur: number): MetricStat {
+    return {
+      total: m.total,
+      perSec: Math.round(m.total / dur),
+      hits: m.hits,
+      crits: m.crits,
+      avoided: m.avoided,
+      byType: m.byType,
+      entries: [...m.abilities.values()].sort((a, b) => b.total - a.total),
+    };
+  }
+
   private buildFight(f: FightState): Fight {
     const { friendly, npc } = this.resolveKinds(f);
-    const durationSec = this.durationSec(f);
-
-    const friendlyTotal = [...f.combatants.values()]
-      .filter((c) => friendly.has(c.key))
-      .reduce((s, c) => s + c.total, 0);
-    const npcTotal = [...f.combatants.values()]
-      .filter((c) => npc.has(c.key))
-      .reduce((s, c) => s + c.total, 0);
+    const dur = this.durationSec(f);
 
     const combatants: CombatantStats[] = [...f.combatants.values()]
       .map((c) => {
         const isSelf = c.key === this.selfKey;
         const kind = isSelf ? "self" : npc.has(c.key) ? "npc" : friendly.has(c.key) ? "player" : "unknown";
-        const denom = kind === "npc" ? npcTotal : friendlyTotal;
-        const abilities: AbilityBreakdown[] = [...c.abilities.values()].sort(
-          (a, b) => b.total - a.total,
-        );
         const stats: CombatantStats = {
           name: c.name,
           kind,
           isSelf,
-          total: c.total,
-          dps: Math.round(c.total / durationSec),
-          pct: denom > 0 ? Math.round((c.total / denom) * 1000) / 10 : 0,
-          hits: c.hits,
-          crits: c.crits,
-          misses: c.misses,
-          byType: c.byType,
-          abilities,
+          damage: this.toStat(c.done, dur),
+          healing: this.toStat(c.heal, dur),
+          taken: this.toStat(c.taken, dur),
         };
         if (isSelf && c.stanceTotals.size > 0) {
           stats.stances = [...c.stanceTotals.entries()]
-            .map(([stance, total]) => ({
-              stance,
-              total,
-              dps: Math.round(total / durationSec),
-              activeSeconds: 0, // filled from the clipped timeline below
-            }))
+            .map(([stance, total]) => ({ stance, total, dps: Math.round(total / dur), activeSeconds: 0 }))
             .sort((a, b) => b.total - a.total);
         }
         return stats;
       })
-      .sort((a, b) => b.total - a.total);
+      .filter((c) => c.damage.total > 0 || c.healing.total > 0 || c.taken.total > 0)
+      .sort((a, b) => b.damage.total - a.damage.total);
 
-    // Clip the global stance timeline to this fight and fill activeSeconds.
     const stanceTimeline = this.clipStances(f);
     const self = combatants.find((c) => c.isSelf);
     if (self?.stances) {
@@ -400,21 +417,14 @@ export class Engine {
     for (const seg of this.stanceSegments) {
       const segEnd = seg.endMs ?? end;
       if (segEnd < f.startMs || seg.startMs > end) continue;
-      out.push({
-        startMs: Math.max(seg.startMs, f.startMs),
-        endMs: Math.min(segEnd, end),
-        stance: seg.stance,
-      });
+      out.push({ startMs: Math.max(seg.startMs, f.startMs), endMs: Math.min(segEnd, end), stance: seg.stance });
     }
     return out;
   }
 
   private summarize(fight: Fight): FightSummary {
-    const durationSec = Math.max(
-      1,
-      ((fight.endMs ?? fight.startMs) - fight.startMs) / 1000,
-    );
-    const topDps = fight.combatants.find((c) => c.kind !== "npc")?.dps ?? 0;
+    const durationSec = Math.max(1, ((fight.endMs ?? fight.startMs) - fight.startMs) / 1000);
+    const topDps = fight.combatants.find((c) => c.kind !== "npc")?.damage.perSec ?? 0;
     return {
       id: fight.id,
       title: fight.title,
@@ -426,3 +436,6 @@ export class Engine {
     };
   }
 }
+
+// Re-export for consumers that build ability tables from a MetricStat.
+export type { AbilityBreakdown };

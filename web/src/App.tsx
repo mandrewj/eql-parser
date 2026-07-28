@@ -5,6 +5,7 @@ import { stancesOf } from "./filters";
 import type { Fight, Filters, FightSummary } from "./types";
 
 const DEFAULT_FILTERS: Filters = {
+  metric: "damage",
   showPlayers: true,
   showNpcs: false,
   types: { melee: true, spell: true, dot: true },
@@ -12,7 +13,7 @@ const DEFAULT_FILTERS: Filters = {
 };
 
 function currentSummary(f: Fight): FightSummary {
-  const topDps = f.combatants.find((c) => c.kind !== "npc")?.dps ?? 0;
+  const topDps = f.combatants.find((c) => c.kind !== "npc")?.damage.perSec ?? 0;
   return {
     id: f.id,
     title: f.title,

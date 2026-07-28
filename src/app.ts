@@ -66,7 +66,7 @@ export class App {
         endMs: snap.current.endMs,
         active: snap.current.active,
         durationSec: Math.round(((snap.current.endMs ?? Date.now()) - snap.current.startMs) / 1000),
-        topDps: snap.current.combatants.find((c) => c.kind !== "npc")?.dps ?? 0,
+        topDps: snap.current.combatants.find((c) => c.kind !== "npc")?.damage.perSec ?? 0,
       });
     }
     return all.reverse();

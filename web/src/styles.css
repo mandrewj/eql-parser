@@ -111,6 +111,16 @@ body { margin: 0; }
 .stances { margin-top: 0.5rem; border-top: 1px dashed var(--border); padding-top: 0.4rem; }
 .stances-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.2rem; }
 
+/* category table (drill-down) */
+.cats { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.cats th {
+  text-align: left; color: var(--muted); font-weight: 500; font-size: 0.68rem;
+  text-transform: uppercase; letter-spacing: 0.04em; padding: 0.15rem 0.4rem; border-bottom: 1px solid var(--border);
+}
+.cats td { padding: 0.16rem 0.4rem; border-bottom: 1px solid #232833; }
+.cats tr:last-child td { border-bottom: none; }
+.cats .r { text-align: right; font-variant-numeric: tabular-nums; }
+
 /* fight list */
 .fightlist { display: flex; flex-direction: column; }
 .fitem {

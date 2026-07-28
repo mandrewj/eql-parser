@@ -83,24 +83,47 @@ export interface StanceEvent extends BaseEvent {
   stance: string; // offensive, striker, evasive, balanced, ... (self only)
 }
 
+export interface HealEvent extends BaseEvent {
+  type: "heal";
+  healer: string;
+  target: string;
+  amount: number; // effective healing
+  attempted?: number; // raw amount before overheal, when the "N (M)" form is used
+  spell?: string; // when "by <Spell>" is present
+}
+
 export type CombatEvent =
   | MeleeDamageEvent
   | SpellDamageEvent
   | DotTickEvent
   | MissEvent
   | DeathEvent
-  | StanceEvent;
+  | StanceEvent
+  | HealEvent;
 
 // ---------------------------------------------------------------------------
 // Aggregated views (output of the engine → sent to the UI)
 // ---------------------------------------------------------------------------
 
+export type MetricKind = "damage" | "healing" | "taken";
+
 export interface AbilityBreakdown {
-  name: string; // verb (melee) or spell name (spell/dot)
-  damageType: DamageType;
+  name: string; // melee verb (kick/slash/…), spell name, or damage-shield effect
+  damageType: DamageType; // "unknown" for healing categories
   total: number;
   hits: number;
   crits: number;
+}
+
+/** One metric group (damage done, healing done, or damage taken) for a combatant. */
+export interface MetricStat {
+  total: number;
+  perSec: number; // DPS for damage/taken, HPS for healing
+  hits: number;
+  crits: number;
+  avoided: number; // taken: attacks that missed/were avoided; else 0
+  byType: Record<DamageType, number>; // populated for damage & taken; zeros for healing
+  entries: AbilityBreakdown[]; // sorted by total desc; UI shows the top N as a table
 }
 
 export interface StanceBreakdown {
@@ -114,15 +137,10 @@ export interface CombatantStats {
   name: string;
   kind: EntityKind;
   isSelf: boolean;
-  total: number;
-  dps: number;
-  pct: number; // share of the fight's total damage
-  hits: number;
-  crits: number;
-  misses: number;
-  byType: Record<DamageType, number>; // damage split by type (drill-down)
-  abilities: AbilityBreakdown[]; // per-ability drill-down
-  stances?: StanceBreakdown[]; // self only
+  damage: MetricStat; // damage done
+  healing: MetricStat; // healing done
+  taken: MetricStat; // damage taken (tanking)
+  stances?: StanceBreakdown[]; // self only — damage done by stance
 }
 
 export interface StanceSegment {

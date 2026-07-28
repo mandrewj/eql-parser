@@ -81,6 +81,25 @@ to real spell names later needs a spell-message table (EQLogParser ships one).
 [..] YOU were injured by falling.
 ```
 
+## Healing
+
+```
+[..] Frogorson healed you for 7 hit points.
+[..] Frogorson healed himself for 16 hit points.
+[..] Bloodgurgler pet healed orc legionnaire for 0 (20) hit points by Courage.
+```
+```
+^(?<healer>.+?) (?:heals|healed) (?<target>.+?) for (?<eff>\d+)(?: \((?<raw>\d+)\))? hit points(?: by (?<spell>.+?))?[.!]$
+```
+- **Effective vs. raw**: the plain form gives effective healing; the `N (M)` form gives
+  effective `N` and raw `M` (so `0 (20)` is 20 healing that was all overheal). HPS uses effective.
+- **Reflexive** targets (`himself`/`herself`/`itself`/`themselves`) resolve to the healer;
+  `you`/`YOU` to self.
+- **Group heals are visible** — `Frogorson healed Feydie …` appears even when self isn't
+  involved, so we get real group HPS. Heals also connect same-faction pairs for classification.
+- Heals feed the **healing-done** metric; **damage taken** (tanking) needs no new parsing —
+  every damage event already carries a target, so incoming damage is aggregated per target.
+
 ## Misses & avoidance (accuracy %, not damage)
 ```
 [..] You try to crush orc legionnaire, but miss!

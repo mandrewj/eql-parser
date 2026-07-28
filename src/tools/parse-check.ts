@@ -7,7 +7,7 @@ import { parseLine } from "../parser/parser.js";
 import type { CombatEvent } from "../types.js";
 
 const RELEVANT =
-  /for \d+ points? of (?:non-melee )?damage|has taken \d+ damage from|have slain |has been slain by |, but miss(?:es)?!|You assume an? .+ stance\./;
+  /for \d+ points? of (?:non-melee )?damage|has taken \d+ damage from|(?:heals|healed) .+ for \d+(?: \(\d+\))? hit points|have slain |has been slain by |, but miss(?:es)?!|You assume an? .+ stance\./;
 
 function main(): void {
   const dir = resolveLogDir();
@@ -25,6 +25,7 @@ function main(): void {
     miss: 0,
     death: 0,
     stance: 0,
+    heal: 0,
   };
   let total = 0;
   let damageTotal = 0;
