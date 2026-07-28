@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { AppConfig } from "../config.js";
 import type { App } from "../app.js";
 import type { ParseMode } from "../types.js";
+import { EMBEDDED_WEB } from "./web-assets.js";
 
 export interface Broadcaster {
   send(event: unknown): void;
@@ -20,7 +21,15 @@ export interface ServerHandle {
   url: string;
 }
 
-const WEB_DIR = fileURLToPath(new URL("../../web/dist", import.meta.url));
+// In dev (ESM) this resolves to <repo>/web/dist. In the bundled CJS, import.meta.url
+// is empty, so we fall back to cwd — the bundle serves embedded assets regardless.
+const WEB_DIR = ((): string => {
+  try {
+    return fileURLToPath(new URL("../../web/dist", import.meta.url));
+  } catch {
+    return path.resolve(process.cwd(), "web/dist");
+  }
+})();
 
 const DEV_HINT = `<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;background:#14161a;color:#e6e8eb;padding:2rem">
 <h2>EQL Parser — UI not built yet</h2>
@@ -50,7 +59,17 @@ async function readBody(req: http.IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** Serve an embedded (bundled) asset if present. Returns true if it handled the response. */
+function serveEmbedded(res: http.ServerResponse, key: string): boolean {
+  const asset = EMBEDDED_WEB[key];
+  if (!asset) return false;
+  res.writeHead(200, { "Content-Type": asset.type });
+  res.end(Buffer.from(asset.base64, "base64"));
+  return true;
+}
+
 function serveIndex(res: http.ServerResponse): void {
+  if (serveEmbedded(res, "index.html")) return;
   fs.readFile(path.join(WEB_DIR, "index.html"), (err, html) => {
     if (err) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(DEV_HINT);
@@ -62,6 +81,8 @@ function serveIndex(res: http.ServerResponse): void {
 
 function serveStatic(res: http.ServerResponse, urlPath: string): void {
   const rel = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
+  if (serveEmbedded(res, rel)) return;
+
   const filePath = path.join(WEB_DIR, rel);
   if (!filePath.startsWith(WEB_DIR)) {
     res.writeHead(403).end("Forbidden");

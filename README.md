@@ -4,8 +4,8 @@ A local, cross-platform **DPS parser for EverQuest Legends**. It tails your
 character log in real time, splits combat into individual fights, and shows a
 live damage meter plus a browsable history of past fights in your web browser.
 
-> Status: **working (M4).** Live tailer → parser → engine → web UI all functional.
-> Remaining: single-binary packaging (M5). See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> Status: **v1 complete (M0–M5).** Live tailer → parser → engine → web UI, packaged as a
+> single self-contained file (and optional native binary). See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Quick start
 
@@ -42,11 +42,20 @@ with no trouble. A sandboxed browser *cannot* watch an arbitrary filesystem path
 real time — which is exactly why the architecture is a small native tailer/parser
 process that feeds a browser UI over WebSocket. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Distribution goal
+## Build & distribute
 
-Ship a **single self-contained executable** (built with `bun build --compile`, which can
-also cross-compile a Windows `.exe`). On any other machine: drop the file, double-click,
-the browser opens. Nothing else to install — every OS already has a browser.
+```bash
+npm run build          # web UI + a single self-contained dist/eql-parser.cjs
+node dist/eql-parser.cjs   # runs anywhere Node is installed — no other files needed
+
+npm run package:sea    # optional: native single-file executable (dist/eql-parser)
+```
+
+- **`dist/eql-parser.cjs`** — the web UI is embedded, so this one file is the whole app
+  on any machine that has Node. Drop it in, run it, open the browser.
+- **`npm run package:sea`** — wraps that bundle into a native executable via Node's
+  Single Executable Applications (auto-thins macOS universal binaries and re-signs).
+  Nothing to install on the target — every OS already has a browser.
 
 ## Documentation
 
