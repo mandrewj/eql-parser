@@ -4,7 +4,22 @@ A local, cross-platform **DPS parser for EverQuest Legends**. It tails your
 character log in real time, splits combat into individual fights, and shows a
 live damage meter plus a browsable history of past fights in your web browser.
 
-> Status: **design / roadmap phase.** No application code yet — see [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> Status: **working (M4).** Live tailer → parser → engine → web UI all functional.
+> Remaining: single-binary packaging (M5). See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Quick start
+
+```bash
+npm install          # if the npm cache errors, add: --cache /tmp/eql-npmcache
+npm run dev          # builds the web UI, then tails your log + serves the app
+# open http://localhost:8787
+```
+
+It auto-detects the newest `eqlog_*.txt`, backfills history, and updates live as you play.
+Switch characters with the log picker. For UI hot-reload while developing:
+`npm run dev:server` (backend) + `npm run dev:web` (Vite on :5173, proxies the API).
+
+Terminal-only DPS report: `npm run report -- <fightNumber>`.
 
 ## What it does
 

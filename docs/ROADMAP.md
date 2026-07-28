@@ -6,7 +6,9 @@ so we prove the parser/engine are correct against the real log before building a
 **Runtime:** TypeScript on **Node.js 22** (already installed). Dev via `tsx`, tests via `node --test`,
 live updates via **SSE**. Single-binary packaging deferred to M5 (Node SEA).
 
-## M0 — Project scaffold  ← current
+**Progress:** M0–M4 complete (parser, engine, live tailer/SSE, React UI). **M5 (packaging) is next.**
+
+## M0 — Project scaffold  ✅
 - TypeScript project (Node + tsx), tsconfig, `.gitignore`, folder layout (`tailer/ parser/ engine/ server/ web/`).
 - Core domain types (`CombatEvent` incl. `Stance`, `Entity` w/ NPC support, `Fight`, `CombatantStats`).
 - Config loader with OS-aware detection + **listing of all `eqlog_*.txt`** (name → character/server, size, mtime).

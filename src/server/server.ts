@@ -20,7 +20,12 @@ export interface ServerHandle {
   url: string;
 }
 
-const WEB_DIR = fileURLToPath(new URL("../../web", import.meta.url));
+const WEB_DIR = fileURLToPath(new URL("../../web/dist", import.meta.url));
+
+const DEV_HINT = `<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;background:#14161a;color:#e6e8eb;padding:2rem">
+<h2>EQL Parser — UI not built yet</h2>
+<p>Run <code>npm run build:web</code> (or <code>npm run dev</code>), then reload.</p>
+<p>For UI development with hot-reload: <code>npm run dev:web</code> (serves on :5173, proxies the API here).</p></body>`;
 
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -45,6 +50,16 @@ async function readBody(req: http.IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+function serveIndex(res: http.ServerResponse): void {
+  fs.readFile(path.join(WEB_DIR, "index.html"), (err, html) => {
+    if (err) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(DEV_HINT);
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(html);
+  });
+}
+
 function serveStatic(res: http.ServerResponse, urlPath: string): void {
   const rel = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
   const filePath = path.join(WEB_DIR, rel);
@@ -54,6 +69,8 @@ function serveStatic(res: http.ServerResponse, urlPath: string): void {
   }
   fs.readFile(filePath, (err, data) => {
     if (err) {
+      // No extension → SPA route; serve index.html. Otherwise a real 404.
+      if (!path.extname(rel)) return serveIndex(res);
       res.writeHead(404, { "Content-Type": "text/plain" }).end("Not found");
       return;
     }
