@@ -1,0 +1,115 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { Engine } from "./engine.js";
+import { parseLine } from "../parser/parser.js";
+import type { CombatEvent } from "../types.js";
+
+// Helper: build a chronological event stream from raw log lines.
+function feed(lines: string[], selfName = "Sanluen", timeoutSec = 20) {
+  const engine = new Engine({ selfName, inactivityTimeoutSec: timeoutSec });
+  for (const line of lines) {
+    const ev = parseLine(line);
+    if (ev) engine.handle(ev);
+  }
+  engine.endInput();
+  return engine;
+}
+
+const L = (t: string, body: string) => `[Sat Jul 18 ${t} 2026] ${body}`;
+
+test("single fight: self + group DPS, self classified, mob is NPC", () => {
+  const engine = feed([
+    L("01:00:00", "You strike orc for 100 points of damage."),
+    L("01:00:01", "Feydie kicks orc for 50 points of damage."),
+    L("01:00:02", "Orc hits Feydie for 10 points of damage."),
+    L("01:00:03", "You crush orc for 100 points of damage. (Critical)"),
+    L("01:00:04", "You have slain orc!"),
+  ]);
+  const fights = engine.fights();
+  assert.equal(fights.length, 1);
+  const f = fights[0]!;
+  assert.equal(f.title.toLowerCase(), "orc");
+
+  const self = f.combatants.find((c) => c.isSelf)!;
+  assert.equal(self.kind, "self");
+  assert.equal(self.total, 200); // 100 + 100 (crit)
+  assert.equal(self.crits, 1);
+
+  const feydie = f.combatants.find((c) => c.name === "Feydie")!;
+  assert.equal(feydie.kind, "player");
+  assert.equal(feydie.total, 50);
+
+  // The orc is an NPC and does not appear among friendly damage dealers.
+  const orc = f.combatants.find((c) => c.name.toLowerCase() === "orc")!;
+  assert.equal(orc.kind, "npc");
+  assert.equal(orc.total, 10); // its outgoing damage is tracked separately
+});
+
+test("case-insensitive entity keys merge sentence-start capitalization", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc legionnaire for 40 points of damage."),
+    L("01:00:01", "Orc legionnaire hits You for 5 points of damage."), // capitalized, same mob
+    L("01:00:02", "You have slain orc legionnaire!"),
+  ]);
+  const f = engine.fights()[0]!;
+  const npcs = f.combatants.filter((c) => c.kind === "npc");
+  assert.equal(npcs.length, 1, "the mob should be a single merged NPC row");
+});
+
+test("two fights split by inactivity timeout", () => {
+  const engine = feed(
+    [
+      L("01:00:00", "You strike rat for 10 points of damage."),
+      L("01:00:01", "You have slain rat!"),
+      // > 20s gap
+      L("01:01:00", "You strike bat for 10 points of damage."),
+      L("01:01:01", "You have slain bat!"),
+    ],
+    "Sanluen",
+    20,
+  );
+  assert.equal(engine.fights().length, 2);
+});
+
+test("damage-type split and per-ability drill-down", () => {
+  const engine = feed([
+    L("01:00:00", "You pierce orc for 30 points of damage."),
+    L("01:00:01", "Orc is burned by YOUR flames for 20 points of non-melee damage."),
+    L("01:00:02", "Orc has taken 15 damage from your Chords of Dissonance III."),
+    L("01:00:03", "You have slain orc!"),
+  ]);
+  const self = engine.fights()[0]!.combatants.find((c) => c.isSelf)!;
+  assert.equal(self.byType.melee, 30);
+  assert.equal(self.byType.spell, 20);
+  assert.equal(self.byType.dot, 15);
+  assert.equal(self.total, 65);
+  const dot = self.abilities.find((a) => a.name === "Chords of Dissonance III")!;
+  assert.equal(dot.damageType, "dot");
+  assert.equal(dot.total, 15);
+});
+
+test("stance changes correlate with self damage", () => {
+  const engine = feed([
+    L("01:00:00", "You assume an offensive stance."),
+    L("01:00:01", "You strike orc for 100 points of damage."),
+    L("01:00:05", "You assume a balanced stance."),
+    L("01:00:06", "You strike orc for 40 points of damage."),
+    L("01:00:07", "You have slain orc!"),
+  ]);
+  const self = engine.fights()[0]!.combatants.find((c) => c.isSelf)!;
+  const byStance = Object.fromEntries((self.stances ?? []).map((s) => [s.stance, s.total]));
+  assert.equal(byStance["offensive"], 100);
+  assert.equal(byStance["balanced"], 40);
+});
+
+test("miss events count toward accuracy without adding damage", () => {
+  const engine = feed([
+    L("01:00:00", "You try to crush orc, but miss!"),
+    L("01:00:01", "You crush orc for 20 points of damage."),
+    L("01:00:02", "You have slain orc!"),
+  ]);
+  const self = engine.fights()[0]!.combatants.find((c) => c.isSelf)!;
+  assert.equal(self.misses, 1);
+  assert.equal(self.hits, 1);
+  assert.equal(self.total, 20);
+});

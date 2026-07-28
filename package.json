@@ -12,7 +12,8 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test 'src/**/*.test.ts'",
-    "parse:check": "tsx src/tools/parse-check.ts"
+    "parse:check": "tsx src/tools/parse-check.ts",
+    "report": "tsx src/tools/report.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
