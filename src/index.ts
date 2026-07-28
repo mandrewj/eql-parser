@@ -1,7 +1,8 @@
-// Entry point: resolve config + logs, start the local server, print status.
+// Entry point: build the App, start the server, begin tailing the active log.
 
 import { loadConfig, listLogs } from "./config.js";
-import { startServer, type RuntimeState } from "./server/server.js";
+import { App } from "./app.js";
+import { startServer } from "./server/server.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -11,38 +12,35 @@ async function main(): Promise<void> {
 
   if (!config.logDir) {
     console.log("⚠  No EverQuest Legends log directory found.");
-    console.log("   Set EQL_LOG_DIR to your logs folder, e.g.:");
-    console.log('   export EQL_LOG_DIR="/path/to/EverQuest Legends/logs"');
+    console.log('   Set EQL_LOG_DIR, e.g.: export EQL_LOG_DIR="/path/to/EverQuest Legends/logs"');
   } else {
     console.log(`Log directory : ${config.logDir}`);
   }
 
   const logs = config.logDir ? listLogs(config.logDir) : [];
   const active = logs[0] ?? null;
-
   if (logs.length === 0) {
     console.log("Detected logs : (none)");
   } else {
     console.log(`Detected logs : ${logs.length}`);
     for (const log of logs) {
       const marker = log === active ? "→" : " ";
-      const who = log.character ? `${log.character} (${log.server ?? "?"})` : "unknown char";
-      const kb = (log.sizeBytes / 1024).toFixed(0);
-      console.log(`  ${marker} ${log.fileName}  —  ${who}, ${kb} KB`);
+      const who = log.character ? `${log.character} (${log.server ?? "?"})` : "unknown";
+      console.log(`  ${marker} ${log.fileName}  —  ${who}, ${(log.sizeBytes / 1024).toFixed(0)} KB`);
     }
   }
 
-  const state: RuntimeState = {
-    activeLogPath: active?.path ?? null,
-    mode: "live",
-  };
+  const app = new App(config);
+  const server = await startServer(config, app);
+  app.setUpdateHandler(() => server.broadcaster.send({ t: "snapshot", ...app.snapshot() }));
 
-  const server = await startServer(config, state);
+  if (active) {
+    app.setActiveLog(active.path, "backfill");
+    console.log(`Active log    : ${active.character ?? active.fileName} (backfilled + live)`);
+  }
+
   console.log("---------------------");
   console.log(`Open ${server.url} in your browser`);
-  if (active) {
-    console.log(`Active log    : ${active.character ?? active.fileName}`);
-  }
 
   const shutdown = async () => {
     await server.close();

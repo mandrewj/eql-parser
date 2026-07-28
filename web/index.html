@@ -6,108 +6,115 @@
     <title>EQL Parser</title>
     <style>
       :root { color-scheme: dark; }
-      body {
-        font-family: -apple-system, system-ui, sans-serif;
-        background: #14161a; color: #e6e8eb; margin: 0; padding: 2rem;
-      }
-      h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
-      .sub { color: #8a929c; margin: 0 0 1.5rem; font-size: 0.9rem; }
-      .card {
-        background: #1c1f26; border: 1px solid #2a2f39; border-radius: 10px;
-        padding: 1rem 1.25rem; max-width: 720px; margin-bottom: 1rem;
-      }
-      label { display: block; font-size: 0.8rem; color: #8a929c; margin-bottom: 0.4rem; }
-      select {
-        width: 100%; padding: 0.5rem; background: #14161a; color: #e6e8eb;
-        border: 1px solid #2a2f39; border-radius: 6px; font-size: 0.95rem;
-      }
+      body { font-family: -apple-system, system-ui, sans-serif; background: #14161a; color: #e6e8eb; margin: 0; padding: 1.5rem; }
+      h1 { font-size: 1.3rem; margin: 0 0 0.25rem; }
+      .sub { color: #8a929c; margin: 0 0 1.25rem; font-size: 0.85rem; }
+      .row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+      .card { background: #1c1f26; border: 1px solid #2a2f39; border-radius: 10px; padding: 0.9rem 1.1rem; }
+      label { display: block; font-size: 0.72rem; color: #8a929c; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.04em; }
+      select { padding: 0.45rem; background: #14161a; color: #e6e8eb; border: 1px solid #2a2f39; border-radius: 6px; min-width: 240px; }
       .status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
       .dot { width: 9px; height: 9px; border-radius: 50%; background: #d9534f; }
       .dot.on { background: #4cae4c; }
       .muted { color: #8a929c; }
-      code { background: #14161a; padding: 0.1rem 0.35rem; border-radius: 4px; }
+      .pill { background: #2a2f39; border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.8rem; }
+      #fightTitle { font-size: 1.05rem; font-weight: 600; }
+      .meter { max-width: 720px; }
+      .bar { position: relative; height: 30px; border-radius: 6px; background: #20242c; margin: 6px 0; overflow: hidden; }
+      .bar > .fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #2f6f4f, #3f9d6f); }
+      .bar.self > .fill { background: linear-gradient(90deg, #3a5fa8, #5b86d6); }
+      .bar > .txt { position: relative; display: flex; justify-content: space-between; padding: 0 0.6rem; line-height: 30px; font-size: 0.85rem; }
+      .bar .name { font-weight: 600; }
     </style>
   </head>
   <body>
-    <h1>EQL Parser</h1>
-    <p class="sub">Local DPS parser for EverQuest Legends — M0 scaffold</p>
+    <h1>EQL Parser <span class="muted" style="font-size:0.8rem">— live DPS</span></h1>
+    <p class="sub">Local parser for EverQuest Legends. Full history/filters UI is M4; this is the live meter.</p>
 
-    <div class="card">
-      <label for="logPicker">Active log</label>
-      <select id="logPicker"><option>Loading…</option></select>
-      <p class="muted" id="logDir" style="margin: 0.6rem 0 0; font-size: 0.8rem;"></p>
-    </div>
-
-    <div class="card">
-      <div class="status">
-        <span class="dot" id="sseDot"></span>
-        <span id="sseStatus">Connecting to live stream…</span>
+    <div class="row">
+      <div class="card">
+        <label for="logPicker">Active log</label>
+        <select id="logPicker"><option>Loading…</option></select>
+      </div>
+      <div class="card">
+        <label>Live stream</label>
+        <div class="status"><span class="dot" id="sseDot"></span><span id="sseStatus">Connecting…</span></div>
+      </div>
+      <div class="card">
+        <label>Stance</label>
+        <span class="pill" id="stance">—</span>
       </div>
     </div>
 
-    <p class="muted" style="font-size: 0.8rem; max-width: 720px;">
-      The live meter, filters, and fight history land in later milestones. For now this
-      confirms the server is up, lists your logs, and lets you pick which one to parse.
-    </p>
+    <div class="card meter">
+      <div class="row" style="justify-content: space-between; margin: 0 0 0.5rem;">
+        <span id="fightTitle">No active fight</span>
+        <span class="muted" id="fightMeta"></span>
+      </div>
+      <div id="bars"></div>
+    </div>
 
     <script>
       const picker = document.getElementById("logPicker");
-      const logDirEl = document.getElementById("logDir");
       const sseDot = document.getElementById("sseDot");
       const sseStatus = document.getElementById("sseStatus");
+      const stanceEl = document.getElementById("stance");
+      const fightTitle = document.getElementById("fightTitle");
+      const fightMeta = document.getElementById("fightMeta");
+      const bars = document.getElementById("bars");
 
       async function loadLogs() {
-        const res = await fetch("/api/logs");
-        const data = await res.json();
-        logDirEl.textContent = data.logDir
-          ? "Directory: " + data.logDir
-          : "No log directory found — set EQL_LOG_DIR.";
+        const data = await (await fetch("/api/logs")).json();
         picker.innerHTML = "";
-        if (!data.logs.length) {
-          picker.innerHTML = "<option>(no eqlog_*.txt found)</option>";
-          return;
-        }
+        if (!data.logs.length) { picker.innerHTML = "<option>(no eqlog_*.txt found)</option>"; return; }
         for (const log of data.logs) {
           const opt = document.createElement("option");
           opt.value = log.path;
           const who = log.character ? log.character + " (" + (log.server || "?") + ")" : log.fileName;
-          const kb = Math.round(log.sizeBytes / 1024);
-          opt.textContent = who + " — " + kb + " KB";
+          opt.textContent = who + " — " + Math.round(log.sizeBytes / 1024) + " KB";
           if (log.path === data.activeLogPath) opt.selected = true;
           picker.appendChild(opt);
         }
       }
 
-      picker.addEventListener("change", async () => {
-        await fetch("/api/logs/active", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: picker.value, mode: "live" }),
-        });
-      });
+      picker.addEventListener("change", () =>
+        fetch("/api/logs/active", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: picker.value, mode: "backfill" }) }),
+      );
 
-      function connectSse() {
+      function render(snap) {
+        stanceEl.textContent = snap.stance || "—";
+        const fight = snap.current;
+        if (!fight) { fightTitle.textContent = "No active fight"; fightMeta.textContent = ""; bars.innerHTML = ""; return; }
+        const dur = Math.max(1, Math.round(((fight.endMs || Date.now()) - fight.startMs) / 1000));
+        fightTitle.textContent = fight.title + (fight.active ? " ⚔" : "");
+        fightMeta.textContent = dur + "s";
+        const friendly = fight.combatants.filter((c) => c.kind !== "npc");
+        const max = Math.max(1, ...friendly.map((c) => c.total));
+        bars.innerHTML = "";
+        for (const c of friendly) {
+          const el = document.createElement("div");
+          el.className = "bar" + (c.isSelf ? " self" : "");
+          el.innerHTML =
+            '<div class="fill" style="width:' + (c.total / max) * 100 + '%"></div>' +
+            '<div class="txt"><span class="name">' + c.name + "</span><span>" +
+            c.dps.toLocaleString() + " dps · " + c.total.toLocaleString() + " (" + c.pct + "%)</span></div>";
+          bars.appendChild(el);
+        }
+      }
+
+      function connect() {
         const es = new EventSource("/events");
-        es.onopen = () => {
-          sseDot.classList.add("on");
-          sseStatus.textContent = "Live stream connected";
-        };
+        es.onopen = () => { sseDot.classList.add("on"); sseStatus.textContent = "Connected"; };
         es.onmessage = (e) => {
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.t === "activeLogChanged") {
-              sseStatus.textContent = "Active log changed";
-            }
-          } catch {}
+          const msg = JSON.parse(e.data);
+          if (msg.t === "snapshot") render(msg);
+          if (msg.t === "activeLogChanged") { loadLogs(); }
         };
-        es.onerror = () => {
-          sseDot.classList.remove("on");
-          sseStatus.textContent = "Reconnecting…";
-        };
+        es.onerror = () => { sseDot.classList.remove("on"); sseStatus.textContent = "Reconnecting…"; };
       }
 
       loadLogs();
-      connectSse();
+      connect();
     </script>
   </body>
 </html>

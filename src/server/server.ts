@@ -1,22 +1,15 @@
 // Minimal local HTTP server: static SPA + JSON control API + SSE stream.
-// M0 wires the log-picker endpoints and the SSE channel; the engine/tailer
-// plug into `broadcaster` in later milestones.
+// All state lives in the App controller; the server is a thin transport.
 
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AppConfig } from "../config.js";
-import { listLogs } from "../config.js";
+import type { App } from "../app.js";
 import type { ParseMode } from "../types.js";
 
-export interface RuntimeState {
-  activeLogPath: string | null;
-  mode: ParseMode;
-}
-
 export interface Broadcaster {
-  /** Push a JSON event to every connected SSE client. */
   send(event: unknown): void;
   clientCount(): number;
 }
@@ -55,7 +48,6 @@ async function readBody(req: http.IncomingMessage): Promise<string> {
 function serveStatic(res: http.ServerResponse, urlPath: string): void {
   const rel = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
   const filePath = path.join(WEB_DIR, rel);
-  // Prevent path traversal outside WEB_DIR.
   if (!filePath.startsWith(WEB_DIR)) {
     res.writeHead(403).end("Forbidden");
     return;
@@ -66,14 +58,12 @@ function serveStatic(res: http.ServerResponse, urlPath: string): void {
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, {
-      "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream",
-    });
+    res.writeHead(200, { "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream" });
     res.end(data);
   });
 }
 
-export function startServer(config: AppConfig, state: RuntimeState): Promise<ServerHandle> {
+export function startServer(config: AppConfig, app: App): Promise<ServerHandle> {
   const sseClients = new Set<http.ServerResponse>();
 
   const broadcaster: Broadcaster = {
@@ -88,31 +78,37 @@ export function startServer(config: AppConfig, state: RuntimeState): Promise<Ser
     const url = new URL(req.url ?? "/", "http://localhost");
     const { pathname } = url;
 
-    // --- JSON API -------------------------------------------------------
     if (pathname === "/api/logs" && req.method === "GET") {
-      const logs = config.logDir ? listLogs(config.logDir) : [];
-      sendJson(res, 200, { logDir: config.logDir, activeLogPath: state.activeLogPath, logs });
+      sendJson(res, 200, app.logs());
       return;
     }
 
     if (pathname === "/api/logs/active" && req.method === "POST") {
       try {
-        const body = JSON.parse((await readBody(req)) || "{}") as {
-          path?: string;
-          mode?: ParseMode;
-        };
-        if (!body.path) {
-          sendJson(res, 400, { error: "missing 'path'" });
-          return;
-        }
-        state.activeLogPath = body.path;
-        if (body.mode) state.mode = body.mode;
-        // Tailer switching is wired in M3; announce the change for now.
-        broadcaster.send({ t: "activeLogChanged", path: state.activeLogPath, mode: state.mode });
-        sendJson(res, 200, { ok: true, activeLogPath: state.activeLogPath, mode: state.mode });
+        const body = JSON.parse((await readBody(req)) || "{}") as { path?: string; mode?: ParseMode };
+        if (!body.path) return sendJson(res, 400, { error: "missing 'path'" });
+        app.setActiveLog(body.path, body.mode ?? "backfill");
+        broadcaster.send({ t: "activeLogChanged", path: body.path, mode: body.mode ?? "backfill" });
+        return sendJson(res, 200, { ok: true, activeLogPath: app.getActiveLogPath() });
       } catch {
-        sendJson(res, 400, { error: "invalid JSON body" });
+        return sendJson(res, 400, { error: "invalid JSON body" });
       }
+    }
+
+    if (pathname === "/api/fights" && req.method === "GET") {
+      sendJson(res, 200, { fights: app.fightSummaries() });
+      return;
+    }
+
+    const fightMatch = /^\/api\/fights\/(.+)$/.exec(pathname);
+    if (fightMatch && req.method === "GET") {
+      const fight = app.fight(decodeURIComponent(fightMatch[1]!));
+      if (!fight) return sendJson(res, 404, { error: "no such fight" });
+      return sendJson(res, 200, fight);
+    }
+
+    if (pathname === "/api/snapshot" && req.method === "GET") {
+      sendJson(res, 200, app.snapshot());
       return;
     }
 
@@ -121,7 +117,6 @@ export function startServer(config: AppConfig, state: RuntimeState): Promise<Ser
       return;
     }
 
-    // --- SSE stream -----------------------------------------------------
     if (pathname === "/events" && req.method === "GET") {
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -129,14 +124,7 @@ export function startServer(config: AppConfig, state: RuntimeState): Promise<Ser
         Connection: "keep-alive",
       });
       res.write(`retry: 2000\n\n`);
-      const logs = config.logDir ? listLogs(config.logDir) : [];
-      res.write(
-        `data: ${JSON.stringify({
-          t: "hello",
-          activeLogPath: state.activeLogPath,
-          logCount: logs.length,
-        })}\n\n`,
-      );
+      res.write(`data: ${JSON.stringify({ t: "snapshot", ...app.snapshot() })}\n\n`);
       sseClients.add(res);
       const keepAlive = setInterval(() => res.write(`: ping\n\n`), 15000);
       req.on("close", () => {
@@ -146,7 +134,6 @@ export function startServer(config: AppConfig, state: RuntimeState): Promise<Ser
       return;
     }
 
-    // --- Static SPA -----------------------------------------------------
     serveStatic(res, pathname);
   });
 
@@ -156,9 +143,9 @@ export function startServer(config: AppConfig, state: RuntimeState): Promise<Ser
         broadcaster,
         url: `http://localhost:${config.port}`,
         close: () =>
-          new Promise<void>((res) => {
+          new Promise<void>((r) => {
             for (const client of sseClients) client.end();
-            server.close(() => res());
+            server.close(() => r());
           }),
       });
     });
