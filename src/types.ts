@@ -1,0 +1,153 @@
+// Core domain types shared across tailer, parser, engine, and server.
+
+// ---------------------------------------------------------------------------
+// Logs / files
+// ---------------------------------------------------------------------------
+
+export interface LogFileInfo {
+  path: string;
+  fileName: string;
+  character: string | null; // parsed from eqlog_<Char>_<server>.txt
+  server: string | null;
+  sizeBytes: number;
+  modifiedMs: number; // mtime, ms since epoch
+}
+
+export type ParseMode = "live" | "backfill";
+
+// ---------------------------------------------------------------------------
+// Entities
+// ---------------------------------------------------------------------------
+
+export type EntityKind = "self" | "player" | "pet" | "npc" | "unknown";
+
+export interface Entity {
+  name: string;
+  kind: EntityKind;
+  ownerName?: string; // for pets, when derivable
+}
+
+// ---------------------------------------------------------------------------
+// Parsed combat events (output of the parser)
+// ---------------------------------------------------------------------------
+
+export type DamageType = "melee" | "spell" | "dot" | "unknown";
+
+interface BaseEvent {
+  tsMs: number; // event timestamp (ms) from the log line
+  raw: string; // original line body, for debugging
+}
+
+export interface MeleeDamageEvent extends BaseEvent {
+  type: "melee";
+  attacker: string; // "You" is normalized to the self character name by the engine
+  target: string;
+  verb: string; // hit, slash, pierce, crush, kick, ...
+  amount: number;
+  crit: boolean;
+  modifier?: string; // raw "(Critical)" etc.
+}
+
+export interface SpellDamageEvent extends BaseEvent {
+  type: "spell";
+  owner: string; // caster/owner: self name, another name, or "Unknown"
+  target: string;
+  effect: string; // "flames", "poison", ... (damage message, not the real spell name)
+  amount: number;
+}
+
+export interface DotTickEvent extends BaseEvent {
+  type: "dot";
+  caster: string;
+  target: string;
+  spell: string; // real spell name (e.g. "Chords of Dissonance III")
+  amount: number;
+}
+
+export interface MissEvent extends BaseEvent {
+  type: "miss";
+  attacker: string;
+  target: string;
+  verb: string;
+  avoidance: string; // miss, parry, dodge, block, riposte, ...
+}
+
+export interface DeathEvent extends BaseEvent {
+  type: "death";
+  victim: string;
+  killer: string | null;
+}
+
+export interface StanceEvent extends BaseEvent {
+  type: "stance";
+  stance: string; // offensive, striker, evasive, balanced, ... (self only)
+}
+
+export type CombatEvent =
+  | MeleeDamageEvent
+  | SpellDamageEvent
+  | DotTickEvent
+  | MissEvent
+  | DeathEvent
+  | StanceEvent;
+
+// ---------------------------------------------------------------------------
+// Aggregated views (output of the engine → sent to the UI)
+// ---------------------------------------------------------------------------
+
+export interface AbilityBreakdown {
+  name: string; // verb (melee) or spell name (spell/dot)
+  damageType: DamageType;
+  total: number;
+  hits: number;
+  crits: number;
+}
+
+export interface StanceBreakdown {
+  stance: string;
+  total: number;
+  dps: number;
+  activeSeconds: number;
+}
+
+export interface CombatantStats {
+  name: string;
+  kind: EntityKind;
+  isSelf: boolean;
+  total: number;
+  dps: number;
+  pct: number; // share of the fight's total damage
+  hits: number;
+  crits: number;
+  misses: number;
+  byType: Record<DamageType, number>; // damage split by type (drill-down)
+  abilities: AbilityBreakdown[]; // per-ability drill-down
+  stances?: StanceBreakdown[]; // self only
+}
+
+export interface StanceSegment {
+  startMs: number;
+  endMs: number | null;
+  stance: string;
+}
+
+export interface Fight {
+  id: string;
+  title: string; // named boss, or "Trash pull"
+  startMs: number;
+  endMs: number | null;
+  active: boolean;
+  npcs: string[]; // engaged NPC names
+  combatants: CombatantStats[];
+  stanceTimeline: StanceSegment[]; // self stance over the fight
+}
+
+export interface FightSummary {
+  id: string;
+  title: string;
+  startMs: number;
+  endMs: number | null;
+  active: boolean;
+  durationSec: number;
+  topDps: number;
+}
