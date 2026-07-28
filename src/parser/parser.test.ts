@@ -121,6 +121,18 @@ test("heal — effective (raw) with spell name", () => {
   assert.equal(e.spell, "Courage");
 });
 
+test("pet — self's pet identified via 'Master' message", () => {
+  const e = parseLine(TS + "Gore says, 'Attacking a decaying skeleton Master.'");
+  assert.equal(e?.type, "pet");
+  if (e?.type !== "pet") return;
+  assert.equal(e.pet, "Gore");
+  assert.equal(e.owner, "You");
+});
+
+test("pet — NPC dialogue is not mistaken for a pet", () => {
+  assert.equal(parseLine(TS + "Orc taskmaster says, 'Centurions!  Come join the fight!'"), null);
+});
+
 test("miss — you", () => {
   const e = parseLine(TS + "You try to crush orc legionnaire, but miss!");
   assert.equal(e?.type, "miss");

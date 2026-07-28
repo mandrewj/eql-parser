@@ -10,6 +10,7 @@ import type {
   HealEvent,
   MeleeDamageEvent,
   MissEvent,
+  PetEvent,
   SpellDamageEvent,
   StanceEvent,
 } from "../types.js";
@@ -17,7 +18,11 @@ import type {
 const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
-const RELEVANT_RE = /damage|slain|but |assume |heal/;
+const RELEVANT_RE = /damage|slain|but |assume |heal|Master/;
+
+// A pet addressing you as "Master" (e.g. "Gore says, 'Attacking a rat Master.'")
+// only ever refers to *your* pet in your own log, so it identifies the self's pet.
+const PET_SAY_RE = /^(.+?) says,? '.*\bMaster\b[.!]?'$/;
 
 // Third-person melee verbs. Constraining the verb (vs. a bare \w+) is what lets
 // a multi-word attacker like "Orc legionnaire" split correctly.
@@ -96,6 +101,13 @@ export function parseLine(raw: string): CombatEvent | null {
   let m = STANCE_RE.exec(body);
   if (m) {
     const ev: StanceEvent = { type: "stance", tsMs, raw: body, stance: m[1]! };
+    return ev;
+  }
+
+  // Pet identifying itself ("... Master.") ⇒ it's the self's pet
+  m = PET_SAY_RE.exec(body);
+  if (m) {
+    const ev: PetEvent = { type: "pet", tsMs, raw: body, pet: m[1]!, owner: "You" };
     return ev;
   }
 

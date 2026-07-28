@@ -34,6 +34,7 @@ export interface CombatantStats {
   name: string;
   kind: EntityKind;
   isSelf: boolean;
+  ownerName?: string; // for pets — the owner's display name
   damage: MetricStat; // damage done
   healing: MetricStat; // healing done
   taken: MetricStat; // damage taken

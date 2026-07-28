@@ -92,6 +92,12 @@ export interface HealEvent extends BaseEvent {
   spell?: string; // when "by <Spell>" is present
 }
 
+export interface PetEvent extends BaseEvent {
+  type: "pet";
+  pet: string;
+  owner: string; // "You" for the logging character's pet
+}
+
 export type CombatEvent =
   | MeleeDamageEvent
   | SpellDamageEvent
@@ -99,7 +105,8 @@ export type CombatEvent =
   | MissEvent
   | DeathEvent
   | StanceEvent
-  | HealEvent;
+  | HealEvent
+  | PetEvent;
 
 // ---------------------------------------------------------------------------
 // Aggregated views (output of the engine → sent to the UI)
@@ -137,6 +144,7 @@ export interface CombatantStats {
   name: string;
   kind: EntityKind;
   isSelf: boolean;
+  ownerName?: string; // for pets — the owner's display name
   damage: MetricStat; // damage done
   healing: MetricStat; // healing done
   taken: MetricStat; // damage taken (tanking)

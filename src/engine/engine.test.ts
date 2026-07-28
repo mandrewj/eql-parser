@@ -130,6 +130,23 @@ test("healing done is tracked per healer, with spell breakdown", () => {
   assert.equal(light.total, 10);
 });
 
+test("self's pet folds into the owner with a paw-tagged breakdown", () => {
+  const engine = feed([
+    L("01:00:00", "Gore says, 'Attacking an orc Master.'"), // Gore is my pet
+    L("01:00:01", "You crush an orc for 50 points of damage."),
+    L("01:00:02", "Gore bites an orc for 30 points of damage."),
+    L("01:00:03", "You have slain an orc!"),
+  ]);
+  const f = engine.fights()[0]!;
+  // The pet is not a separate row — its damage is attributed to Sanluen.
+  assert.equal(f.combatants.some((c) => c.name === "Gore"), false);
+  const self = f.combatants.find((c) => c.isSelf)!;
+  assert.equal(self.damage.total, 80); // 50 own + 30 pet
+  const petEntry = self.damage.entries.find((e) => e.name.includes("bite"))!;
+  assert.ok(petEntry, "owner drill-down includes the pet's ability");
+  assert.ok(petEntry.name.startsWith("🐾"), "pet ability is paw-tagged");
+});
+
 test("damage taken (tanking) aggregates incoming damage per target", () => {
   const engine = feed([
     L("01:00:00", "You strike orc for 30 points of damage."),

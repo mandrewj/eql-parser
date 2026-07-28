@@ -56,7 +56,6 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
-- Pet-damage attribution to owners.
 - Fight export/share (JSON/image) and run-over-run comparison.
 - Optional true always-on-top overlay (revisit Tauri/Electron only if the browser window proves insufficient).
 

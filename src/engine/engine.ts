@@ -92,6 +92,21 @@ function addAbility(m: MetricAcc, name: string, type: DamageType, amount: number
   if (crit) a.crits++;
 }
 
+/** Fold a pet's metric into its owner's (operates on already-built output objects). */
+function mergeStat(dst: MetricStat, src: MetricStat, dur: number): void {
+  if (src.total === 0 && src.avoided === 0 && src.entries.length === 0) return;
+  dst.total += src.total;
+  dst.hits += src.hits;
+  dst.crits += src.crits;
+  dst.avoided += src.avoided;
+  (Object.keys(dst.byType) as DamageType[]).forEach((t) => (dst.byType[t] += src.byType[t]));
+  for (const e of src.entries) {
+    dst.entries.push({ name: `🐾 ${e.name}`, damageType: e.damageType, total: e.total, hits: e.hits, crits: e.crits });
+  }
+  dst.entries.sort((a, b) => b.total - a.total);
+  dst.perSec = Math.round(dst.total / dur);
+}
+
 export class Engine {
   private readonly opts: EngineOptions;
   private readonly selfKey: string;
@@ -99,6 +114,7 @@ export class Engine {
 
   private currentStance = "unknown";
   private stanceSegments: StanceSegment[] = [];
+  private readonly petOwners = new Map<string, string>(); // petKey → ownerKey (global)
 
   private current: FightState | null = null;
   private finished: FightState[] = [];
@@ -115,6 +131,12 @@ export class Engine {
   handle(ev: CombatEvent): void {
     if (ev.type === "stance") {
       this.applyStance(ev.tsMs, ev.stance);
+      return;
+    }
+    if (ev.type === "pet") {
+      const pk = this.keyOf(ev.pet);
+      this.see(pk, ev.pet);
+      this.petOwners.set(pk, this.keyOf(ev.owner));
       return;
     }
     this.maybeCloseForInactivity(ev.tsMs);
@@ -336,6 +358,11 @@ export class Engine {
         if (d.killer && npc.has(d.killer) && !friendly.has(d.victim) && !npc.has(d.victim))
           (friendly.add(d.victim), (changed = true));
       }
+      // A pet shares its owner's faction.
+      for (const [pet, owner] of this.petOwners) {
+        if (friendly.has(owner) && !friendly.has(pet) && !npc.has(pet)) (friendly.add(pet), (changed = true));
+        if (npc.has(owner) && !npc.has(pet) && !friendly.has(pet)) (npc.add(pet), (changed = true));
+      }
     }
     return { friendly, npc };
   }
@@ -352,7 +379,7 @@ export class Engine {
       hits: m.hits,
       crits: m.crits,
       avoided: m.avoided,
-      byType: m.byType,
+      byType: { ...m.byType }, // copy: buildFight may fold pet stats into an owner's copy
       entries: [...m.abilities.values()].sort((a, b) => b.total - a.total),
     };
   }
@@ -361,25 +388,51 @@ export class Engine {
     const { friendly, npc } = this.resolveKinds(f);
     const dur = this.durationSec(f);
 
-    const combatants: CombatantStats[] = [...f.combatants.values()]
-      .map((c) => {
-        const isSelf = c.key === this.selfKey;
-        const kind = isSelf ? "self" : npc.has(c.key) ? "npc" : friendly.has(c.key) ? "player" : "unknown";
-        const stats: CombatantStats = {
-          name: c.name,
-          kind,
-          isSelf,
-          damage: this.toStat(c.done, dur),
-          healing: this.toStat(c.heal, dur),
-          taken: this.toStat(c.taken, dur),
-        };
-        if (isSelf && c.stanceTotals.size > 0) {
-          stats.stances = [...c.stanceTotals.entries()]
-            .map(([stance, total]) => ({ stance, total, dps: Math.round(total / dur), activeSeconds: 0 }))
-            .sort((a, b) => b.total - a.total);
-        }
-        return stats;
-      })
+    // Build stats per combatant, keyed, tracking pet ownership.
+    const byKey = new Map<string, { key: string; ownerKey: string | null; stats: CombatantStats }>();
+    for (const c of f.combatants.values()) {
+      const isSelf = c.key === this.selfKey;
+      const ownerKey = this.petOwners.get(c.key) ?? null;
+      const kind = isSelf
+        ? "self"
+        : ownerKey
+          ? "pet"
+          : npc.has(c.key)
+            ? "npc"
+            : friendly.has(c.key)
+              ? "player"
+              : "unknown";
+      const stats: CombatantStats = {
+        name: c.name,
+        kind,
+        isSelf,
+        ...(ownerKey ? { ownerName: this.nameOf(ownerKey) } : {}),
+        damage: this.toStat(c.done, dur),
+        healing: this.toStat(c.heal, dur),
+        taken: this.toStat(c.taken, dur),
+      };
+      if (isSelf && c.stanceTotals.size > 0) {
+        stats.stances = [...c.stanceTotals.entries()]
+          .map(([stance, total]) => ({ stance, total, dps: Math.round(total / dur), activeSeconds: 0 }))
+          .sort((a, b) => b.total - a.total);
+      }
+      byKey.set(c.key, { key: c.key, ownerKey, stats });
+    }
+
+    // Fold each identified pet into its owner (when the owner is in this fight),
+    // tagging the pet's categories with 🐾 in the owner's drill-down.
+    for (const entry of [...byKey.values()]) {
+      const owner = entry.ownerKey ? byKey.get(entry.ownerKey) : undefined;
+      if (owner) {
+        mergeStat(owner.stats.damage, entry.stats.damage, dur);
+        mergeStat(owner.stats.healing, entry.stats.healing, dur);
+        mergeStat(owner.stats.taken, entry.stats.taken, dur);
+        byKey.delete(entry.key);
+      }
+    }
+
+    const combatants: CombatantStats[] = [...byKey.values()]
+      .map((e) => e.stats)
       .filter((c) => c.damage.total > 0 || c.healing.total > 0 || c.taken.total > 0)
       .sort((a, b) => b.damage.total - a.damage.total);
 

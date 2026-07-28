@@ -26,6 +26,7 @@ function main(): void {
     death: 0,
     stance: 0,
     heal: 0,
+    pet: 0,
   };
   let total = 0;
   let damageTotal = 0;

@@ -5,6 +5,7 @@ export interface DisplayRow {
   key: string;
   name: string;
   kind: CombatantStats["kind"];
+  ownerName?: string;
   isSelf: boolean;
   total: number;
   perSec: number;
@@ -46,7 +47,7 @@ export function computeRows(fight: Fight, filters: Filters): DisplayRow[] {
 
   const rows: DisplayRow[] = visible.map((c) => {
     const m = c[filters.metric];
-    const base = { key: c.name, name: c.name, kind: c.kind, isSelf: c.isSelf, hits: m.hits, crits: m.crits, avoided: m.avoided };
+    const base = { key: c.name, name: c.name, kind: c.kind, ownerName: c.ownerName, isSelf: c.isSelf, hits: m.hits, crits: m.crits, avoided: m.avoided };
 
     // Stance lens: damage metric, self only.
     if (allowStance && filters.stance && c.isSelf && c.stances) {

@@ -115,6 +115,7 @@ body { margin: 0; }
 .bar.self > .fill { background: linear-gradient(90deg, #34528f, var(--self)); }
 .bar.player > .fill { background: linear-gradient(90deg, #2c6f4e, var(--player)); }
 .bar.npc > .fill { background: linear-gradient(90deg, #8f3a3a, var(--npc)); }
+.bar.pet > .fill { background: linear-gradient(90deg, #3f7d6a, #57b39a); }
 .bar.unknown > .fill { background: #444b57; }
 .bar > .txt {
   position: relative; display: flex; justify-content: space-between; align-items: center;

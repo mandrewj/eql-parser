@@ -149,6 +149,22 @@ default unknown melee targets of players to "NPC", and let death/heal/cast lines
 Both **players and NPCs are first-class rows** — the UI can inspect an NPC's outgoing damage (what
 the mob did to the group) as well as each player's damage to the mob.
 
+## Pets (self's pet)
+
+Only *your* pet addresses you as **Master** in your own log, so a pet "say" line ending in
+`Master` identifies it as the logging character's pet:
+
+```
+[..] Gore says, 'Attacking a decaying skeleton Master.'
+```
+```
+^(?<pet>.+?) says,? '.*\bMaster\b[.!]?'$
+```
+The engine records `pet → owner` and **folds the pet's damage/healing/tanking into its owner**,
+tagging the pet's categories with `🐾` in the owner's drill-down. Other players' pets can't be
+attributed from a single client's log (their pets don't call *you* Master), so they remain their
+own rows. `\bMaster\b` is case-sensitive, so NPC names like "Orc taskmaster" don't false-positive.
+
 ## Stances (self only)
 
 Stance changes are logged **only for the logging character**:

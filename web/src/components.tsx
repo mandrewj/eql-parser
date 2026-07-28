@@ -116,6 +116,7 @@ export function Meter({
                 <span className="name">
                   {isOpen ? "▾ " : "▸ "}
                   {r.name}
+                  {r.kind === "pet" && <span className="tag">🐾 {r.ownerName ? `${r.ownerName}'s pet` : "pet"}</span>}
                   {r.stanceFiltered && <span className="tag">{filters.stance}</span>}
                 </span>
                 <span className="nums">
