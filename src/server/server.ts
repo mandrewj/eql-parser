@@ -121,6 +121,19 @@ export function startServer(config: AppConfig, app: App): Promise<ServerHandle> 
       return;
     }
 
+    if (pathname === "/api/log-dir" && req.method === "POST") {
+      try {
+        const body = JSON.parse((await readBody(req)) || "{}") as { dir?: string };
+        if (!body.dir) return sendJson(res, 400, { error: "missing 'dir'" });
+        const result = app.setLogDir(body.dir);
+        if (!result.ok) return sendJson(res, 400, { error: result.error });
+        broadcaster.send({ t: "activeLogChanged", path: app.getActiveLogPath() });
+        return sendJson(res, 200, app.logs());
+      } catch {
+        return sendJson(res, 400, { error: "invalid JSON body" });
+      }
+    }
+
     if (pathname === "/api/logs/active" && req.method === "POST") {
       try {
         const body = JSON.parse((await readBody(req)) || "{}") as { path?: string; mode?: ParseMode };

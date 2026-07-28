@@ -1,6 +1,7 @@
 // Application controller: owns the engine + tailer for the active log and turns
 // the raw line stream into live snapshots. The server talks only to this.
 
+import fs from "node:fs";
 import path from "node:path";
 import type { AppConfig } from "./config.js";
 import { listLogs, parseLogFileName } from "./config.js";
@@ -13,6 +14,7 @@ export class App {
   private readonly config: AppConfig;
   private engine: Engine;
   private tailer: Tailer | null = null;
+  private logDir: string | null; // the actively scanned folder (changeable at runtime)
   private activeLogPath: string | null = null;
   private mode: ParseMode = "backfill";
   private onUpdate: () => void = () => {};
@@ -20,6 +22,7 @@ export class App {
 
   constructor(config: AppConfig) {
     this.config = config;
+    this.logDir = config.logDir;
     this.engine = this.newEngine(null);
   }
 
@@ -29,8 +32,26 @@ export class App {
   }
 
   logs(): { logDir: string | null; activeLogPath: string | null; logs: LogFileInfo[] } {
-    const logs = this.config.logDir ? listLogs(this.config.logDir) : [];
-    return { logDir: this.config.logDir, activeLogPath: this.activeLogPath, logs };
+    const logs = this.logDir ? listLogs(this.logDir) : [];
+    return { logDir: this.logDir, activeLogPath: this.activeLogPath, logs };
+  }
+
+  /**
+   * Point the parser at a different logs folder (e.g. on another machine).
+   * Validates the path, repopulates the log list, and auto-selects the newest log.
+   */
+  setLogDir(dir: string): { ok: boolean; error?: string } {
+    const trimmed = dir.trim();
+    try {
+      if (!fs.statSync(trimmed).isDirectory()) return { ok: false, error: "Not a folder" };
+    } catch {
+      return { ok: false, error: "Folder not found" };
+    }
+    this.logDir = trimmed;
+    const newest = listLogs(trimmed)[0];
+    if (newest) this.setActiveLog(newest.path, "backfill");
+    else this.scheduleBroadcast();
+    return { ok: true };
   }
 
   getActiveLogPath(): string | null {

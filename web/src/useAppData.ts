@@ -6,6 +6,7 @@ export interface AppData {
   logs: LogsResponse | null;
   connected: boolean;
   selectLog: (path: string) => Promise<void>;
+  setLogDir: (dir: string) => Promise<{ ok: boolean; error?: string }>;
   fetchFight: (id: string) => Promise<Fight | null>;
   refreshLogs: () => Promise<void>;
 }
@@ -53,11 +54,25 @@ export function useAppData(): AppData {
     [refreshLogs],
   );
 
+  const setLogDir = useCallback(async (dir: string): Promise<{ ok: boolean; error?: string }> => {
+    const res = await fetch("/api/log-dir", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dir }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setLogs(data as LogsResponse);
+      return { ok: true };
+    }
+    return { ok: false, error: (data as { error?: string }).error ?? "failed" };
+  }, []);
+
   const fetchFight = useCallback(async (id: string): Promise<Fight | null> => {
     const res = await fetch(`/api/fights/${encodeURIComponent(id)}`);
     if (!res.ok) return null;
     return (await res.json()) as Fight;
   }, []);
 
-  return { snapshot, logs, connected, selectLog, fetchFight, refreshLogs };
+  return { snapshot, logs, connected, selectLog, setLogDir, fetchFight, refreshLogs };
 }

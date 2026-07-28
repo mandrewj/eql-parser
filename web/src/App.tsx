@@ -26,12 +26,25 @@ function currentSummary(f: Fight): FightSummary {
 }
 
 export default function App() {
-  const { snapshot, logs, connected, selectLog, fetchFight } = useAppData();
+  const { snapshot, logs, connected, selectLog, setLogDir, fetchFight } = useAppData();
   const [tab, setTab] = useState<"live" | "history">("live");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fetched, setFetched] = useState<Fight | null>(null);
+  const [dirInput, setDirInput] = useState("");
+  const [dirError, setDirError] = useState<string | null>(null);
+
+  // Pre-fill the folder field with the detected path once it loads.
+  useEffect(() => {
+    if (logs?.logDir) setDirInput((prev) => (prev === "" ? logs.logDir! : prev));
+  }, [logs?.logDir]);
+
+  const submitDir = async () => {
+    setDirError(null);
+    const r = await setLogDir(dirInput);
+    if (!r.ok) setDirError(r.error ?? "failed");
+  };
 
   const toggle = (key: string) =>
     setExpanded((prev) => {
@@ -72,24 +85,39 @@ export default function App() {
           EQL Parser <span className="muted small">live DPS</span>
         </div>
         <div className="controls">
-          <select
-            value={logs?.activeLogPath ?? ""}
-            onChange={(e) => void selectLog(e.target.value)}
-            title="Active log"
-          >
-            {!logs?.logs.length && <option value="">No logs found</option>}
-            {logs?.logs.map((l) => (
-              <option key={l.path} value={l.path}>
-                {l.character ? `${l.character} (${l.server ?? "?"})` : l.fileName} · {Math.round(l.sizeBytes / 1024)} KB
-              </option>
-            ))}
-          </select>
           <span className="stancepill" title="current stance">
             ⛨ {snapshot?.stance ?? "—"}
           </span>
           <span className={`conn ${connected ? "on" : ""}`}>{connected ? "live" : "offline"}</span>
         </div>
       </header>
+
+      <div className="logbar">
+        <span className="flabel">Logs folder</span>
+        <input
+          className="dirinput"
+          value={dirInput}
+          spellCheck={false}
+          placeholder="/path/to/EverQuest Legends/logs"
+          onChange={(e) => setDirInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void submitDir();
+          }}
+        />
+        <button className="btn" onClick={() => void submitDir()}>
+          Load
+        </button>
+        {dirError && <span className="err">{dirError}</span>}
+        <span className="flabel logbar-log">Log</span>
+        <select value={logs?.activeLogPath ?? ""} onChange={(e) => void selectLog(e.target.value)} title="Active log">
+          {!logs?.logs.length && <option value="">No logs found</option>}
+          {logs?.logs.map((l) => (
+            <option key={l.path} value={l.path}>
+              {l.character ? `${l.character} (${l.server ?? "?"})` : l.fileName} · {Math.round(l.sizeBytes / 1024)} KB
+            </option>
+          ))}
+        </select>
+      </div>
 
       <nav className="tabs">
         <button className={tab === "live" ? "tab on" : "tab"} onClick={() => setTab("live")}>

@@ -41,6 +41,30 @@ body { margin: 0; }
 .conn { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--npc); }
 .conn.on { color: var(--player); }
 
+/* logs folder bar */
+.logbar {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  padding: 0.7rem 0 0.2rem;
+}
+.logbar .flabel { margin: 0; }
+.logbar-log { margin-left: 0.5rem; }
+.dirinput {
+  flex: 1 1 340px; min-width: 220px; max-width: 560px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.4rem 0.55rem; font-size: 0.85rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.logbar select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.4rem 0.5rem; min-width: 200px;
+}
+.btn {
+  background: #2f3846; color: var(--text); border: 1px solid #46506180;
+  border-radius: 6px; padding: 0.4rem 0.9rem; cursor: pointer; font-size: 0.85rem;
+}
+.btn:hover { background: #3a4556; }
+.err { color: var(--npc); font-size: 0.8rem; }
+
 /* tabs */
 .tabs { display: flex; gap: 0.4rem; margin: 1rem 0 0.6rem; }
 .tab {

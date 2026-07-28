@@ -64,7 +64,8 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 ### Server
 - Serves the built SPA statically (embedded in the binary at packaging time).
 - JSON API (draft):
-  - `GET  /api/logs` → available `eqlog_*.txt` (path, character, server, size, mtime), newest first.
+  - `GET  /api/logs` → current folder + its `eqlog_*.txt` (path, character, server, size, mtime), newest first.
+  - `POST /api/log-dir` `{ dir }` → change the scanned logs folder (validated), re-list, auto-select newest.
   - `POST /api/logs/active` `{ path, mode }` → switch the actively parsed log (live | backfill).
   - `GET  /api/fights` → fight summaries (history).
   - `GET  /api/fights/:id` → full combatant + ability + stance detail for one fight.
