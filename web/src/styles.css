@@ -259,9 +259,12 @@ body { margin: 0; }
 .ov-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .ov-overall { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ov-overall .munit { font-size: 0.7rem; font-weight: 400; color: var(--muted); }
-.ov-row { margin: 3px 0; }
-.ov-bar { position: relative; height: 22px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
-.ov-bar > .fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #7a5b2c, var(--melee)); opacity: 0.8; }
-.ov-txt { position: relative; display: flex; justify-content: space-between; align-items: center; height: 100%; padding: 0 0.5rem; font-size: 0.78rem; }
-.ov-combo { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ov-dps { font-variant-numeric: tabular-nums; }
+.ov-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.4rem; }
+.ov-tile {
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 0.4rem 0.5rem; display: flex; flex-direction: column; gap: 0.1rem;
+}
+.ov-tile.top { border-color: #7a5b2c; background: #23201a; }
+.ov-tile-dps { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ov-tile-dps .munit { font-size: 0.62rem; font-weight: 400; color: var(--muted); }
+.ov-tile-combo { font-size: 0.68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
