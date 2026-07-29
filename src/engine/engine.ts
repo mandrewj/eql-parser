@@ -552,12 +552,13 @@ export class Engine {
         pct: total > 0 ? Math.round((acc.total / total) * 1000) / 10 : 0,
       };
     });
-    const byDps = (a: EncounterCard, b: EncounterCard) =>
-      b.damage.perSec - a.damage.perSec || b.damage.total - a.damage.total;
-    allCards.sort(byDps);
+    // Sort by share of damage dealt to the mob (i.e. total), DPS as a tiebreak.
+    const byShare = (a: EncounterCard, b: EncounterCard) =>
+      b.damage.total - a.damage.total || b.damage.perSec - a.damage.perSec;
+    allCards.sort(byShare);
     const self = allCards.find((c) => c.isSelf);
     const others = allCards.filter((c) => !c.isSelf).slice(0, 5);
-    const cards = (self ? [self, ...others] : others).sort(byDps);
+    const cards = (self ? [self, ...others] : others).sort(byShare);
 
     return {
       id,

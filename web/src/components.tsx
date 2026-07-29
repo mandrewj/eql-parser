@@ -51,10 +51,12 @@ export function FilterBar({ filters, onChange }: { filters: Filters; onChange: (
 
 function EncounterRow({
   card,
+  maxPct,
   open,
   onToggle,
 }: {
   card: EncounterCardData;
+  maxPct: number;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -63,7 +65,7 @@ function EncounterRow({
     <>
       <div className={`erow ${card.kind} ${card.isSelf ? "is-self" : ""}`} onClick={onToggle}>
         <div className="ebar">
-          <div className="fill" style={{ width: `${card.pct}%` }} />
+          <div className="fill" style={{ width: `${(card.pct / maxPct) * 100}%` }} />
           <div className="etxt">
             <span className="ename">
               {card.name}
@@ -103,6 +105,7 @@ export function EncounterTable({
   onToggle: (key: string) => void;
 }) {
   const dps = Math.round(enc.total / Math.max(1, enc.durationSec));
+  const maxPct = Math.max(1, ...enc.cards.map((c) => c.pct));
   return (
     <section className={`enc-table ${enc.active ? "live" : ""}`}>
       <div className="enc-th">
@@ -121,7 +124,13 @@ export function EncounterTable({
           <span className="enum muted">tank</span>
         </div>
         {enc.cards.map((c) => (
-          <EncounterRow key={c.name} card={c} open={expanded.has(`${enc.id}:${c.name}`)} onToggle={() => onToggle(`${enc.id}:${c.name}`)} />
+          <EncounterRow
+            key={c.name}
+            card={c}
+            maxPct={maxPct}
+            open={expanded.has(`${enc.id}:${c.name}`)}
+            onToggle={() => onToggle(`${enc.id}:${c.name}`)}
+          />
         ))}
       </div>
     </section>
