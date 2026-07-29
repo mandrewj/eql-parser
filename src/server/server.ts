@@ -59,23 +59,32 @@ async function readBody(req: http.IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** Vite fingerprints everything under assets/, so those are safe to cache forever.
+ *  Everything else — index.html above all — must never be cached: it names the current
+ *  bundle by hash, and a stale copy asks for a bundle that a rebuild has already deleted
+ *  (404 → blank page until a hard reload). */
+function cacheControl(rel: string): string {
+  return rel.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-store";
+}
+
 /** Serve an embedded (bundled) asset if present. Returns true if it handled the response. */
 function serveEmbedded(res: http.ServerResponse, key: string): boolean {
   const asset = EMBEDDED_WEB[key];
   if (!asset) return false;
-  res.writeHead(200, { "Content-Type": asset.type });
+  res.writeHead(200, { "Content-Type": asset.type, "Cache-Control": cacheControl(key) });
   res.end(Buffer.from(asset.base64, "base64"));
   return true;
 }
 
 function serveIndex(res: http.ServerResponse): void {
   if (serveEmbedded(res, "index.html")) return;
+  const head = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" };
   fs.readFile(path.join(WEB_DIR, "index.html"), (err, html) => {
     if (err) {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(DEV_HINT);
+      res.writeHead(200, head).end(DEV_HINT);
       return;
     }
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(html);
+    res.writeHead(200, head).end(html);
   });
 }
 
@@ -96,7 +105,10 @@ function serveStatic(res: http.ServerResponse, urlPath: string): void {
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream" });
+    res.writeHead(200, {
+      "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream",
+      "Cache-Control": cacheControl(rel),
+    });
     res.end(data);
   });
 }
