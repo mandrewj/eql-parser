@@ -24,6 +24,13 @@ export class App {
     this.config = config;
     this.logDir = config.logDir;
     this.engine = this.newEngine(null);
+    // Wall-clock tick so idle encounters/fights expire (and the UI refreshes)
+    // even when no new log lines are arriving.
+    setInterval(() => {
+      const had = this.engine.hasCurrent;
+      const closed = this.engine.tick();
+      if (had || closed) this.scheduleBroadcast();
+    }, 3000).unref?.();
   }
 
   /** Register a callback fired (throttled) whenever engine state changes. */

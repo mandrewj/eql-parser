@@ -31,6 +31,7 @@ const STANCE_DIMS: StanceDim[] = ["melee", "invocation"];
 export interface EngineOptions {
   selfName: string; // resolved from the log filename; "You" maps to this
   inactivityTimeoutSec: number;
+  now?: () => number; // injectable clock for encounter staleness (defaults to Date.now)
 }
 
 interface AbilityAgg {
@@ -71,6 +72,7 @@ interface FightState {
   npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
   perTarget: Map<string, Map<string, number>>; // targetKey → attackerKey → damage
+  lastSeen: Map<string, number>; // entityKey → last event ms (for per-NPC staleness)
   aliveEngaged: Set<string>;
 }
 
@@ -127,14 +129,30 @@ export class Engine {
   private current: FightState | null = null;
   private finished: FightState[] = [];
   private fightSeq = 0;
+  private readonly now: () => number;
 
   constructor(opts: EngineOptions) {
     this.opts = opts;
     this.selfKey = opts.selfName.toLowerCase();
     this.display.set(this.selfKey, opts.selfName);
+    this.now = opts.now ?? (() => Date.now());
   }
 
   // --- public API ---------------------------------------------------------
+
+  /** Close the current fight if it has been idle past the inactivity window
+   *  (wall-clock based, so an abandoned fight ends without any new log lines). */
+  tick(): boolean {
+    if (this.current && this.now() - this.current.lastActivityMs > this.opts.inactivityTimeoutSec * 1000) {
+      this.closeFight(this.current.lastActivityMs);
+      return true;
+    }
+    return false;
+  }
+
+  get hasCurrent(): boolean {
+    return this.current !== null;
+  }
 
   handle(ev: CombatEvent): void {
     if (ev.type === "stance") {
@@ -231,6 +249,7 @@ export class Engine {
       npcSeeds: new Set(),
       targetIncoming: new Map(),
       perTarget: new Map(),
+      lastSeen: new Map(),
       aliveEngaged: new Set(),
     };
     return this.current;
@@ -280,6 +299,8 @@ export class Engine {
     this.see(aKey, attacker);
     this.see(tKey, target);
     f.damagePairs.push([aKey, tKey]);
+    f.lastSeen.set(aKey, tsMs);
+    f.lastSeen.set(tKey, tsMs);
     if (aKey === this.selfKey && tKey !== this.selfKey) {
       f.npcSeeds.add(tKey);
       f.aliveEngaged.add(tKey);
@@ -489,6 +510,9 @@ export class Engine {
   /** One per-NPC DPS meter: who dealt how much damage to each mob (pets folded into owners). */
   private buildEncounters(f: FightState, friendly: Set<string>, npc: Set<string>, dur: number): Encounter[] {
     const slain = new Set(f.deaths.filter((d) => npc.has(d.victim)).map((d) => d.victim));
+    const idleMs = this.opts.inactivityTimeoutSec * 1000;
+    // Open fights use wall-clock so panes go stale ~90s after activity stops.
+    const now = f.endMs === null ? this.now() : f.endMs;
     const encounters: Encounter[] = [];
 
     for (const [tKey, attackers] of f.perTarget) {
@@ -513,9 +537,15 @@ export class Engine {
         }))
         .sort((a, b) => b.total - a.total);
 
+      // Enemy pets are named "<owner> pet"; when the owner is slain the pet despawns.
+      const ownerKey = tKey.endsWith(" pet") ? tKey.slice(0, -4) : null;
+      const ownerDead = ownerKey ? slain.has(ownerKey) : false;
+      const idle = now - (f.lastSeen.get(tKey) ?? now);
+      const active = f.endMs === null && !slain.has(tKey) && !ownerDead && idle <= idleMs;
+
       encounters.push({
         name: this.nameOf(tKey),
-        active: f.endMs === null && !slain.has(tKey),
+        active,
         total,
         dps: Math.round(total / dur),
         attackers: entries,

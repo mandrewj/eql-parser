@@ -150,6 +150,56 @@ test("self's pet folds into the owner with a paw-tagged breakdown", () => {
   assert.ok(petEntry.name.startsWith("🐾"), "pet ability is paw-tagged");
 });
 
+function at(t: string): number {
+  return Date.parse(`Sat Jul 18 ${t} 2026`);
+}
+function feedInto(engine: Engine, lines: string[]): void {
+  for (const line of lines) {
+    const ev = parseLine(line);
+    if (ev) engine.handle(ev);
+  }
+}
+
+test("enemy pet encounter goes inactive when its owner is slain", () => {
+  let clock = at("01:00:10");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush an orc thaumaturgist for 50 points of damage."),
+    L("01:00:00", "You crush an orc thaumaturgist pet for 20 points of damage."),
+    L("01:00:05", "You have slain an orc thaumaturgist!"), // owner dies; pet despawns
+  ]);
+  const enc = Object.fromEntries(engine.fights()[0]!.encounters.map((e) => [e.name.toLowerCase(), e.active]));
+  assert.equal(enc["an orc thaumaturgist"], false, "slain owner is inactive");
+  assert.equal(enc["an orc thaumaturgist pet"], false, "pet is inactive once its owner is dead");
+});
+
+test("an encounter goes inactive after 90s of no activity on that NPC", () => {
+  let clock = at("01:00:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush orc A for 10 points of damage."),
+    L("01:00:00", "You crush orc B for 10 points of damage."),
+    L("01:00:05", "You crush orc A for 10 points of damage."), // A stays fresh
+  ]);
+  clock = at("01:01:32"); // 92s after start: A idle 87s, B idle 92s
+  const enc = Object.fromEntries(engine.fights()[0]!.encounters.map((e) => [e.name.toLowerCase(), e.active]));
+  assert.equal(enc["orc a"], true, "A active (87s idle ≤ 90)");
+  assert.equal(enc["orc b"], false, "B stale (92s idle > 90)");
+});
+
+test("tick() closes an abandoned fight after the inactivity window", () => {
+  let clock = at("01:00:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [L("01:00:00", "You crush orc for 10 points of damage.")]);
+  assert.equal(engine.hasCurrent, true);
+  clock = at("01:00:30");
+  assert.equal(engine.tick(), false); // 30s < 90 → stays open
+  assert.equal(engine.hasCurrent, true);
+  clock = at("01:02:00");
+  assert.equal(engine.tick(), true); // 120s > 90 → closed
+  assert.equal(engine.hasCurrent, false);
+});
+
 test("damage taken (tanking) aggregates incoming damage per target", () => {
   const engine = feed([
     L("01:00:00", "You strike orc for 30 points of damage."),

@@ -115,7 +115,7 @@ export function defaultLog(dir: string): LogFileInfo | null {
 
 export function loadConfig(): AppConfig {
   const port = Number(process.env.EQL_PORT ?? 8787);
-  const inactivityTimeoutSec = Number(process.env.EQL_INACTIVITY_SEC ?? 20);
+  const inactivityTimeoutSec = Number(process.env.EQL_INACTIVITY_SEC ?? 90);
   return {
     port: Number.isFinite(port) ? port : 8787,
     logDir: resolveLogDir(),

@@ -53,7 +53,8 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 ### Engine
 - **Entity roster** — players, pets, and **NPCs are all first-class**; each can be inspected for outgoing damage.
 - **Stance timeline** — updated on every `Stance` event; each self damage event is tagged with the stance active at its timestamp (self only; other players' stances aren't in the log).
-- **Fight segmentation** (configurable): opens on first player→NPC damage after idle; closes when all engaged NPCs are slain **or** after `inactivityTimeout` s (default **20s**). Named NPCs get friendly titles; trash groups by the active NPC set.
+- **Fight segmentation** (configurable): opens on first player→NPC damage after idle; closes when all engaged NPCs are slain **or** after `inactivityTimeout` s (default **90s**, wall-clock — a 3s tick closes abandoned fights with no new log lines). Named NPCs get friendly titles; trash groups by the active NPC set.
+- **Encounter liveness**: a per-NPC pane is *active* only while the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner dies), and it has seen activity within the inactivity window (~90s).
 - **Aggregation** per fight → per combatant:
   - totals, DPS (damage ÷ active-seconds), % of fight, hit/crit/miss counts;
   - **damage-by-type** (melee / spell / DoT) for drill-down;
