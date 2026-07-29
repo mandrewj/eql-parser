@@ -7,6 +7,7 @@ import type {
   MetricKind,
   MetricStat,
   StanceBreakdown,
+  StanceOverviewRow,
 } from "./types";
 import { metricMeta } from "./filters";
 
@@ -44,6 +45,41 @@ export function FilterBar({ filters, onChange }: { filters: Filters; onChange: (
         </button>
       </div>
     </div>
+  );
+}
+
+// --- overview: my DPS by stance+invocation combination --------------------
+
+const stanceLabel = (s: string) => (s === "none" ? "—" : s);
+
+export function StanceOverview({ rows }: { rows: StanceOverviewRow[] }) {
+  if (rows.length === 0) return null;
+  const totalDmg = rows.reduce((s, r) => s + r.damage, 0);
+  const totalSec = rows.reduce((s, r) => s + r.seconds, 0);
+  const overall = Math.round(totalDmg / Math.max(1, totalSec));
+  const maxDps = Math.max(1, ...rows.map((r) => r.dps));
+  return (
+    <section className="overview">
+      <div className="ov-head">
+        <span className="ov-title">My DPS · by stance</span>
+        <span className="ov-overall">
+          {fmtK(overall)} <span className="munit">avg dps</span>
+        </span>
+      </div>
+      {rows.map((r) => (
+        <div key={`${r.melee}|${r.invocation}`} className="ov-row">
+          <div className="ov-bar">
+            <div className="fill" style={{ width: `${(r.dps / maxDps) * 100}%` }} />
+            <div className="ov-txt">
+              <span className="ov-combo">
+                ⚔ {stanceLabel(r.melee)} · ✦ {stanceLabel(r.invocation)}
+              </span>
+              <span className="ov-dps">{fmtK(r.dps)} dps</span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 

@@ -40,6 +40,14 @@ export interface StanceState {
   invocation: string;
 }
 
+export interface StanceOverviewRow {
+  melee: string;
+  invocation: string;
+  damage: number;
+  seconds: number;
+  dps: number;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -105,6 +113,7 @@ export interface Snapshot {
   activeEncounters: EncounterView[];
   recentEncounters: EncounterView[];
   stance: StanceState;
+  stanceOverview: StanceOverviewRow[];
 }
 
 export interface LogInfo {

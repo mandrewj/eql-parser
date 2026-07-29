@@ -22,6 +22,7 @@ import type {
   MetricStat,
   StanceBreakdown,
   StanceDim,
+  StanceOverviewRow,
   StanceSegment,
   StanceState,
 } from "../types.js";
@@ -69,6 +70,7 @@ interface FightState {
   damagePairs: Array<[string, string]>; // [attackerKey, targetKey], incl. misses
   healPairs: Array<[string, string]>; // [healerKey, targetKey] — same faction
   healLog: Array<{ healer: string; amount: number; spell: string; tsMs: number }>; // for windowed HPS
+  comboDamage: Map<string, number>; // self damage keyed by "melee|invocation" combo
   deaths: Array<{ victim: string; killer: string | null; killerSelf: boolean }>;
   npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
@@ -153,6 +155,9 @@ export class Engine {
 
   private readonly currentStances: StanceState = { melee: "none", invocation: "none" };
   private readonly stanceSegments: Record<StanceDim, StanceSegment[]> = { melee: [], invocation: [] };
+  // Combined stance+invocation timeline, for per-combination self DPS.
+  private readonly comboSegments: Array<{ startMs: number; endMs: number; combo: string }> = [];
+  private comboStartMs = 0;
   private readonly petOwners = new Map<string, string>(); // petKey → ownerKey (global)
 
   private current: FightState | null = null;
@@ -240,6 +245,7 @@ export class Engine {
     activeEncounters: EncounterView[];
     recentEncounters: EncounterView[];
     stance: StanceState;
+    stanceOverview: StanceOverviewRow[];
   } {
     const recent = this.finished.slice(-20).map((s) => this.summarize(this.buildFight(s)));
     return {
@@ -248,17 +254,62 @@ export class Engine {
       activeEncounters: this.current ? this.buildLiveEncounters(this.current) : [],
       recentEncounters: this.finishedEncounters.slice(0, 5),
       stance: { ...this.currentStances },
+      stanceOverview: this.buildStanceOverview(),
     };
+  }
+
+  /** Seconds spent in each stance combo within [startMs, endMs] (incl. the open segment). */
+  private comboSecondsIn(startMs: number, endMs: number): Map<string, number> {
+    const segs = [...this.comboSegments, { startMs: this.comboStartMs, endMs, combo: this.combo() }];
+    const out = new Map<string, number>();
+    for (const seg of segs) {
+      const s = Math.max(seg.startMs, startMs);
+      const e = Math.min(seg.endMs, endMs);
+      if (e <= s) continue;
+      out.set(seg.combo, (out.get(seg.combo) ?? 0) + (e - s) / 1000);
+    }
+    return out;
+  }
+
+  /** Average self DPS per stance+invocation combo over the last ~20 fights. */
+  private buildStanceOverview(): StanceOverviewRow[] {
+    const fights = this.current ? [...this.finished.slice(-20), this.current] : this.finished.slice(-20);
+    const agg = new Map<string, { damage: number; seconds: number }>();
+    for (const f of fights) {
+      if (f.comboDamage.size === 0) continue;
+      const secs = this.comboSecondsIn(f.startMs, f.endMs ?? this.now());
+      for (const [combo, dmg] of f.comboDamage) {
+        const a = agg.get(combo) ?? { damage: 0, seconds: 0 };
+        a.damage += dmg;
+        a.seconds += secs.get(combo) ?? 0;
+        agg.set(combo, a);
+      }
+    }
+    return [...agg.entries()]
+      .map(([combo, v]) => {
+        const [melee = "none", invocation = "none"] = combo.split("|");
+        return { melee, invocation, damage: v.damage, seconds: Math.round(v.seconds), dps: Math.round(v.damage / Math.max(1, v.seconds)) };
+      })
+      .filter((r) => r.damage > 0)
+      .sort((a, b) => b.dps - a.dps);
   }
 
   // --- stances ------------------------------------------------------------
 
   private applyStance(tsMs: number, dim: StanceDim, stance: string): void {
+    // Close the current combined-stance segment, then start a new one.
+    if (tsMs > this.comboStartMs) this.comboSegments.push({ startMs: this.comboStartMs, endMs: tsMs, combo: this.combo() });
+    this.comboStartMs = tsMs;
+
     const segs = this.stanceSegments[dim];
     const last = segs[segs.length - 1];
     if (last && last.endMs === null) last.endMs = tsMs;
     segs.push({ startMs: tsMs, endMs: null, stance });
     this.currentStances[dim] = stance;
+  }
+
+  private combo(): string {
+    return `${this.currentStances.melee}|${this.currentStances.invocation}`;
   }
 
   // --- identity -----------------------------------------------------------
@@ -290,6 +341,7 @@ export class Engine {
       damagePairs: [],
       healPairs: [],
       healLog: [],
+      comboDamage: new Map(),
       deaths: [],
       npcSeeds: new Set(),
       targetIncoming: new Map(),
@@ -407,6 +459,8 @@ export class Engine {
         const s = this.currentStances[dim];
         c.stanceTotals[dim].set(s, (c.stanceTotals[dim].get(s) ?? 0) + ev.amount);
       }
+      const combo = this.combo();
+      f.comboDamage.set(combo, (f.comboDamage.get(combo) ?? 0) + ev.amount);
     }
   }
 

@@ -274,6 +274,28 @@ test("fleeing (zoning) still finalizes the un-slain boss into the recent list", 
   assert.equal(self.taken.total, 80);
 });
 
+test("stance overview: self DPS split by stance+invocation combination", () => {
+  let clock = at("01:02:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You assume an offensive stance."),
+    L("01:00:00", "You begin reciting the spellblade invocation."),
+    L("01:00:02", "You crush an orc for 100 points of damage."),
+    L("01:00:08", "You crush an orc for 100 points of damage."),
+    L("01:00:10", "You have slain an orc!"),
+    L("01:00:12", "You assume a defensive stance."), // invocation unchanged
+    L("01:00:14", "You crush a bat for 20 points of damage."),
+    L("01:00:24", "You crush a bat for 20 points of damage."),
+    L("01:00:26", "You have slain a bat!"),
+  ]);
+  const ov = engine.snapshot().stanceOverview;
+  const off = ov.find((r) => r.melee === "offensive" && r.invocation === "spellblade")!;
+  const def = ov.find((r) => r.melee === "defensive" && r.invocation === "spellblade")!;
+  assert.equal(off.damage, 200);
+  assert.equal(def.damage, 40);
+  assert.ok(off.dps > def.dps, "offensive+spellblade out-DPSes defensive+spellblade");
+});
+
 test("zoning ends the current fight and all its encounters", () => {
   const engine = feed([
     L("01:00:00", "You crush an orc for 40 points of damage."),

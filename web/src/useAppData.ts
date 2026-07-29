@@ -40,6 +40,7 @@ export function useAppData(): AppData {
           activeEncounters: msg.activeEncounters,
           recentEncounters: msg.recentEncounters,
           stance: msg.stance,
+          stanceOverview: msg.stanceOverview,
         });
       } else if (msg.t === "activeLogChanged") {
         void refreshLogs();

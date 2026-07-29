@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppData } from "./useAppData";
-import { CharacterCard, EncounterTable, FightList, FilterBar } from "./components";
+import { CharacterCard, EncounterTable, FightList, FilterBar, StanceOverview } from "./components";
 import { metricMeta, rankedCombatants } from "./filters";
 import type { Fight, Filters, FightSummary } from "./types";
 
@@ -32,10 +32,16 @@ export default function App() {
   const [fetched, setFetched] = useState<Fight | null>(null);
   const [dirInput, setDirInput] = useState("");
   const [dirError, setDirError] = useState<string | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
 
   useEffect(() => {
     if (logs?.logDir) setDirInput((prev) => (prev === "" ? logs.logDir! : prev));
   }, [logs?.logDir]);
+
+  // Open the log settings automatically when no log is selected yet.
+  useEffect(() => {
+    if (logs && !logs.activeLogPath) setLogsOpen(true);
+  }, [logs?.activeLogPath, logs]);
 
   const submitDir = async () => {
     setDirError(null);
@@ -112,9 +118,17 @@ export default function App() {
             ✦ {snapshot?.stance.invocation && snapshot.stance.invocation !== "none" ? snapshot.stance.invocation : "—"}
           </span>
           <span className={`conn ${connected ? "on" : ""}`}>{connected ? "live" : "offline"}</span>
+          <button
+            className={logsOpen ? "iconbtn on" : "iconbtn"}
+            title="Log settings"
+            onClick={() => setLogsOpen((v) => !v)}
+          >
+            ⚙
+          </button>
         </div>
       </header>
 
+      {logsOpen && (
       <div className="logbar">
         <span className="flabel">Logs folder</span>
         <input
@@ -141,6 +155,7 @@ export default function App() {
           ))}
         </select>
       </div>
+      )}
 
       <nav className="tabs">
         <button className={tab === "live" ? "tab on" : "tab"} onClick={() => setTab("live")}>
@@ -153,6 +168,7 @@ export default function App() {
 
       {tab === "live" ? (
         <main className="pane wide">
+          <StanceOverview rows={snapshot?.stanceOverview ?? []} />
           {activeEncounters.length > 0 && (
             <section className="block">
               <div className="section-title">Active · {activeEncounters.length}</div>

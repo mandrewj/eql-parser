@@ -242,3 +242,26 @@ body { margin: 0; }
 .enum.tank { color: var(--npc); }
 .erow-drill { display: flex; flex-wrap: wrap; gap: 0.45rem; padding: 0.2rem 0.4rem 0.35rem; font-size: 0.7rem; color: var(--muted); }
 .drill-cat { white-space: nowrap; }
+
+/* log settings toggle */
+.iconbtn {
+  background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.9rem; line-height: 1;
+}
+.iconbtn:hover, .iconbtn.on { color: var(--text); background: #2f3846; }
+
+/* overview: my DPS by stance combo */
+.overview {
+  border: 1px solid var(--border); border-radius: 9px; background: var(--panel);
+  padding: 0.55rem 0.7rem; margin-bottom: 1rem;
+}
+.ov-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.4rem; }
+.ov-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.ov-overall { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ov-overall .munit { font-size: 0.7rem; font-weight: 400; color: var(--muted); }
+.ov-row { margin: 3px 0; }
+.ov-bar { position: relative; height: 22px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+.ov-bar > .fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #7a5b2c, var(--melee)); opacity: 0.8; }
+.ov-txt { position: relative; display: flex; justify-content: space-between; align-items: center; height: 100%; padding: 0 0.5rem; font-size: 0.78rem; }
+.ov-combo { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-dps { font-variant-numeric: tabular-nums; }

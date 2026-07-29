@@ -161,6 +161,15 @@ export interface StanceState {
   invocation: string;
 }
 
+/** Self DPS for one stance+invocation combination, averaged over recent fights. */
+export interface StanceOverviewRow {
+  melee: string;
+  invocation: string;
+  damage: number;
+  seconds: number;
+  dps: number;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
