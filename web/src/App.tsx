@@ -81,6 +81,7 @@ export default function App() {
   const activeEncounters = snapshot?.activeEncounters ?? [];
   const recentEncounters = snapshot?.recentEncounters ?? [];
   const rankLabel = metricMeta(filters.metric).label;
+  const activeLog = logs?.logs.find((l) => l.path === logs.activeLogPath);
 
   const cards = (
     <section className="block">
@@ -108,7 +109,13 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          EQL Parser <span className="muted small">live parser</span>
+          EQL Parser
+          {activeLog?.character && (
+            <span className="who">
+              {activeLog.character}
+              {activeLog.server && <span className="muted"> · {activeLog.server}</span>}
+            </span>
+          )}
         </div>
         <div className="controls">
           <span className="stancepill" title="melee stance">
