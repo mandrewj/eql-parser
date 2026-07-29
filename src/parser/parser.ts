@@ -27,14 +27,15 @@ const PET_SAY_RE = /^(.+?) says,? '.*\bMaster\b[.!]?'$/;
 // Third-person melee verbs. Constraining the verb (vs. a bare \w+) is what lets
 // a multi-word attacker like "Orc legionnaire" split correctly.
 const MELEE_VERBS_3P =
-  "hits|slashes|pierces|crushes|kicks|strikes|punches|bashes|backstabs|smites|cleaves|bites|claws|gores|mauls|stings|slams|smashes|slices|rends|gouges|frenzies on";
+  "hits|slashes|pierces|crushes|kicks|strikes|punches|bashes|backstabs|smites|cleaves|reaves|shoots|bites|claws|gores|mauls|stings|slams|smashes|slices|rends|gouges|frenzies on";
 
 // Third-person → base, so "Feydie kicks" and "You kick" share one "kick" category.
 const VERB_BASE: Record<string, string> = {
   hits: "hit", slashes: "slash", pierces: "pierce", crushes: "crush", kicks: "kick",
   strikes: "strike", punches: "punch", bashes: "bash", backstabs: "backstab", smites: "smite",
-  cleaves: "cleave", bites: "bite", claws: "claw", gores: "gore", mauls: "maul", stings: "sting",
-  slams: "slam", smashes: "smash", slices: "slice", rends: "rend", gouges: "gouge", "frenzies on": "frenzy",
+  cleaves: "cleave", reaves: "reave", shoots: "shoot", bites: "bite", claws: "claw", gores: "gore",
+  mauls: "maul", stings: "sting", slams: "slam", smashes: "smash", slices: "slice", rends: "rend",
+  gouges: "gouge", "frenzies on": "frenzy",
 };
 const baseVerb = (v: string): string => VERB_BASE[v] ?? v;
 
@@ -43,16 +44,20 @@ const YOU_SLAIN_RE = /^You have slain (.+?)!$/;
 const SLAIN_BY_RE = /^(.+?) has been slain by (.+?)!$/;
 const MISS_YOU_RE = /^You try to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
 const MISS_OTHER_RE = /^(.+?) tries to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
-const DOT_RE = /^(.+?) has taken (\d+) damage from (.+?)(?: \(([^)]+)\))?[.!]$/;
+// DoT/nuke crits append " (Critical)" AFTER the sentence terminator, e.g.
+// "… has taken 33 damage from Stinging Swarm by Orson. (Critical)".
+const DOT_RE = /^(.+?) has taken (\d+) damage from (.+?)[.!](?: \([^)]+\))?$/;
 const NONMELEE_RE =
-  /^(.+?) (?:is|are|was|were) .+? by (.+?) for (\d+) points? of non-melee damage[.!]$/;
+  /^(.+?) (?:is|are|was|were) .+? by (.+?) for (\d+) points? of non-melee damage[.!](?: \([^)]+\))?$/;
 const MELEE_YOU_RE =
   /^You ([a-z]+) (.+?) for (\d+) points? of damage\.(?: \(([^)]+)\))?$/;
 const MELEE_OTHER_RE = new RegExp(
   `^(.+?) (${MELEE_VERBS_3P}) (.+?) for (\\d+) points? of damage\\.(?: \\(([^)]+)\\))?$`,
 );
-// "<Healer> healed <target> for <eff> (<raw>) hit points [by <Spell>]." (raw/spell optional)
-const HEAL_RE = /^(.+?) (?:heals|healed) (.+?) for (\d+)(?: \((\d+)\))? hit points(?: by (.+?))?[.!]$/;
+// "<Healer> healed <target> [over time] for <eff> (<raw>) hit points [by <Spell>]." — with
+// optional HoT phrase, effective/raw amounts, spell, and a trailing " (Critical)" flag.
+const HEAL_RE =
+  /^(.+?) (?:heals|healed) (.+?)(?: over time)? for (\d+)(?: \((\d+)\))? hit points(?: by (.+?))?[.!](?: \([^)]+\))?$/;
 
 /** Canonicalize the self-references (You/YOU/Your/YOUR) to a single "You" token. */
 function normName(name: string): string {

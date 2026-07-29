@@ -47,6 +47,23 @@ export interface StanceSegment {
   stance: string;
 }
 
+export interface EncounterEntry {
+  name: string;
+  kind: EntityKind;
+  isSelf: boolean;
+  total: number;
+  dps: number;
+  pct: number;
+}
+
+export interface Encounter {
+  name: string;
+  active: boolean;
+  total: number;
+  dps: number;
+  attackers: EncounterEntry[];
+}
+
 export interface Fight {
   id: string;
   title: string;
@@ -55,6 +72,7 @@ export interface Fight {
   active: boolean;
   npcs: string[];
   combatants: CombatantStats[];
+  encounters: Encounter[];
   stanceTimeline: StanceSegment[];
 }
 
@@ -92,11 +110,9 @@ export interface LogsResponse {
 // ---- client-side filter state ----
 
 export interface Filters {
-  metric: MetricKind; // damage done | healing done | damage taken
+  metric: MetricKind; // "rank by" — sorts character cards & drives the emphasized stat
   showPlayers: boolean;
   showNpcs: boolean;
-  types: Record<Exclude<DamageType, "unknown">, boolean>;
-  stance: string | null; // self-only lens (damage metric); null = all stances
 }
 
 export const ALL_TYPES: Array<Exclude<DamageType, "unknown">> = ["melee", "spell", "dot"];

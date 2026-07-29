@@ -15,6 +15,8 @@ import type {
   CombatEvent,
   CombatantStats,
   DamageType,
+  Encounter,
+  EncounterEntry,
   Fight,
   FightSummary,
   MetricStat,
@@ -63,6 +65,7 @@ interface FightState {
   deaths: Array<{ victim: string; killer: string | null; killerSelf: boolean }>;
   npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
+  perTarget: Map<string, Map<string, number>>; // targetKey → attackerKey → damage
   aliveEngaged: Set<string>;
 }
 
@@ -221,6 +224,7 @@ export class Engine {
       deaths: [],
       npcSeeds: new Set(),
       targetIncoming: new Map(),
+      perTarget: new Map(),
       aliveEngaged: new Set(),
     };
     return this.current;
@@ -281,6 +285,14 @@ export class Engine {
     const inc = f.targetIncoming.get(tKey) ?? { name: this.nameOf(tKey), total: 0 };
     inc.total += ev.amount;
     f.targetIncoming.set(tKey, inc);
+
+    // Per-target attacker breakdown (for per-NPC encounter meters).
+    let byAttacker = f.perTarget.get(tKey);
+    if (!byAttacker) {
+      byAttacker = new Map();
+      f.perTarget.set(tKey, byAttacker);
+    }
+    byAttacker.set(aKey, (byAttacker.get(aKey) ?? 0) + ev.amount);
 
     const abilityName = ev.type === "melee" ? ev.verb : ev.type === "spell" ? ev.effect : ev.spell;
     const crit = ev.type === "melee" ? ev.crit : false;
@@ -447,6 +459,8 @@ export class Engine {
       for (const s of self.stances) s.activeSeconds = Math.round(secByStance.get(s.stance) ?? 0);
     }
 
+    const encounters = this.buildEncounters(f, friendly, npc, dur);
+
     const headline = [...f.targetIncoming.entries()]
       .filter(([k]) => npc.has(k))
       .sort((a, b) => b[1].total - a[1].total)[0];
@@ -460,8 +474,48 @@ export class Engine {
       active: f.endMs === null,
       npcs: npcNames,
       combatants,
+      encounters,
       stanceTimeline,
     };
+  }
+
+  /** One per-NPC DPS meter: who dealt how much damage to each mob (pets folded into owners). */
+  private buildEncounters(f: FightState, friendly: Set<string>, npc: Set<string>, dur: number): Encounter[] {
+    const slain = new Set(f.deaths.filter((d) => npc.has(d.victim)).map((d) => d.victim));
+    const encounters: Encounter[] = [];
+
+    for (const [tKey, attackers] of f.perTarget) {
+      if (!npc.has(tKey)) continue;
+      const byOwner = new Map<string, number>();
+      for (const [aKey, amt] of attackers) {
+        const ownerKey = this.petOwners.get(aKey) ?? aKey; // fold pet damage into owner
+        if (ownerKey !== this.selfKey && !friendly.has(ownerKey)) continue; // friendly attackers only
+        byOwner.set(ownerKey, (byOwner.get(ownerKey) ?? 0) + amt);
+      }
+      const total = [...byOwner.values()].reduce((s, v) => s + v, 0);
+      if (total === 0) continue;
+
+      const entries: EncounterEntry[] = [...byOwner.entries()]
+        .map(([k, tot]): EncounterEntry => ({
+          name: this.nameOf(k),
+          kind: k === this.selfKey ? "self" : "player",
+          isSelf: k === this.selfKey,
+          total: tot,
+          dps: Math.round(tot / dur),
+          pct: Math.round((tot / total) * 1000) / 10,
+        }))
+        .sort((a, b) => b.total - a.total);
+
+      encounters.push({
+        name: this.nameOf(tKey),
+        active: f.endMs === null && !slain.has(tKey),
+        total,
+        dps: Math.round(total / dur),
+        attackers: entries,
+      });
+    }
+
+    return encounters.sort((a, b) => Number(b.active) - Number(a.active) || b.total - a.total);
   }
 
   private clipStances(f: FightState): StanceSegment[] {

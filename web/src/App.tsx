@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppData } from "./useAppData";
-import { FilterBar, FightList, Meter } from "./components";
-import { stancesOf } from "./filters";
+import { CharacterCard, EncounterPane, FightList, FilterBar } from "./components";
+import { metricMeta, rankedCombatants } from "./filters";
 import type { Fight, Filters, FightSummary } from "./types";
 
 const DEFAULT_FILTERS: Filters = {
   metric: "damage",
   showPlayers: true,
   showNpcs: false,
-  types: { melee: true, spell: true, dot: true },
-  stance: null,
 };
 
 function currentSummary(f: Fight): FightSummary {
@@ -35,7 +33,6 @@ export default function App() {
   const [dirInput, setDirInput] = useState("");
   const [dirError, setDirError] = useState<string | null>(null);
 
-  // Pre-fill the folder field with the detected path once it loads.
   useEffect(() => {
     if (logs?.logDir) setDirInput((prev) => (prev === "" ? logs.logDir! : prev));
   }, [logs?.logDir]);
@@ -53,7 +50,6 @@ export default function App() {
       return next;
     });
 
-  // History list: current active fight first, then finished (newest first).
   const history: FightSummary[] = useMemo(() => {
     const list: FightSummary[] = [];
     if (snapshot?.current) list.push(currentSummary(snapshot.current));
@@ -61,13 +57,12 @@ export default function App() {
     return list;
   }, [snapshot]);
 
-  // Resolve the fight shown in the History pane.
   const selectedFight: Fight | null =
     selectedId && snapshot?.current?.id === selectedId ? snapshot.current : fetched;
 
   useEffect(() => {
     if (tab !== "history" || !selectedId) return;
-    if (snapshot?.current?.id === selectedId) return; // live one, no fetch
+    if (snapshot?.current?.id === selectedId) return;
     let alive = true;
     void fetchFight(selectedId).then((f) => alive && setFetched(f));
     return () => {
@@ -76,13 +71,51 @@ export default function App() {
   }, [tab, selectedId, snapshot?.current?.id, fetchFight]);
 
   const shownFight = tab === "live" ? snapshot?.current ?? null : selectedFight;
-  const stances = stancesOf(shownFight);
+  const { rows, maxima } = rankedCombatants(shownFight, filters);
+  const allEncounters = shownFight?.encounters ?? [];
+  const encounters = tab === "live" ? allEncounters.filter((e) => e.active) : allEncounters;
+  const rankLabel = metricMeta(filters.metric).label;
+
+  const cards = (
+    <section className="block">
+      <div className="section-title">Characters — ranked by {rankLabel}</div>
+      {rows.length ? (
+        <div className="card-grid">
+          {rows.map((c) => (
+            <CharacterCard
+              key={c.name}
+              c={c}
+              filters={filters}
+              maxima={maxima}
+              expanded={expanded.has(c.name)}
+              onToggle={() => toggle(c.name)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="idle small">No matching characters.</div>
+      )}
+    </section>
+  );
+
+  const encounterGrid = encounters.length > 0 && (
+    <section className="block">
+      <div className="section-title">
+        Encounters · {encounters.length} {tab === "live" ? "active" : ""}
+      </div>
+      <div className="enc-grid">
+        {encounters.map((e) => (
+          <EncounterPane key={e.name} encounter={e} />
+        ))}
+      </div>
+    </section>
+  );
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          EQL Parser <span className="muted small">live DPS</span>
+          EQL Parser <span className="muted small">live parser</span>
         </div>
         <div className="controls">
           <span className="stancepill" title="current stance">
@@ -128,11 +161,18 @@ export default function App() {
         </button>
       </nav>
 
-      <FilterBar filters={filters} onChange={setFilters} stances={stances} />
+      <FilterBar filters={filters} onChange={setFilters} />
 
       {tab === "live" ? (
-        <main className="pane">
-          <Meter fight={snapshot?.current ?? null} filters={filters} expanded={expanded} onToggle={toggle} />
+        <main className="pane wide">
+          {snapshot?.current ? (
+            <>
+              {encounterGrid}
+              {cards}
+            </>
+          ) : (
+            <div className="idle">No active fight — waiting for combat…</div>
+          )}
         </main>
       ) : (
         <main className="pane split">
@@ -141,7 +181,10 @@ export default function App() {
           </aside>
           <section className="detail">
             {shownFight ? (
-              <Meter fight={shownFight} filters={filters} expanded={expanded} onToggle={toggle} />
+              <>
+                {encounterGrid}
+                {cards}
+              </>
             ) : (
               <div className="idle">Select a fight to inspect.</div>
             )}

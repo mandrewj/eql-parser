@@ -81,6 +81,16 @@ to real spell names later needs a spell-message table (EQLogParser ships one).
 [..] YOU were injured by falling.
 ```
 
+## Modifier flags (crits) placement
+
+`(Critical)` (and similar) can appear **after** the sentence terminator, not just after melee
+damage — e.g. `… has taken 33 damage from Stinging Swarm by Orson. (Critical)` and
+`Orson healed you for 318 hit points by Healing. (Critical)`. DoT, non-melee, and heal patterns
+therefore allow an optional trailing ` (flag)` after the closing `.`/`!`.
+
+Melee verbs are data-driven from the game's skill set (from `tries to <verb>`): includes `reave`
+and `shoot` (archery) beyond the common ones; all normalized to base form for category merging.
+
 ## Healing
 
 ```
@@ -93,6 +103,8 @@ to real spell names later needs a spell-message table (EQLogParser ships one).
 ```
 - **Effective vs. raw**: the plain form gives effective healing; the `N (M)` form gives
   effective `N` and raw `M` (so `0 (20)` is 20 healing that was all overheal). HPS uses effective.
+- **Heal-over-time**: `healed <target> over time for N hit points by <Spell>` — the optional
+  `over time` phrase is tolerated and treated as healing.
 - **Reflexive** targets (`himself`/`herself`/`itself`/`themselves`) resolve to the healer;
   `you`/`YOU` to self.
 - **Group heals are visible** — `Frogorson healed Feydie …` appears even when self isn't

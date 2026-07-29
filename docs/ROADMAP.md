@@ -47,6 +47,14 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 - Settings UI (log dir, port, inactivity timeout).
 - **Done when:** a fresh machine runs it by double-clicking one file, nothing else installed.
 
+## Post-v1 — Per-NPC encounters & character-card UI  ✅
+- Engine tracks per-target damage → `encounters`: one DPS meter per NPC (pets folded to owners,
+  alive/dead flag). Simultaneous mobs each get a live pane.
+- UI redesigned around **character cards** showing damage/healing/tanking at once, with a
+  "Rank by" selector; per-NPC **encounter panes** for live fights.
+- Parser hardened on a 158k-line log: crit flags after the terminator, heal-over-time, and the
+  `reave`/`shoot` verbs — 0 unparsed combat lines.
+
 ## Post-v1 — Healing & tanking  ✅
 - `HealEvent` parsing (effective/overheal, reflexive targets, `by <Spell>`); group heals visible.
 - Engine gives each combatant three metric groups — damage done, healing done, damage taken —

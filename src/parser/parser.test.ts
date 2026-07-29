@@ -84,6 +84,32 @@ test("dot — your spell", () => {
   assert.equal(e.amount, 9);
 });
 
+test("dot — crit flag appended after the terminator", () => {
+  const e = parseLine(TS + "An elf skeleton has taken 33 damage from Stinging Swarm by Orson. (Critical)");
+  assert.equal(e?.type, "dot");
+  if (e?.type !== "dot") return;
+  assert.equal(e.spell, "Stinging Swarm");
+  assert.equal(e.caster, "Orson");
+  assert.equal(e.amount, 33);
+});
+
+test("melee — reave and shoot verbs (base-normalized)", () => {
+  const reave = parseLine(TS + "Futor reaves Baron Telyx for 28 points of damage. (Critical)");
+  assert.equal(reave?.type === "melee" && reave.verb, "reave");
+  const shoot = parseLine(TS + "Sanluen shoots a bat for 12 points of damage.");
+  assert.equal(shoot?.type === "melee" && shoot.verb, "shoot");
+});
+
+test("heal — over-time with spell and trailing crit", () => {
+  const e = parseLine(TS + "Orson healed you over time for 62 hit points by Sprouting Heal. (Critical)");
+  assert.equal(e?.type, "heal");
+  if (e?.type !== "heal") return;
+  assert.equal(e.healer, "Orson");
+  assert.equal(e.target, "You");
+  assert.equal(e.amount, 62);
+  assert.equal(e.spell, "Sprouting Heal");
+});
+
 test("dot — spell by caster", () => {
   const e = parseLine(TS + "Orc centurion has taken 15 damage from Tainted Breath by Frogorson.");
   assert.equal(e?.type, "dot");
