@@ -57,35 +57,20 @@ export interface StanceSegment {
   stance: string;
 }
 
-export interface EncounterEntry {
-  name: string;
-  kind: EntityKind;
-  isSelf: boolean;
-  total: number;
-  dps: number;
-  pct: number;
-}
-
-export interface Encounter {
-  name: string;
-  active: boolean;
-  total: number;
-  dps: number;
-  attackers: EncounterEntry[];
-}
-
 export interface EncounterCard {
   name: string;
   kind: EntityKind;
   isSelf: boolean;
-  damage: MetricStat; // damage this character did to the NPC
-  healing: MetricStat; // healing this character did during the encounter window
+  damage: MetricStat; // damage this character did to the NPC (per-person active window)
+  healing: MetricStat; // healing this character did during their active window
   taken: MetricStat; // damage this character took from the NPC
+  pct: number; // share of total damage dealt to the NPC (for the bar)
 }
 
-export interface RecentEncounter {
+export interface EncounterView {
   id: string;
   name: string;
+  active: boolean;
   startMs: number;
   endMs: number;
   durationSec: number;
@@ -101,7 +86,6 @@ export interface Fight {
   active: boolean;
   npcs: string[];
   combatants: CombatantStats[];
-  encounters: Encounter[];
   stanceTimeline: StanceSegment[];
 }
 
@@ -118,7 +102,8 @@ export interface FightSummary {
 export interface Snapshot {
   current: Fight | null;
   recent: FightSummary[];
-  recentEncounters: RecentEncounter[];
+  activeEncounters: EncounterView[];
+  recentEncounters: EncounterView[];
   stance: StanceState;
 }
 

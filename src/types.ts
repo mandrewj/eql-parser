@@ -178,44 +178,27 @@ export interface StanceSegment {
   stance: string;
 }
 
-/** One attacker's damage against a specific NPC. */
-export interface EncounterEntry {
-  name: string;
-  kind: EntityKind;
-  isSelf: boolean;
-  total: number;
-  dps: number;
-  pct: number;
-}
-
-/** A single NPC and the friendly damage dealt to it (a per-target DPS meter). */
-export interface Encounter {
-  name: string; // NPC display name
-  active: boolean; // still alive in an active fight
-  total: number; // total damage taken by this NPC
-  dps: number;
-  attackers: EncounterEntry[]; // friendly attackers, ranked by damage
-}
-
 /** One character's contribution to a single mob encounter (ranked by damage). */
 export interface EncounterCard {
   name: string;
   kind: EntityKind;
   isSelf: boolean;
-  damage: MetricStat; // damage this character did to the NPC
-  healing: MetricStat; // healing this character did during the encounter window
+  damage: MetricStat; // damage this character did to the NPC (per-person active window)
+  healing: MetricStat; // healing this character did during their active window
   taken: MetricStat; // damage this character took from the NPC
+  pct: number; // share of total damage dealt to the NPC (for the bar)
 }
 
-/** A finished per-mob encounter with per-character cards (for the "last N" list). */
-export interface RecentEncounter {
+/** One per-mob encounter (live or finished) with per-character rows. */
+export interface EncounterView {
   id: string;
   name: string; // NPC display name
+  active: boolean;
   startMs: number;
   endMs: number;
   durationSec: number;
   total: number; // total damage dealt to the NPC
-  cards: EncounterCard[]; // self + top others, ranked by damage
+  cards: EncounterCard[]; // self + top others, ranked by DPS
 }
 
 export interface Fight {
@@ -226,7 +209,6 @@ export interface Fight {
   active: boolean;
   npcs: string[]; // engaged NPC names
   combatants: CombatantStats[]; // per-character, all metrics
-  encounters: Encounter[]; // per-NPC DPS breakdown
   stanceTimeline: StanceSegment[]; // self stance over the fight
 }
 

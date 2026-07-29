@@ -168,9 +168,9 @@ test("enemy pet encounter goes inactive when its owner is slain", () => {
     L("01:00:00", "You crush an orc thaumaturgist pet for 20 points of damage."),
     L("01:00:05", "You have slain an orc thaumaturgist!"), // owner dies; pet despawns
   ]);
-  const enc = Object.fromEntries(engine.fights()[0]!.encounters.map((e) => [e.name.toLowerCase(), e.active]));
-  assert.equal(enc["an orc thaumaturgist"], false, "slain owner is inactive");
-  assert.equal(enc["an orc thaumaturgist pet"], false, "pet is inactive once its owner is dead");
+  const active = engine.snapshot().activeEncounters.map((e) => e.name.toLowerCase());
+  assert.equal(active.includes("an orc thaumaturgist"), false, "slain owner is not an active encounter");
+  assert.equal(active.includes("an orc thaumaturgist pet"), false, "pet is inactive once its owner is dead");
 });
 
 test("an encounter goes inactive after 90s of no activity on that NPC", () => {
@@ -182,9 +182,22 @@ test("an encounter goes inactive after 90s of no activity on that NPC", () => {
     L("01:00:05", "You crush orc A for 10 points of damage."), // A stays fresh
   ]);
   clock = at("01:01:32"); // 92s after start: A idle 87s, B idle 92s
-  const enc = Object.fromEntries(engine.fights()[0]!.encounters.map((e) => [e.name.toLowerCase(), e.active]));
-  assert.equal(enc["orc a"], true, "A active (87s idle ≤ 90)");
-  assert.equal(enc["orc b"], false, "B stale (92s idle > 90)");
+  const active = engine.snapshot().activeEncounters.map((e) => e.name.toLowerCase());
+  assert.equal(active.includes("orc a"), true, "A active (87s idle ≤ 90)");
+  assert.equal(active.includes("orc b"), false, "B stale (92s idle > 90)");
+});
+
+test("same-named mobs are separate encounters with correct durations (no merge)", () => {
+  const engine = feed([
+    L("01:00:00", "You crush a clay gargoyle for 100 points of damage."),
+    L("01:00:10", "You have slain a clay gargoyle!"), // first instance: ~10s
+    L("01:00:40", "You crush a clay gargoyle for 100 points of damage."), // fresh respawn
+    L("01:00:50", "You have slain a clay gargoyle!"), // second instance: ~10s
+  ]);
+  const recent = engine.snapshot().recentEncounters;
+  assert.equal(recent.length, 2, "two separate gargoyle encounters, not one merged");
+  assert.equal(recent[0]!.durationSec, 10, "second kill is ~10s, not the 50s span");
+  assert.equal(recent[1]!.durationSec, 10, "first kill is ~10s");
 });
 
 test("recent encounters: one per kill, newest first, oldest drops past 5", () => {

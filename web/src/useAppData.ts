@@ -34,7 +34,13 @@ export function useAppData(): AppData {
     es.onmessage = (e) => {
       const msg = JSON.parse(e.data) as { t: string } & Snapshot;
       if (msg.t === "snapshot") {
-        setSnapshot({ current: msg.current, recent: msg.recent, recentEncounters: msg.recentEncounters, stance: msg.stance });
+        setSnapshot({
+          current: msg.current,
+          recent: msg.recent,
+          activeEncounters: msg.activeEncounters,
+          recentEncounters: msg.recentEncounters,
+          stance: msg.stance,
+        });
       } else if (msg.t === "activeLogChanged") {
         void refreshLogs();
       }

@@ -216,3 +216,29 @@ body { margin: 0; }
   margin-bottom: 0.45rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border);
 }
 .enc-section-name { font-size: 0.92rem; font-weight: 700; }
+
+/* ---- encounter table view (one row per combatant) ---- */
+.enc-table { border: 1px solid var(--border); border-radius: 8px; background: #191c22; padding: 0.4rem 0.5rem 0.5rem; margin-bottom: 0.5rem; }
+.enc-table.live { border-color: #7a3b3b; }
+.enc-th { display: flex; justify-content: space-between; align-items: baseline; gap: 0.4rem; margin-bottom: 0.35rem; }
+.enc-title { font-weight: 700; font-size: 0.9rem; }
+.etable { display: flex; flex-direction: column; }
+.erow { display: grid; grid-template-columns: 1fr 2.9rem 2.9rem 2.9rem; align-items: center; gap: 0.3rem; cursor: pointer; padding: 1px 0; }
+.erow.ehead { cursor: default; padding-bottom: 3px; }
+.erow.ehead > span:first-child { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); padding-left: 0.4rem; }
+.ebar { position: relative; height: 18px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
+.ebar > .fill { position: absolute; inset: 0 auto 0 0; opacity: 0.8; }
+.erow.self .ebar > .fill { background: linear-gradient(90deg, #34528f, var(--self)); }
+.erow.player .ebar > .fill { background: linear-gradient(90deg, #2c6f4e, var(--player)); }
+.erow.pet .ebar > .fill { background: linear-gradient(90deg, #3f7d6a, #57b39a); }
+.erow.npc .ebar > .fill { background: linear-gradient(90deg, #8f3a3a, var(--npc)); }
+.etxt { position: relative; display: flex; justify-content: space-between; align-items: center; height: 100%; padding: 0 0.4rem; font-size: 0.74rem; gap: 0.4rem; }
+.ename { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ename .tag.you { margin-left: 0.3rem; }
+.epct { font-variant-numeric: tabular-nums; opacity: 0.85; }
+.enum { text-align: right; font-size: 0.74rem; font-variant-numeric: tabular-nums; }
+.erow.ehead .enum { font-size: 0.6rem; text-transform: uppercase; color: var(--muted); }
+.enum.heal { color: var(--player); }
+.enum.tank { color: var(--npc); }
+.erow-drill { display: flex; flex-wrap: wrap; gap: 0.45rem; padding: 0.2rem 0.4rem 0.35rem; font-size: 0.7rem; color: var(--muted); }
+.drill-cat { white-space: nowrap; }

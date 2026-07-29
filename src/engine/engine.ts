@@ -15,13 +15,11 @@ import type {
   CombatEvent,
   CombatantStats,
   DamageType,
-  Encounter,
   EncounterCard,
-  EncounterEntry,
+  EncounterView,
   Fight,
   FightSummary,
   MetricStat,
-  RecentEncounter,
   StanceBreakdown,
   StanceDim,
   StanceSegment,
@@ -71,7 +69,6 @@ interface FightState {
   damagePairs: Array<[string, string]>; // [attackerKey, targetKey], incl. misses
   healPairs: Array<[string, string]>; // [healerKey, targetKey] — same faction
   healLog: Array<{ healer: string; amount: number; spell: string; tsMs: number }>; // for windowed HPS
-  finalizedNpcs: Set<string>; // NPCs already added to the recent-encounters list
   deaths: Array<{ victim: string; killer: string | null; killerSelf: boolean }>;
   npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
@@ -160,7 +157,7 @@ export class Engine {
 
   private current: FightState | null = null;
   private finished: FightState[] = [];
-  private finishedEncounters: RecentEncounter[] = []; // newest first, rolling
+  private finishedEncounters: EncounterView[] = []; // newest first, rolling
   private fightSeq = 0;
   private encounterSeq = 0;
   private readonly now: () => number;
@@ -240,13 +237,15 @@ export class Engine {
   snapshot(): {
     current: Fight | null;
     recent: FightSummary[];
-    recentEncounters: RecentEncounter[];
+    activeEncounters: EncounterView[];
+    recentEncounters: EncounterView[];
     stance: StanceState;
   } {
     const recent = this.finished.slice(-20).map((s) => this.summarize(this.buildFight(s)));
     return {
       current: this.current ? this.buildFight(this.current) : null,
       recent,
+      activeEncounters: this.current ? this.buildLiveEncounters(this.current) : [],
       recentEncounters: this.finishedEncounters.slice(0, 5),
       stance: { ...this.currentStances },
     };
@@ -291,7 +290,6 @@ export class Engine {
       damagePairs: [],
       healPairs: [],
       healLog: [],
-      finalizedNpcs: new Set(),
       deaths: [],
       npcSeeds: new Set(),
       targetIncoming: new Map(),
@@ -313,11 +311,12 @@ export class Engine {
     this.current = null;
   }
 
-  /** Finalize every damaged NPC in the fight that wasn't already added on death. */
+  /** Finalize every still-tracked NPC when the fight ends (a boss you fled, a zoned pull).
+   *  Cap each to its last actual combat activity, not the (possibly much later) close time. */
   private finalizeOpenEncounters(f: FightState, endMs: number): void {
-    const { npc } = this.resolveKinds(f);
-    for (const tKey of f.perTarget.keys()) {
-      if (npc.has(tKey) && !f.finalizedNpcs.has(tKey)) this.finalizeEncounter(f, tKey, endMs);
+    const { friendly, npc } = this.resolveKinds(f);
+    for (const tKey of [...f.perTarget.keys()]) {
+      if (npc.has(tKey)) this.pushEncounter(f, tKey, f.lastSeen.get(tKey) ?? endMs, friendly);
     }
   }
 
@@ -449,16 +448,65 @@ export class Engine {
     }
   }
 
-  /** Snapshot a slain NPC's per-character breakdown into the recent-encounters list. */
-  private finalizeEncounter(f: FightState, npcKey: string, endMs: number): void {
-    if (f.finalizedNpcs.has(npcKey)) return; // don't double-add (death + close)
-    const attackers = f.perTarget.get(npcKey);
-    if (!attackers) return;
+  /** On death: record the completed encounter, then reset the mob's tracking so a
+   *  same-named respawn is a fresh instance (fixes generic-name merging). */
+  private finalizeEncounter(f: FightState, npcKey: string, deathMs: number): void {
     const { friendly, npc } = this.resolveKinds(f);
-    if (!npc.has(npcKey)) return;
-    f.finalizedNpcs.add(npcKey);
+    if (npc.has(npcKey)) this.pushEncounter(f, npcKey, deathMs, friendly);
+    this.resetNpcTracking(f, npcKey);
+  }
 
-    // Fold pets into owners; track each owner's first contact with this NPC.
+  private pushEncounter(f: FightState, npcKey: string, endMs: number, friendly: Set<string>): void {
+    const view = this.encounterView(f, npcKey, endMs, false, `enc-${this.encounterSeq + 1}`, friendly);
+    if (!view) return;
+    this.encounterSeq++;
+    this.finishedEncounters.unshift(view);
+    if (this.finishedEncounters.length > 20) this.finishedEncounters.length = 20;
+  }
+
+  /** Clear a mob's per-encounter tracking so the next same-named mob starts fresh. */
+  private resetNpcTracking(f: FightState, npcKey: string): void {
+    f.perTarget.delete(npcKey);
+    for (const m of f.perTarget.values()) m.delete(npcKey);
+    f.firstSeen.delete(npcKey);
+    f.lastSeen.delete(npcKey);
+    f.targetIncoming.delete(npcKey);
+    for (const k of [...f.pairFirst.keys()]) {
+      if (k.startsWith(`${npcKey}>`) || k.endsWith(`>${npcKey}`)) f.pairFirst.delete(k);
+    }
+  }
+
+  /** Live per-NPC encounters for the current fight (mobs still being fought). */
+  private buildLiveEncounters(f: FightState): EncounterView[] {
+    const { friendly, npc } = this.resolveKinds(f);
+    const slain = new Set(f.deaths.filter((d) => npc.has(d.victim)).map((d) => d.victim));
+    const now = this.now();
+    const idleMs = this.opts.inactivityTimeoutSec * 1000;
+    const out: EncounterView[] = [];
+    for (const tKey of f.perTarget.keys()) {
+      if (!npc.has(tKey) || slain.has(tKey)) continue;
+      const ownerKey = tKey.endsWith(" pet") ? tKey.slice(0, -4) : null;
+      if (ownerKey && slain.has(ownerKey)) continue; // pet despawns with its owner
+      if (now - (f.lastSeen.get(tKey) ?? now) > idleMs) continue; // gone stale
+      const view = this.encounterView(f, tKey, now, true, `live-${tKey}`, friendly);
+      if (view) out.push(view);
+    }
+    return out.sort((a, b) => b.total - a.total);
+  }
+
+  /** Shared: build one per-mob encounter with per-character cards (self + top 5 by DPS). */
+  private encounterView(
+    f: FightState,
+    npcKey: string,
+    endMs: number,
+    active: boolean,
+    id: string,
+    friendly: Set<string>,
+  ): EncounterView | null {
+    const attackers = f.perTarget.get(npcKey);
+    if (!attackers) return null;
+
+    // Fold pets into owners; track each owner's first contact with the NPC.
     const byOwner = new Map<string, MetricAcc>();
     const ownerFirst = new Map<string, number>();
     for (const [aKey, cell] of attackers) {
@@ -470,13 +518,13 @@ export class Engine {
         byOwner.set(ownerKey, dst);
       }
       mergeAcc(dst, cell, ownerKey === aKey ? null : "🐾");
-      const pf = f.pairFirst.get(`${aKey}>${npcKey}`); // when this attacker first hit the NPC
+      const pf = f.pairFirst.get(`${aKey}>${npcKey}`);
       if (pf !== undefined) ownerFirst.set(ownerKey, Math.min(ownerFirst.get(ownerKey) ?? Infinity, pf));
     }
-    if (byOwner.size === 0) return;
+    if (byOwner.size === 0) return null;
 
     const startMs = f.firstSeen.get(npcKey) ?? f.startMs;
-    const dur = Math.max(1, (endMs - startMs) / 1000);
+    const total = [...byOwner.values()].reduce((s, a) => s + a.total, 0);
 
     const allCards: EncounterCard[] = [...byOwner.entries()].map(([ownerKey, acc]): EncounterCard => {
       // Per-person active window: from their first engagement (their attack, or the NPC first
@@ -501,26 +549,26 @@ export class Engine {
         damage: this.toStat(acc, activeDur),
         healing: this.toStat(healAcc, activeDur),
         taken: this.toStat(takenAcc, activeDur),
+        pct: total > 0 ? Math.round((acc.total / total) * 1000) / 10 : 0,
       };
     });
-    const byDps = (a: EncounterCard, b: EncounterCard) => b.damage.perSec - a.damage.perSec || b.damage.total - a.damage.total;
+    const byDps = (a: EncounterCard, b: EncounterCard) =>
+      b.damage.perSec - a.damage.perSec || b.damage.total - a.damage.total;
     allCards.sort(byDps);
-
-    // Me plus up to 5 others, displayed in DPS order.
     const self = allCards.find((c) => c.isSelf);
     const others = allCards.filter((c) => !c.isSelf).slice(0, 5);
     const cards = (self ? [self, ...others] : others).sort(byDps);
 
-    this.finishedEncounters.unshift({
-      id: `enc-${++this.encounterSeq}`,
+    return {
+      id,
       name: this.nameOf(npcKey),
+      active,
       startMs,
       endMs,
-      durationSec: Math.round(dur),
-      total: allCards.reduce((s, c) => s + c.damage.total, 0),
+      durationSec: Math.round(Math.max(1, (endMs - startMs) / 1000)),
+      total,
       cards,
-    });
-    if (this.finishedEncounters.length > 20) this.finishedEncounters.length = 20;
+    };
   }
 
   // --- classification + view building -------------------------------------
@@ -632,7 +680,6 @@ export class Engine {
       .sort((a, b) => b.damage.total - a.damage.total);
 
     const stanceTimeline = this.clipStances(this.stanceSegments.melee, f);
-    const encounters = this.buildEncounters(f, friendly, npc, dur);
 
     const headline = [...f.targetIncoming.entries()]
       .filter(([k]) => npc.has(k))
@@ -647,57 +694,8 @@ export class Engine {
       active: f.endMs === null,
       npcs: npcNames,
       combatants,
-      encounters,
       stanceTimeline,
     };
-  }
-
-  /** One per-NPC DPS meter: who dealt how much damage to each mob (pets folded into owners). */
-  private buildEncounters(f: FightState, friendly: Set<string>, npc: Set<string>, dur: number): Encounter[] {
-    const slain = new Set(f.deaths.filter((d) => npc.has(d.victim)).map((d) => d.victim));
-    const idleMs = this.opts.inactivityTimeoutSec * 1000;
-    // Open fights use wall-clock so panes go stale ~90s after activity stops.
-    const now = f.endMs === null ? this.now() : f.endMs;
-    const encounters: Encounter[] = [];
-
-    for (const [tKey, attackers] of f.perTarget) {
-      if (!npc.has(tKey)) continue;
-      const byOwner = new Map<string, number>();
-      for (const [aKey, cell] of attackers) {
-        const ownerKey = this.petOwners.get(aKey) ?? aKey; // fold pet damage into owner
-        if (ownerKey !== this.selfKey && !friendly.has(ownerKey)) continue; // friendly attackers only
-        byOwner.set(ownerKey, (byOwner.get(ownerKey) ?? 0) + cell.total);
-      }
-      const total = [...byOwner.values()].reduce((s, v) => s + v, 0);
-      if (total === 0) continue;
-
-      const entries: EncounterEntry[] = [...byOwner.entries()]
-        .map(([k, tot]): EncounterEntry => ({
-          name: this.nameOf(k),
-          kind: k === this.selfKey ? "self" : "player",
-          isSelf: k === this.selfKey,
-          total: tot,
-          dps: Math.round(tot / dur),
-          pct: Math.round((tot / total) * 1000) / 10,
-        }))
-        .sort((a, b) => b.total - a.total);
-
-      // Enemy pets are named "<owner> pet"; when the owner is slain the pet despawns.
-      const ownerKey = tKey.endsWith(" pet") ? tKey.slice(0, -4) : null;
-      const ownerDead = ownerKey ? slain.has(ownerKey) : false;
-      const idle = now - (f.lastSeen.get(tKey) ?? now);
-      const active = f.endMs === null && !slain.has(tKey) && !ownerDead && idle <= idleMs;
-
-      encounters.push({
-        name: this.nameOf(tKey),
-        active,
-        total,
-        dps: Math.round(total / dur),
-        attackers: entries,
-      });
-    }
-
-    return encounters.sort((a, b) => Number(b.active) - Number(a.active) || b.total - a.total);
   }
 
   private clipStances(segments: StanceSegment[], f: FightState): StanceSegment[] {

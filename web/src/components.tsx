@@ -1,17 +1,17 @@
 import type {
   CombatantStats,
-  Encounter,
   EncounterCard as EncounterCardData,
+  EncounterView,
   Filters,
   FightSummary,
   MetricKind,
   MetricStat,
-  RecentEncounter,
   StanceBreakdown,
 } from "./types";
 import { metricMeta } from "./filters";
 
 const fmt = (n: number) => n.toLocaleString();
+const fmtK = (n: number) => (n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : n.toLocaleString());
 const time = (ms: number) => new Date(ms).toLocaleTimeString();
 
 const METRICS: Array<{ key: MetricKind; label: string }> = [
@@ -47,32 +47,84 @@ export function FilterBar({ filters, onChange }: { filters: Filters; onChange: (
   );
 }
 
-// ---------------------------------------------------------------------------
+// --- encounter table (per-mob, one row per combatant) ---------------------
 
-export function EncounterPane({ encounter }: { encounter: Encounter }) {
-  const max = Math.max(1, ...encounter.attackers.map((a) => a.total));
+function EncounterRow({
+  card,
+  open,
+  onToggle,
+}: {
+  card: EncounterCardData;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const d = card.damage;
   return (
-    <div className={`encounter ${encounter.active ? "live" : "dead"}`}>
-      <div className="enc-head">
-        <span className="enc-name">
-          {encounter.active && <span className="live-dot">⚔</span>} {encounter.name}
-        </span>
-        <span className="enc-dps">
-          {fmt(encounter.dps)} dps · {fmt(encounter.total)}
-        </span>
-      </div>
-      {encounter.attackers.map((a) => (
-        <div key={a.name} className={`enc-bar ${a.isSelf ? "self" : "player"}`}>
-          <div className="fill" style={{ width: `${(a.total / max) * 100}%` }} />
-          <div className="txt">
-            <span className="name">{a.name}</span>
-            <span className="nums">
-              {fmt(a.dps)} · {a.pct}%
+    <>
+      <div className={`erow ${card.kind} ${card.isSelf ? "is-self" : ""}`} onClick={onToggle}>
+        <div className="ebar">
+          <div className="fill" style={{ width: `${card.pct}%` }} />
+          <div className="etxt">
+            <span className="ename">
+              {card.name}
+              {card.isSelf && <span className="tag you">you</span>}
             </span>
+            <span className="epct">{card.pct}%</span>
           </div>
         </div>
-      ))}
-    </div>
+        <span className="enum">{fmtK(d.perSec)}</span>
+        <span className="enum heal">{card.healing.total ? fmtK(card.healing.perSec) : "·"}</span>
+        <span className="enum tank">{card.taken.total ? fmtK(card.taken.total) : "·"}</span>
+      </div>
+      {open && (
+        <div className="erow-drill">
+          <span className="drill-meta">
+            {fmt(d.total)} dmg · m {fmt(d.byType.melee)} / s {fmt(d.byType.spell)} / d {fmt(d.byType.dot)} · {d.crits} crit
+          </span>
+          {d.entries.slice(0, 6).map((e) => (
+            <span key={e.name} className="drill-cat">
+              {e.damageType !== "unknown" && <span className={`typedot ${e.damageType}`} />}
+              {e.name} {fmtK(e.total)}
+            </span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function EncounterTable({
+  enc,
+  expanded,
+  onToggle,
+}: {
+  enc: EncounterView;
+  expanded: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  const dps = Math.round(enc.total / Math.max(1, enc.durationSec));
+  return (
+    <section className={`enc-table ${enc.active ? "live" : ""}`}>
+      <div className="enc-th">
+        <span className="enc-title">
+          {enc.active && <span className="live-dot">⚔</span>} {enc.name}
+        </span>
+        <span className="muted">
+          {enc.durationSec}s · {fmtK(enc.total)} · {fmtK(dps)} dps
+        </span>
+      </div>
+      <div className="etable">
+        <div className="erow ehead">
+          <span className="muted">% damage</span>
+          <span className="enum muted">dps</span>
+          <span className="enum muted">hps</span>
+          <span className="enum muted">tank</span>
+        </div>
+        {enc.cards.map((c) => (
+          <EncounterRow key={c.name} card={c} open={expanded.has(`${enc.id}:${c.name}`)} onToggle={() => onToggle(`${enc.id}:${c.name}`)} />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -206,107 +258,6 @@ export function CharacterCard({
         </div>
       )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-// --- per-mob encounter sections (grouped stats) ---------------------------
-
-function EncounterCharCard({
-  card,
-  encTotal,
-  maxima,
-  open,
-  onToggle,
-}: {
-  card: EncounterCardData;
-  encTotal: number;
-  maxima: { damage: number; healing: number; taken: number };
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const d = card.damage;
-  const pct = encTotal > 0 ? Math.round((d.total / encTotal) * 100) : 0;
-  return (
-    <div className={`card ${card.isSelf ? "is-self" : ""} ${open ? "open" : ""}`}>
-      <div className="card-head" onClick={onToggle}>
-        <span className="card-name">
-          {open ? "▾ " : "▸ "}
-          {card.name}
-          {card.isSelf && <span className="tag you">you</span>}
-        </span>
-        <span className="card-kind">{pct}%</span>
-      </div>
-      <MetricLine icon="⚔" stat={card.damage} unit="dps" accent="dmg" active max={maxima.damage} />
-      <MetricLine icon="✚" stat={card.healing} unit="hps" accent="heal" active={false} max={maxima.healing} />
-      <MetricLine icon="🛡" stat={card.taken} unit="dps" accent="tank" active={false} max={maxima.taken} />
-      {open && (
-        <div className="card-drill">
-          <div className="drill-meta">
-            damage: melee {fmt(d.byType.melee)} · spell {fmt(d.byType.spell)} · dot {fmt(d.byType.dot)} · {d.crits} crit
-          </div>
-          {d.entries.length > 0 && (
-            <table className="cats">
-              <tbody>
-                {d.entries.slice(0, 8).map((e) => (
-                  <tr key={e.name}>
-                    <td>
-                      {e.damageType !== "unknown" && <span className={`typedot ${e.damageType}`} />}
-                      {e.name}
-                    </td>
-                    <td className="r">{fmt(e.total)}</td>
-                    <td className="r muted">
-                      ×{e.hits}
-                      {e.crits ? ` · ${e.crits}c` : ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function EncounterSection({
-  enc,
-  expanded,
-  onToggle,
-}: {
-  enc: RecentEncounter;
-  expanded: Set<string>;
-  onToggle: (key: string) => void;
-}) {
-  const maxima = {
-    damage: Math.max(1, ...enc.cards.map((c) => c.damage.total)),
-    healing: Math.max(1, ...enc.cards.map((c) => c.healing.total)),
-    taken: Math.max(1, ...enc.cards.map((c) => c.taken.total)),
-  };
-  const dps = Math.round(enc.total / Math.max(1, enc.durationSec));
-  return (
-    <section className="enc-section">
-      <div className="enc-section-head">
-        <span className="enc-section-name">{enc.name}</span>
-        <span className="muted">
-          {time(enc.endMs)} · {enc.durationSec}s · {fmt(enc.total)} dmg · {fmt(dps)} dps
-        </span>
-      </div>
-      <div className="card-grid">
-        {enc.cards.map((c) => (
-          <EncounterCharCard
-            key={c.name}
-            card={c}
-            encTotal={enc.total}
-            maxima={maxima}
-            open={expanded.has(`${enc.id}:${c.name}`)}
-            onToggle={() => onToggle(`${enc.id}:${c.name}`)}
-          />
-        ))}
-      </div>
-    </section>
   );
 }
 
