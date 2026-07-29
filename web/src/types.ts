@@ -48,6 +48,11 @@ export interface StanceOverviewRow {
   dps: number;
 }
 
+export interface StanceOverviewWindow {
+  n: number; // number of most-recent encounters averaged
+  rows: StanceOverviewRow[];
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -113,7 +118,7 @@ export interface Snapshot {
   activeEncounters: EncounterView[];
   recentEncounters: EncounterView[];
   stance: StanceState;
-  stanceOverview: StanceOverviewRow[];
+  stanceOverview: StanceOverviewWindow[];
 }
 
 export interface LogInfo {

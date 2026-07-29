@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type {
   CombatantStats,
   EncounterCard as EncounterCardData,
@@ -7,7 +8,7 @@ import type {
   MetricKind,
   MetricStat,
   StanceBreakdown,
-  StanceOverviewRow,
+  StanceOverviewWindow,
   StanceState,
 } from "./types";
 import { metricMeta } from "./filters";
@@ -53,20 +54,30 @@ export function FilterBar({ filters, onChange }: { filters: Filters; onChange: (
 
 const stanceLabel = (s: string) => (s === "none" ? "—" : s);
 
-export function StanceOverview({ rows, stance }: { rows: StanceOverviewRow[]; stance: StanceState | null }) {
-  if (rows.length === 0) return null;
+export function StanceOverview({ windows, stance }: { windows: StanceOverviewWindow[]; stance: StanceState | null }) {
+  const [n, setN] = useState(25);
+  const rows = windows.find((w) => w.n === n)?.rows ?? [];
   const totalDmg = rows.reduce((s, r) => s + r.damage, 0);
   const totalSec = rows.reduce((s, r) => s + r.seconds, 0);
   const overall = Math.round(totalDmg / Math.max(1, totalSec));
-  const isCurrent = (r: StanceOverviewRow) => stance != null && r.melee === stance.melee && r.invocation === stance.invocation;
+  const isCurrent = (r: { melee: string; invocation: string }) =>
+    stance != null && r.melee === stance.melee && r.invocation === stance.invocation;
   return (
     <section className="overview">
       <div className="ov-head">
         <span className="ov-title">My DPS · by stance</span>
+        <div className="ov-windows">
+          {windows.map((w) => (
+            <button key={w.n} className={w.n === n ? "wchip on" : "wchip"} onClick={() => setN(w.n)}>
+              {w.n}
+            </button>
+          ))}
+        </div>
         <span className="ov-overall">
           {fmtK(overall)} <span className="munit">avg dps</span>
         </span>
       </div>
+      {rows.length === 0 && <div className="muted small">No encounters yet.</div>}
       <div className="ov-tiles">
         {rows.map((r) => (
           <div key={`${r.melee}|${r.invocation}`} className={`ov-tile ${isCurrent(r) ? "current" : ""}`}>

@@ -70,7 +70,6 @@ interface FightState {
   damagePairs: Array<[string, string]>; // [attackerKey, targetKey], incl. misses
   healPairs: Array<[string, string]>; // [healerKey, targetKey] — same faction
   healLog: Array<{ healer: string; amount: number; spell: string; tsMs: number }>; // for windowed HPS
-  comboDamage: Map<string, number>; // self damage keyed by "melee|invocation" combo
   deaths: Array<{ victim: string; killer: string | null; killerSelf: boolean }>;
   npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
@@ -155,9 +154,10 @@ export class Engine {
 
   private readonly currentStances: StanceState = { melee: "none", invocation: "none" };
   private readonly stanceSegments: Record<StanceDim, StanceSegment[]> = { melee: [], invocation: [] };
-  // Combined stance+invocation timeline, for per-combination self DPS.
+  // Combined stance+invocation timeline + a log of self damage by combo, for per-combination DPS.
   private readonly comboSegments: Array<{ startMs: number; endMs: number; combo: string }> = [];
   private comboStartMs = 0;
+  private readonly selfComboLog: Array<{ combo: string; amount: number; ts: number }> = [];
   private readonly petOwners = new Map<string, string>(); // petKey → ownerKey (global)
 
   private current: FightState | null = null;
@@ -245,7 +245,7 @@ export class Engine {
     activeEncounters: EncounterView[];
     recentEncounters: EncounterView[];
     stance: StanceState;
-    stanceOverview: StanceOverviewRow[];
+    stanceOverview: Array<{ n: number; rows: StanceOverviewRow[] }>;
   } {
     const recent = this.finished.slice(-20).map((s) => this.summarize(this.buildFight(s)));
     return {
@@ -254,7 +254,7 @@ export class Engine {
       activeEncounters: this.current ? this.buildLiveEncounters(this.current) : [],
       recentEncounters: this.finishedEncounters.slice(0, 5),
       stance: { ...this.currentStances },
-      stanceOverview: this.buildStanceOverview(),
+      stanceOverview: this.buildStanceOverviews(),
     };
   }
 
@@ -271,20 +271,39 @@ export class Engine {
     return out;
   }
 
-  /** Average self DPS per stance+invocation combo over the last ~20 fights. */
-  private buildStanceOverview(): StanceOverviewRow[] {
-    const fights = this.current ? [...this.finished.slice(-20), this.current] : this.finished.slice(-20);
+  private buildStanceOverviews(): Array<{ n: number; rows: StanceOverviewRow[] }> {
+    return [10, 25, 50].map((n) => ({ n, rows: this.overviewForWindow(n) }));
+  }
+
+  /** Average self DPS per stance+invocation combo over the last N finished encounters. */
+  private overviewForWindow(n: number): StanceOverviewRow[] {
+    const encs = this.finishedEncounters.slice(0, n);
+    if (encs.length === 0) return [];
+
+    // Merge the encounters' time windows so simultaneous mobs aren't double-counted.
+    const merged: Array<[number, number]> = [];
+    for (const iv of encs.map((e): [number, number] => [e.startMs, e.endMs]).sort((a, b) => a[0] - b[0])) {
+      const last = merged[merged.length - 1];
+      if (last && iv[0] <= last[1]) last[1] = Math.max(last[1], iv[1]);
+      else merged.push([iv[0], iv[1]]);
+    }
+    const inMerged = (ts: number) => merged.some(([s, e]) => ts >= s && ts <= e);
+
     const agg = new Map<string, { damage: number; seconds: number }>();
-    for (const f of fights) {
-      if (f.comboDamage.size === 0) continue;
-      const secs = this.comboSecondsIn(f.startMs, f.endMs ?? this.now());
-      for (const [combo, dmg] of f.comboDamage) {
+    for (const [s, e] of merged) {
+      for (const [combo, sec] of this.comboSecondsIn(s, e)) {
         const a = agg.get(combo) ?? { damage: 0, seconds: 0 };
-        a.damage += dmg;
-        a.seconds += secs.get(combo) ?? 0;
+        a.seconds += sec;
         agg.set(combo, a);
       }
     }
+    for (const ent of this.selfComboLog) {
+      if (!inMerged(ent.ts)) continue;
+      const a = agg.get(ent.combo) ?? { damage: 0, seconds: 0 };
+      a.damage += ent.amount;
+      agg.set(ent.combo, a);
+    }
+
     return [...agg.entries()]
       .map(([combo, v]) => {
         const [melee = "none", invocation = "none"] = combo.split("|");
@@ -341,7 +360,6 @@ export class Engine {
       damagePairs: [],
       healPairs: [],
       healLog: [],
-      comboDamage: new Map(),
       deaths: [],
       npcSeeds: new Set(),
       targetIncoming: new Map(),
@@ -459,8 +477,7 @@ export class Engine {
         const s = this.currentStances[dim];
         c.stanceTotals[dim].set(s, (c.stanceTotals[dim].get(s) ?? 0) + ev.amount);
       }
-      const combo = this.combo();
-      f.comboDamage.set(combo, (f.comboDamage.get(combo) ?? 0) + ev.amount);
+      this.selfComboLog.push({ combo: this.combo(), amount: ev.amount, ts: ev.tsMs });
     }
   }
 
@@ -515,7 +532,12 @@ export class Engine {
     if (!view) return;
     this.encounterSeq++;
     this.finishedEncounters.unshift(view);
-    if (this.finishedEncounters.length > 20) this.finishedEncounters.length = 20;
+    if (this.finishedEncounters.length > 60) this.finishedEncounters.length = 60;
+    // Drop combo-log entries older than the oldest encounter we still keep.
+    const oldest = this.finishedEncounters[this.finishedEncounters.length - 1]?.startMs ?? 0;
+    let drop = 0;
+    while (drop < this.selfComboLog.length && this.selfComboLog[drop]!.ts < oldest) drop++;
+    if (drop > 0) this.selfComboLog.splice(0, drop);
   }
 
   /** Clear a mob's per-encounter tracking so the next same-named mob starts fresh. */

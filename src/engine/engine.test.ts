@@ -288,7 +288,9 @@ test("stance overview: self DPS split by stance+invocation combination", () => {
     L("01:00:24", "You crush a bat for 20 points of damage."),
     L("01:00:26", "You have slain a bat!"),
   ]);
-  const ov = engine.snapshot().stanceOverview;
+  const windows = engine.snapshot().stanceOverview;
+  assert.deepEqual(windows.map((w) => w.n), [10, 25, 50]);
+  const ov = windows.find((w) => w.n === 10)!.rows;
   const off = ov.find((r) => r.melee === "offensive" && r.invocation === "spellblade")!;
   const def = ov.find((r) => r.melee === "defensive" && r.invocation === "spellblade")!;
   assert.equal(off.damage, 200);

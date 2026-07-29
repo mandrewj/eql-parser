@@ -175,7 +175,7 @@ export default function App() {
 
       {tab === "live" ? (
         <main className="pane wide">
-          <StanceOverview rows={snapshot?.stanceOverview ?? []} stance={snapshot?.stance ?? null} />
+          <StanceOverview windows={snapshot?.stanceOverview ?? []} stance={snapshot?.stance ?? null} />
           {activeEncounters.length > 0 && (
             <section className="block">
               <div className="section-title">Active · {activeEncounters.length}</div>

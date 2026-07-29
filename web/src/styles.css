@@ -257,8 +257,15 @@ body { margin: 0; }
   border: 1px solid var(--border); border-radius: 9px; background: var(--panel);
   padding: 0.55rem 0.7rem; margin-bottom: 1rem;
 }
-.ov-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.4rem; }
+.ov-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem; }
 .ov-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.ov-windows { display: flex; gap: 0.2rem; }
+.ov-windows .wchip {
+  background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 5px; padding: 0.1rem 0.4rem; cursor: pointer; font-size: 0.7rem; font-variant-numeric: tabular-nums;
+}
+.ov-windows .wchip.on { background: #2f3846; color: var(--text); border-color: #46506180; }
+.ov-overall { margin-left: auto; }
 .ov-overall { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ov-overall .munit { font-size: 0.7rem; font-weight: 400; color: var(--muted); }
 .ov-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.4rem; }
