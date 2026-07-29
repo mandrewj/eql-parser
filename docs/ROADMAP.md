@@ -62,6 +62,14 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 - Melee verbs normalized to base form so `kick`/`kicks` merge into one category.
 - UI: Damage/Healing/Tanking selector; drill-down is a table (total + top ~10 categories).
 
+## Post-v1 — Readability pass on the encounter tables  ✅
+- Your own row stays expanded in every encounter, so the damage breakdown line is always on screen
+  without a click; other combatants still toggle.
+- k-notation thresholds tuned per column (10k dps/hps, 2k tank, 1k in drill-downs) via one shared
+  `scaleK` helper — big tanking and breakdown numbers stop overflowing the narrow columns.
+- Bolder theme: darker page behind raised panels, heavier type on names/numbers, and a loud
+  active-encounter treatment (accent stripe, warm frame, pulsing live dot) versus neutral finished ones.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.

@@ -178,7 +178,9 @@ export default function App() {
           <StanceOverview windows={snapshot?.stanceOverview ?? []} stance={snapshot?.stance ?? null} />
           {activeEncounters.length > 0 && (
             <section className="block">
-              <div className="section-title">Active · {activeEncounters.length}</div>
+              <div className="section-title live">
+                <span className="live-dot">⚔</span> Active · {activeEncounters.length}
+              </div>
               {activeEncounters.map((e) => (
                 <EncounterTable key={e.id} enc={e} expanded={expanded} onToggle={toggle} />
               ))}

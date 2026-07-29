@@ -102,6 +102,9 @@ interface CombatantStats {          // one meter row
 - **Log picker** — dropdown of detected logs (from `/api/logs`) to choose which one is parsed live; remembers last choice.
 - **Live pane** — current fight, auto-updating, with **filters**: by combatant kind (players / NPCs / pets), by damage type (melee / spell / DoT), and by stance. A live stance indicator shows the active stance.
 - **History pane** — fight list; select a fight to **drill down**: per-combatant rows → expand to damage-type split, per-ability breakdown, and (for self) the stance split active during that fight.
+- **Your own row is always expanded** in every encounter table — the damage breakdown line (total, melee/spell/DoT split, crits) and top ability chips render without a click, marked with a blue left rule. Everyone else toggles on click.
+- **Number formatting** (`components.tsx`, one `scaleK(n, at)` helper): k-notation past a per-context threshold, one decimal, dropped to zero decimals past 100k so the narrow columns don't overflow. Thresholds — **10k** for the dps/hps columns, **2k** for the tank column (tanking totals climb fastest), **1k** inside the encounter drill-down lines.
+- **Visual hierarchy** — panels sit on a raised surface above a darker page (`--panel` vs `--bg`, plus a drop shadow). **Active encounters are deliberately loud**: warm gradient, heavier frame, a `--live` accent stripe down the left edge, an accented section header, and a pulsing `⚔` dot (suppressed under `prefers-reduced-motion`). Finished encounters stay neutral so a long recent list doesn't turn into competing accents.
 - Reconnects to SSE automatically; renders from the last snapshot on load.
 
 ## Tech stack & packaging

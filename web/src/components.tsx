@@ -14,7 +14,11 @@ import type {
 import { metricMeta } from "./filters";
 
 const fmt = (n: number) => n.toLocaleString();
-const fmtK = (n: number) => (n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : n.toLocaleString());
+// k-notation past `at`, one decimal — dropped over 100k so narrow columns don't overflow
+const scaleK = (n: number, at: number) => (n >= at ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : n.toLocaleString());
+const fmtK = (n: number) => scaleK(n, 10000);
+const fmtTank = (n: number) => scaleK(n, 2000); // tanking totals get big fast
+const fmtDrill = (n: number) => scaleK(n, 1000); // breakdown lines stay compact
 const time = (ms: number) => new Date(ms).toLocaleTimeString();
 
 const METRICS: Array<{ key: MetricKind; label: string }> = [
@@ -124,17 +128,17 @@ function EncounterRow({
         </div>
         <span className="enum">{fmtK(d.perSec)}</span>
         <span className="enum heal">{card.healing.total ? fmtK(card.healing.perSec) : "·"}</span>
-        <span className="enum tank">{card.taken.total ? fmtK(card.taken.total) : "·"}</span>
+        <span className="enum tank">{card.taken.total ? fmtTank(card.taken.total) : "·"}</span>
       </div>
       {open && (
-        <div className="erow-drill">
+        <div className={`erow-drill ${card.isSelf ? "is-self" : ""}`}>
           <span className="drill-meta">
-            {fmt(d.total)} dmg · m {fmt(d.byType.melee)} / s {fmt(d.byType.spell)} / d {fmt(d.byType.dot)} · {d.crits} crit
+            {fmtDrill(d.total)} dmg · m {fmtDrill(d.byType.melee)} / s {fmtDrill(d.byType.spell)} / d {fmtDrill(d.byType.dot)} · {d.crits} crit
           </span>
           {d.entries.slice(0, 6).map((e) => (
             <span key={e.name} className="drill-cat">
               {e.damageType !== "unknown" && <span className={`typedot ${e.damageType}`} />}
-              {e.name} {fmtK(e.total)}
+              {e.name} {fmtDrill(e.total)}
             </span>
           ))}
         </div>
@@ -176,7 +180,8 @@ export function EncounterTable({
             key={c.name}
             card={c}
             maxPct={maxPct}
-            open={expanded.has(`${enc.id}:${c.name}`)}
+            // my own breakdown stays open in every encounter; others toggle
+            open={c.isSelf || expanded.has(`${enc.id}:${c.name}`)}
             onToggle={() => onToggle(`${enc.id}:${c.name}`)}
           />
         ))}
