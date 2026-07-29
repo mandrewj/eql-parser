@@ -266,7 +266,6 @@ body { margin: 0; }
   background: var(--panel2); border: 1px solid var(--border); border-radius: 7px;
   padding: 0.4rem 0.5rem; display: flex; flex-direction: column; gap: 0.1rem;
 }
-.ov-tile.top { border-color: #7a5b2c; background: #23201a; }
 .ov-tile.current { border-color: var(--self); box-shadow: inset 0 0 0 1px var(--self); background: #1b2130; }
 .ov-now {
   font-size: 0.56rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;

@@ -68,11 +68,8 @@ export function StanceOverview({ rows, stance }: { rows: StanceOverviewRow[]; st
         </span>
       </div>
       <div className="ov-tiles">
-        {rows.map((r, i) => (
-          <div
-            key={`${r.melee}|${r.invocation}`}
-            className={`ov-tile ${i === 0 ? "top" : ""} ${isCurrent(r) ? "current" : ""}`}
-          >
+        {rows.map((r) => (
+          <div key={`${r.melee}|${r.invocation}`} className={`ov-tile ${isCurrent(r) ? "current" : ""}`}>
             <span className="ov-tile-dps">
               {fmtK(r.dps)} <span className="munit">dps</span>
               {isCurrent(r) && <span className="ov-now">now</span>}
