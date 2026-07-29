@@ -8,6 +8,7 @@ import type {
   MetricStat,
   StanceBreakdown,
   StanceOverviewRow,
+  StanceState,
 } from "./types";
 import { metricMeta } from "./filters";
 
@@ -52,11 +53,12 @@ export function FilterBar({ filters, onChange }: { filters: Filters; onChange: (
 
 const stanceLabel = (s: string) => (s === "none" ? "—" : s);
 
-export function StanceOverview({ rows }: { rows: StanceOverviewRow[] }) {
+export function StanceOverview({ rows, stance }: { rows: StanceOverviewRow[]; stance: StanceState | null }) {
   if (rows.length === 0) return null;
   const totalDmg = rows.reduce((s, r) => s + r.damage, 0);
   const totalSec = rows.reduce((s, r) => s + r.seconds, 0);
   const overall = Math.round(totalDmg / Math.max(1, totalSec));
+  const isCurrent = (r: StanceOverviewRow) => stance != null && r.melee === stance.melee && r.invocation === stance.invocation;
   return (
     <section className="overview">
       <div className="ov-head">
@@ -67,9 +69,13 @@ export function StanceOverview({ rows }: { rows: StanceOverviewRow[] }) {
       </div>
       <div className="ov-tiles">
         {rows.map((r, i) => (
-          <div key={`${r.melee}|${r.invocation}`} className={`ov-tile ${i === 0 ? "top" : ""}`}>
+          <div
+            key={`${r.melee}|${r.invocation}`}
+            className={`ov-tile ${i === 0 ? "top" : ""} ${isCurrent(r) ? "current" : ""}`}
+          >
             <span className="ov-tile-dps">
               {fmtK(r.dps)} <span className="munit">dps</span>
+              {isCurrent(r) && <span className="ov-now">now</span>}
             </span>
             <span className="ov-tile-combo">
               ⚔ {stanceLabel(r.melee)} · ✦ {stanceLabel(r.invocation)}
