@@ -188,16 +188,16 @@ export default function App() {
               <div className="section-title live">
                 <span className="live-dot">⚔</span> Active · {activeEncounters.length}
               </div>
-              {activeEncounters.map((e) => (
-                <EncounterTable key={e.id} enc={e} expanded={expanded} onToggle={toggle} />
+              {activeEncounters.map((e, i) => (
+                <EncounterTable key={e.id} enc={e} expanded={expanded} onToggle={toggle} showHead={i === 0} />
               ))}
             </section>
           )}
           {recentEncounters.length > 0 ? (
             <section className="block">
               <div className="section-title">Last {recentEncounters.length} encounters</div>
-              {recentEncounters.map((e) => (
-                <EncounterTable key={e.id} enc={e} expanded={expanded} onToggle={toggle} />
+              {recentEncounters.map((e, i) => (
+                <EncounterTable key={e.id} enc={e} expanded={expanded} onToggle={toggle} showHead={i === 0} />
               ))}
             </section>
           ) : (

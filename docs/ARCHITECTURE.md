@@ -125,6 +125,18 @@ interface CombatantStats {          // one meter row
 ## Frontend
 
 - **React + Vite**, plain CSS. A DPS meter is sorted horizontal bars — no chart lib needed for v1.
+- **Sized for a ~540px side panel beside the game**, so vertical space is the scarce resource and the
+  root font is **13px**. The chart's own heights stay in **px**, deliberately: shrinking the type must
+  never cost the bars their resolution. Consequences of that width, each worth keeping:
+  - Grids use **`auto-fit`**, never `auto-fill` — with two stance combos in a 540px row, `auto-fill`
+    holds open two empty 120px tracks and strands half the width.
+  - A stance tile is **row-wrap**, so one or two combos read as a single line instead of three short
+    lines in a mostly-empty box, and restack once several combos share the row.
+  - The `% damage / dps / hps / tank` labels print **once per section** (`showHead`), not once per
+    encounter; the shared grid keeps every table's columns aligned regardless.
+  - The self drill-down shows the **top 4** abilities. Six wrapped to three lines at this width, and
+    real spell names (`Denon's Disruptive Discord V`) are long enough that truncating them to fit more
+    would cost the rank numeral that distinguishes them.
 - **Log picker** — dropdown of detected logs (from `/api/logs`) to choose which one is parsed live; remembers last choice.
 - **Live pane** — current fight, auto-updating, with **filters**: by combatant kind (players / NPCs / pets), by damage type (melee / spell / DoT), and by stance. A live stance indicator shows the active stance.
 - **History pane** — fight list; select a fight to **drill down**: per-combatant rows → expand to damage-type split, per-ability breakdown, and (for self) the stance split active during that fight.
@@ -138,7 +150,7 @@ interface CombatantStats {          // one meter row
   - The six slots are the dark steps of the reference categorical palette, validated against the panel surface `#1c2029` (lightness band, chroma floor, adjacent-pair CVD separation, normal-vision floor, ≥3:1 contrast all pass). Because bar order is chronological, arbitrary combo pairs *can* end up adjacent, and the full six do not clear the stricter all-pairs CVD floor — so identity is never colour-alone: hovering any bar names the encounter and its combo in the header readout, and clicking a card highlights just that combo's bars.
   - Bars cap at 14px wide and stay centred in their slot, so a 10-encounter window reads as a time series rather than a row of blocks. A vertical gradient and rounded caps give them depth; the encounter that set each half's peak carries a hairline outline, so the header's peak figure has a visible owner.
   - A dashed **average line** crosses the DPS half at the window's avg dps — the *same figure the panel header prints*, not a second average computed a different way, so "above the line" means exactly what the header says.
-  - **Milestone rail.** The baseline between the halves is the timeline: level-ups (▲), ability points (◆), AAs and skill unlocks (★), my deaths (✕) and zone changes (»). Each mark sits on the **left edge of the encounter it belongs to** — the first encounter that ended at or after it — so a level-up earned on a kill lands exactly on the boundary between the two bars. Several in one gap (ding → ability point → new AA) cluster; past three they collapse to `+N`. Levels and deaths also draw a full-height guide, because those two are what explain a step change in the bars.
+  - **Milestone rail.** The baseline between the halves is the timeline: level-ups (▲), ability points (◆), AAs and skill unlocks (★), my deaths (✕) and zone changes (»). Each mark sits on the **left edge of the encounter it belongs to** — the first encounter that ended at or after it — so a level-up earned on a kill lands exactly on the boundary between the two bars. Several in one gap (ding → ability point → new AA) cluster, **one mark per kind carrying a count** — four zone changes in the same gap are one `»⁴`, not four glyphs fighting over ~14px of rail; hovering the cluster names all of them. Levels and deaths also draw a full-height guide, because those two are what explain a step change in the bars.
   - Marks are identified by **shape**, not colour — the rail is far too small for colour to carry identity — and hovering any of them replaces the header readout with its full sentence and clock time.
   - Below the chart, a **progression strip** shows current level and unspent AP, then what the window bought: levels, AP, abilities, deaths (in the rail's own glyphs, so the strip doubles as its legend), and — deliberately glyph-less, since they are counted but never marked — skill-ups and summed xp percent.
 - **Visual hierarchy** — panels sit on a raised surface above a darker page (`--panel` vs `--bg`, plus a drop shadow). **Active encounters are deliberately loud**: warm gradient, heavier frame, a `--live` accent stripe down the left edge, an accented section header, and a pulsing `⚔` dot (suppressed under `prefers-reduced-motion`). Finished encounters stay neutral so a long recent list doesn't turn into competing accents.

@@ -115,6 +115,23 @@ function markerSlot(tsMs: number, points: SelfEncounterPoint[]): number {
 /** Keep a marker sitting on the very first/last boundary from hanging off the plot. */
 const markerShift = (x: number) => (x <= 0.001 ? "0%" : x >= 0.999 ? "-100%" : "-50%");
 
+/** Collapse one boundary's milestones to one mark per kind, carrying a count. Four zone
+ *  changes in the same gap are one `»4`, not four glyphs competing for ~14px of rail. */
+function clusterByKind(items: Milestone[]): Array<{ mark: Milestone; count: number }> {
+  const byKind = new Map<MilestoneKind, Milestone[]>();
+  for (const m of items) {
+    const at = byKind.get(m.kind);
+    if (at) at.push(m);
+    else byKind.set(m.kind, [m]);
+  }
+  return [...byKind.values()].map((group) => {
+    const last = group[group.length - 1]!;
+    if (group.length === 1) return { mark: last, count: 1 };
+    // Hovering the cluster should name everything in it, newest last.
+    return { mark: { ...last, detail: group.map((g) => g.label).join(" · ") }, count: group.length };
+  });
+}
+
 /** Diverging bars: my DPS above the baseline, damage taken below. The two halves are
  *  separate panels sharing an encounter axis — each is scaled to its own peak (labelled
  *  in the header), so heights are never compared across the baseline. Between them runs
@@ -235,22 +252,18 @@ function EncounterHistory({
         <div className={`hist-rail ${groups.length ? "" : "bare"}`}>
           {groups.map(({ slot, x, items }) => (
             <span key={slot} className="hgroup" style={{ left: `${x * 100}%`, transform: `translateX(${markerShift(x)})` }}>
-              {items.slice(0, 3).map((m) => (
+              {clusterByKind(items).map(({ mark, count }) => (
                 <span
-                  key={m.id}
-                  className={`hms ${m.kind}`}
-                  title={`${m.detail} · ${time(m.tsMs)}`}
-                  onMouseEnter={() => setHoverMs(m)}
+                  key={mark.kind}
+                  className={`hms ${mark.kind}`}
+                  title={`${mark.detail} · ${time(mark.tsMs)}`}
+                  onMouseEnter={() => setHoverMs(mark)}
                   onMouseLeave={() => setHoverMs(null)}
                 >
-                  {MS_GLYPH[m.kind]}
+                  {MS_GLYPH[mark.kind]}
+                  {count > 1 && <span className="hms-n">{count}</span>}
                 </span>
               ))}
-              {items.length > 3 && (
-                <span className="hms more" title={items.map((m) => m.detail).join(" · ")}>
-                  +{items.length - 3}
-                </span>
-              )}
             </span>
           ))}
         </div>
@@ -431,7 +444,7 @@ function EncounterRow({
           <span className="drill-meta">
             {fmtDrill(d.total)} dmg · m {fmtDrill(d.byType.melee)} / s {fmtDrill(d.byType.spell)} / d {fmtDrill(d.byType.dot)} · {d.crits} crit
           </span>
-          {d.entries.slice(0, 6).map((e) => (
+          {d.entries.slice(0, 4).map((e) => (
             <span key={e.name} className="drill-cat">
               {e.damageType !== "unknown" && <span className={`typedot ${e.damageType}`} />}
               {e.name} {fmtDrill(e.total)}
@@ -447,10 +460,14 @@ export function EncounterTable({
   enc,
   expanded,
   onToggle,
+  showHead = true,
 }: {
   enc: EncounterView;
   expanded: Set<string>;
   onToggle: (key: string) => void;
+  /** Column labels only earn their row once per section — the grid keeps every
+   *  table's columns aligned whether or not this one prints them. */
+  showHead?: boolean;
 }) {
   const dps = Math.round(enc.total / Math.max(1, enc.durationSec));
   const maxPct = Math.max(1, ...enc.cards.map((c) => c.pct));
@@ -465,12 +482,14 @@ export function EncounterTable({
         </span>
       </div>
       <div className="etable">
-        <div className="erow ehead">
-          <span className="muted">% damage</span>
-          <span className="enum muted">dps</span>
-          <span className="enum muted">hps</span>
-          <span className="enum muted">tank</span>
-        </div>
+        {showHead && (
+          <div className="erow ehead">
+            <span className="muted">% damage</span>
+            <span className="enum muted">dps</span>
+            <span className="enum muted">hps</span>
+            <span className="enum muted">tank</span>
+          </div>
+        )}
         {enc.cards.map((c) => (
           <EncounterRow
             key={c.name}

@@ -112,6 +112,16 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 - A **progression strip** under the chart reports current level / unspent AP and what the window
   earned, reusing the rail's glyphs as its own legend.
 
+## Post-v1 — Density pass for the real side-panel width  ✅
+- Measured against how it's actually used: a ~540px panel beside the game window. Root font to
+  **13px**, tighter topbar/tabs/section headings; the chart's px heights left alone.
+- Reclaimed the two clear wastes — grids switched to **`auto-fit`** (`auto-fill` was stranding half
+  the tile row), and a stance tile now **row-wraps** so one combo is a line, not a near-empty box.
+- Column labels print **once per section**; the self drill-down shows the top **4** abilities.
+- Milestone clusters collapse to **one mark per kind with a count** (`»⁴`) instead of three glyphs
+  and a `+N`.
+- Order left alone deliberately: the My DPS panel stays pinned above the active fight.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.
