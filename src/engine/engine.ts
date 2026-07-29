@@ -76,6 +76,7 @@ interface FightState {
   npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
   perTarget: Map<string, Map<string, MetricAcc>>; // targetKey → attackerKey → damage breakdown
+  pairFirst: Map<string, number>; // "attackerKey>targetKey" → first contact ms (per-person start)
   firstSeen: Map<string, number>; // entityKey → first event ms (encounter start)
   lastSeen: Map<string, number>; // entityKey → last event ms (for per-NPC staleness)
   aliveEngaged: Set<string>;
@@ -295,6 +296,7 @@ export class Engine {
       npcSeeds: new Set(),
       targetIncoming: new Map(),
       perTarget: new Map(),
+      pairFirst: new Map(),
       firstSeen: new Map(),
       lastSeen: new Map(),
       aliveEngaged: new Set(),
@@ -356,6 +358,8 @@ export class Engine {
     this.see(aKey, attacker);
     this.see(tKey, target);
     f.damagePairs.push([aKey, tKey]);
+    const pk = `${aKey}>${tKey}`;
+    if (!f.pairFirst.has(pk)) f.pairFirst.set(pk, tsMs); // first attack/contact (hit or miss)
     if (!f.firstSeen.has(aKey)) f.firstSeen.set(aKey, tsMs);
     if (!f.firstSeen.has(tKey)) f.firstSeen.set(tKey, tsMs);
     f.lastSeen.set(aKey, tsMs);
@@ -454,8 +458,9 @@ export class Engine {
     if (!npc.has(npcKey)) return;
     f.finalizedNpcs.add(npcKey);
 
-    // Fold pets into owners; friendly attackers only.
+    // Fold pets into owners; track each owner's first contact with this NPC.
     const byOwner = new Map<string, MetricAcc>();
+    const ownerFirst = new Map<string, number>();
     for (const [aKey, cell] of attackers) {
       const ownerKey = this.petOwners.get(aKey) ?? aKey;
       if (ownerKey !== this.selfKey && !friendly.has(ownerKey)) continue;
@@ -465,6 +470,8 @@ export class Engine {
         byOwner.set(ownerKey, dst);
       }
       mergeAcc(dst, cell, ownerKey === aKey ? null : "🐾");
+      const pf = f.pairFirst.get(`${aKey}>${npcKey}`); // when this attacker first hit the NPC
+      if (pf !== undefined) ownerFirst.set(ownerKey, Math.min(ownerFirst.get(ownerKey) ?? Infinity, pf));
     }
     if (byOwner.size === 0) return;
 
@@ -472,11 +479,18 @@ export class Engine {
     const dur = Math.max(1, (endMs - startMs) / 1000);
 
     const allCards: EncounterCard[] = [...byOwner.entries()].map(([ownerKey, acc]): EncounterCard => {
+      // Per-person active window: from their first engagement (their attack, or the NPC first
+      // hitting/casting on them) to the encounter's end.
+      let first = ownerFirst.get(ownerKey) ?? Infinity;
+      const npcToOwner = f.pairFirst.get(`${npcKey}>${ownerKey}`);
+      if (npcToOwner !== undefined) first = Math.min(first, npcToOwner);
+      const activeStart = Number.isFinite(first) ? first : startMs;
+      const activeDur = Math.max(1, (endMs - activeStart) / 1000);
+
       const takenAcc = f.perTarget.get(ownerKey)?.get(npcKey) ?? newMetric();
-      // Healing isn't mob-specific — window it to this encounter's time span.
-      const healAcc = newMetric();
+      const healAcc = newMetric(); // healing windowed to this person's active time
       for (const h of f.healLog) {
-        if (h.healer === ownerKey && h.tsMs >= startMs && h.tsMs <= endMs) {
+        if (h.healer === ownerKey && h.tsMs >= activeStart && h.tsMs <= endMs) {
           addAbility(healAcc, h.spell, "unknown", h.amount, false);
         }
       }
@@ -484,17 +498,18 @@ export class Engine {
         name: this.nameOf(ownerKey),
         kind: ownerKey === this.selfKey ? "self" : "player",
         isSelf: ownerKey === this.selfKey,
-        damage: this.toStat(acc, dur),
-        healing: this.toStat(healAcc, dur),
-        taken: this.toStat(takenAcc, dur),
+        damage: this.toStat(acc, activeDur),
+        healing: this.toStat(healAcc, activeDur),
+        taken: this.toStat(takenAcc, activeDur),
       };
     });
-    allCards.sort((a, b) => b.damage.total - a.damage.total);
+    const byDps = (a: EncounterCard, b: EncounterCard) => b.damage.perSec - a.damage.perSec || b.damage.total - a.damage.total;
+    allCards.sort(byDps);
 
     // Me plus up to 5 others, displayed in DPS order.
     const self = allCards.find((c) => c.isSelf);
     const others = allCards.filter((c) => !c.isSelf).slice(0, 5);
-    const cards = (self ? [self, ...others] : others).sort((a, b) => b.damage.total - a.damage.total);
+    const cards = (self ? [self, ...others] : others).sort(byDps);
 
     this.finishedEncounters.unshift({
       id: `enc-${++this.encounterSeq}`,

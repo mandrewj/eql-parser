@@ -1,3 +1,6 @@
+/* Compact scale — the app is viewed in a narrow side panel next to the game. */
+html { font-size: 12.5px; }
+
 :root {
   color-scheme: dark;
   --bg: #14161a;
@@ -21,7 +24,7 @@ body { margin: 0; }
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  padding: 0 1.25rem 2rem;
+  padding: 0 0.6rem 1rem;
 }
 .muted { color: var(--muted); }
 .small { font-size: 0.8rem; }
@@ -164,13 +167,13 @@ body { margin: 0; }
 .section-title { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 0.6rem; }
 
 /* encounter panes (per-NPC DPS) */
-.enc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0.75rem; }
-.encounter { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.85rem; }
+.enc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 0.5rem; }
+.encounter { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.6rem; }
 .encounter.live { border-color: #7a3b3b; }
 .enc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
 .enc-name { font-weight: 600; }
 .enc-dps { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
-.enc-bar { position: relative; height: 24px; border-radius: 5px; background: var(--panel2); margin: 4px 0; overflow: hidden; }
+.enc-bar { position: relative; height: 20px; border-radius: 4px; background: var(--panel2); margin: 3px 0; overflow: hidden; }
 .enc-bar > .fill { position: absolute; inset: 0 auto 0 0; opacity: 0.82; }
 .enc-bar.self > .fill { background: linear-gradient(90deg, #34528f, var(--self)); }
 .enc-bar.player > .fill { background: linear-gradient(90deg, #2c6f4e, var(--player)); }
@@ -179,25 +182,25 @@ body { margin: 0; }
 .enc-bar .nums { font-variant-numeric: tabular-nums; }
 
 /* character cards (all metrics at once) */
-.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 0.75rem; align-items: start; }
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.85rem; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 0.5rem; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.55rem; }
 .card.is-self { border-color: #3a4f7a; }
-.card-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 0.45rem; }
-.card-name { font-weight: 700; font-size: 0.98rem; }
-.card-kind { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.card-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 0.3rem; }
+.card-name { font-weight: 700; font-size: 0.86rem; }
+.card-kind { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .tag.you { background: #34528f; }
 
-.mline { display: grid; grid-template-columns: 18px 1fr auto auto; align-items: center; gap: 0.5rem; padding: 0.16rem 0; opacity: 0.62; }
+.mline { display: grid; grid-template-columns: 13px 1fr auto auto; align-items: center; gap: 0.35rem; padding: 0.08rem 0; opacity: 0.6; }
 .mline.on { opacity: 1; }
-.micon { text-align: center; font-size: 0.82rem; }
-.mbar { position: relative; height: 14px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+.micon { text-align: center; font-size: 0.72rem; }
+.mbar { position: relative; height: 10px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
 .mbar > .fill { position: absolute; inset: 0 auto 0 0; opacity: 0.88; }
 .mbar.dmg > .fill { background: var(--melee); }
 .mbar.heal > .fill { background: var(--player); }
 .mbar.tank > .fill { background: var(--npc); }
-.mval { font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 62px; text-align: right; }
-.munit { color: var(--muted); font-size: 0.72rem; }
-.mtot { color: var(--muted); font-size: 0.76rem; font-variant-numeric: tabular-nums; min-width: 58px; text-align: right; }
+.mval { font-size: 0.76rem; font-variant-numeric: tabular-nums; min-width: 48px; text-align: right; }
+.munit { color: var(--muted); font-size: 0.66rem; }
+.mtot { color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
 .mline.on .mval { font-weight: 700; }
 
 .card-drill { margin-top: 0.55rem; border-top: 1px solid var(--border); padding-top: 0.5rem; }
@@ -205,11 +208,11 @@ body { margin: 0; }
 
 /* recent per-mob encounter sections */
 .enc-section {
-  border: 1px solid var(--border); border-radius: 12px; background: #191c22;
-  padding: 0.7rem 0.85rem 0.85rem; margin-bottom: 0.9rem;
+  border: 1px solid var(--border); border-radius: 9px; background: #191c22;
+  padding: 0.5rem 0.55rem 0.55rem; margin-bottom: 0.55rem;
 }
 .enc-section-head {
-  display: flex; justify-content: space-between; align-items: baseline;
-  margin-bottom: 0.6rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.25rem;
+  margin-bottom: 0.45rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border);
 }
-.enc-section-name { font-size: 1.05rem; font-weight: 700; }
+.enc-section-name { font-size: 0.92rem; font-weight: 700; }

@@ -204,6 +204,20 @@ test("recent encounters: one per kill, newest first, oldest drops past 5", () =>
   assert.deepEqual(recent[0]!.cards.map((c) => c.name), ["Feydie", "Sanluen"]);
 });
 
+test("per-person DPS uses each character's own active window (late joiner)", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 100 points of damage."), // self engages at t0
+    L("01:00:10", "Feydie kicks an orc for 100 points of damage."), // Feydie joins 10s in
+    L("01:00:10", "You have slain an orc!"), // kill at t+10s
+  ]);
+  const enc = engine.snapshot().recentEncounters[0]!;
+  const self = enc.cards.find((c) => c.isSelf)!;
+  const feydie = enc.cards.find((c) => c.name === "Feydie")!;
+  assert.equal(self.damage.perSec, 10); // 100 over 10s
+  assert.equal(feydie.damage.perSec, 100); // 100 over ~1s (joined at the very end)
+  assert.equal(enc.cards.map((c) => c.name)[0], "Feydie", "ranked by DPS: Feydie (100) first");
+});
+
 test("recent-encounter cards carry windowed healing + taken-from-mob", () => {
   const engine = feed([
     L("01:00:00", "You crush an orc for 60 points of damage."),
