@@ -9,6 +9,12 @@ live damage meter plus a browsable history of past fights in your web browser.
 
 ## Quick start
 
+**Easiest:** double-click **`start.command`** in Finder. On first run it installs
+dependencies and builds the UI, then it opens `http://localhost:8787` in your browser and
+serves the app. Close the window (or press Ctrl+C) to stop.
+
+Or from a terminal:
+
 ```bash
 npm install          # if the npm cache errors, add: --cache /tmp/eql-npmcache
 npm run dev          # builds the web UI, then tails your log + serves the app
