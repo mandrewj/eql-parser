@@ -175,7 +175,11 @@ export default function App() {
 
       {tab === "live" ? (
         <main className="pane wide">
-          <StanceOverview windows={snapshot?.stanceOverview ?? []} stance={snapshot?.stance ?? null} />
+          <StanceOverview
+            windows={snapshot?.stanceOverview ?? []}
+            history={snapshot?.encounterHistory ?? []}
+            stance={snapshot?.stance ?? null}
+          />
           {activeEncounters.length > 0 && (
             <section className="block">
               <div className="section-title live">

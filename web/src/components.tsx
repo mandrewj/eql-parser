@@ -7,7 +7,9 @@ import type {
   FightSummary,
   MetricKind,
   MetricStat,
+  SelfEncounterPoint,
   StanceBreakdown,
+  StanceOverviewRow,
   StanceOverviewWindow,
   StanceState,
 } from "./types";
@@ -57,13 +59,119 @@ export function FilterBar({ filters, onChange }: { filters: Filters; onChange: (
 // --- overview: my DPS by stance+invocation combination --------------------
 
 const stanceLabel = (s: string) => (s === "none" ? "—" : s);
+const comboKey = (r: { melee: string; invocation: string }) => `${r.melee}|${r.invocation}`;
 
-export function StanceOverview({ windows, stance }: { windows: StanceOverviewWindow[]; stance: StanceState | null }) {
+// Six validated categorical slots (see styles.css); anything past six shares the neutral.
+const SLOTS = 6;
+const comboColor = (key: string, map: Map<string, number>) => {
+  const i = map.get(key);
+  return i === undefined || i >= SLOTS ? "var(--s-other)" : `var(--s${i + 1})`;
+};
+
+/** Colour follows the combo, not its rank: slots are handed out in the order combos first
+ *  appear in the full history, so switching the 10/25/50 window never repaints a bar. */
+function buildComboColors(history: SelfEncounterPoint[], rows: StanceOverviewRow[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (let i = history.length - 1; i >= 0; i--) {
+    const k = comboKey(history[i]!);
+    if (!map.has(k)) map.set(k, map.size);
+  }
+  for (const r of rows) if (!map.has(comboKey(r))) map.set(comboKey(r), map.size);
+  return map;
+}
+
+/** Diverging bars: my DPS above the baseline, damage taken below. The two halves are
+ *  separate panels sharing an encounter axis — each is scaled to its own peak (labelled
+ *  in the header), so heights are never compared across the baseline. */
+function EncounterHistory({
+  points,
+  colors,
+  selected,
+  onSelect,
+}: {
+  points: SelfEncounterPoint[];
+  colors: Map<string, number>;
+  selected: string | null;
+  onSelect: (key: string | null) => void;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  if (points.length === 0) return null;
+
+  const maxDps = Math.max(1, ...points.map((p) => p.dps));
+  const maxTaken = Math.max(1, ...points.map((p) => p.taken));
+  const hp = hover === null ? null : points[hover] ?? null;
+
+  const col = (p: SelfEncounterPoint, i: number) => {
+    const key = comboKey(p);
+    const dimmed = selected !== null && selected !== key;
+    return `hcell ${dimmed ? "dim" : ""} ${hover === i ? "hov" : ""}`;
+  };
+  const bind = (p: SelfEncounterPoint, i: number) => ({
+    onMouseEnter: () => setHover(i),
+    onClick: () => onSelect(selected === comboKey(p) ? null : comboKey(p)),
+    title: `${p.name} · ${fmtDrill(p.dps)} dps · ${fmtDrill(p.taken)} taken`,
+  });
+
+  return (
+    <div className="hist" onMouseLeave={() => setHover(null)}>
+      <div className="hist-head">
+        <span className="hist-title">Per encounter · oldest → newest</span>
+        {hp ? (
+          <span className="hist-readout">
+            <span className="hswatch" style={{ background: comboColor(comboKey(hp), colors) }} />
+            {hp.name} · {hp.durationSec}s · <b>{fmtDrill(hp.dps)}</b> dps · <b>{fmtDrill(hp.taken)}</b> taken · ⚔{" "}
+            {stanceLabel(hp.melee)} · ✦ {stanceLabel(hp.invocation)}
+          </span>
+        ) : (
+          <span className="hist-scale">
+            ▲ peak {fmtDrill(maxDps)} dps · ▼ peak {fmtDrill(maxTaken)} taken
+          </span>
+        )}
+      </div>
+      <div className="hist-plot">
+        <div className="hrow up">
+          {points.map((p, i) => (
+            <div key={p.id} className={col(p, i)} {...bind(p, i)}>
+              <div
+                className="hbar"
+                style={{ height: `${(p.dps / maxDps) * 100}%`, background: comboColor(comboKey(p), colors) }}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="hist-base" />
+        <div className="hrow down">
+          {points.map((p, i) => (
+            <div key={p.id} className={col(p, i)} {...bind(p, i)}>
+              <div
+                className="hbar tank"
+                style={{ height: `${(p.taken / maxTaken) * 100}%`, background: comboColor(comboKey(p), colors) }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function StanceOverview({
+  windows,
+  history,
+  stance,
+}: {
+  windows: StanceOverviewWindow[];
+  history: SelfEncounterPoint[];
+  stance: StanceState | null;
+}) {
   const [n, setN] = useState(25);
+  const [selected, setSelected] = useState<string | null>(null);
   const rows = windows.find((w) => w.n === n)?.rows ?? [];
   const totalDmg = rows.reduce((s, r) => s + r.damage, 0);
   const totalSec = rows.reduce((s, r) => s + r.seconds, 0);
   const overall = Math.round(totalDmg / Math.max(1, totalSec));
+  const colors = buildComboColors(history, rows);
+  const points = history.slice(0, n).reverse(); // history is newest-first; the chart reads left→right
   const isCurrent = (r: { melee: string; invocation: string }) =>
     stance != null && r.melee === stance.melee && r.invocation === stance.invocation;
   return (
@@ -83,18 +191,29 @@ export function StanceOverview({ windows, stance }: { windows: StanceOverviewWin
       </div>
       {rows.length === 0 && <div className="muted small">No encounters yet.</div>}
       <div className="ov-tiles">
-        {rows.map((r) => (
-          <div key={`${r.melee}|${r.invocation}`} className={`ov-tile ${isCurrent(r) ? "current" : ""}`}>
-            <span className="ov-tile-dps">
-              {fmtK(r.dps)} <span className="munit">dps</span>
-              {isCurrent(r) && <span className="ov-now">now</span>}
-            </span>
-            <span className="ov-tile-combo">
-              ⚔ {stanceLabel(r.melee)} · ✦ {stanceLabel(r.invocation)}
-            </span>
-          </div>
-        ))}
+        {rows.map((r) => {
+          const key = comboKey(r);
+          const dimmed = selected !== null && selected !== key;
+          return (
+            <div
+              key={key}
+              className={`ov-tile ${isCurrent(r) ? "current" : ""} ${selected === key ? "sel" : ""} ${dimmed ? "dim" : ""}`}
+              onClick={() => setSelected(selected === key ? null : key)}
+              title={selected === key ? "Click to clear the highlight" : "Click to highlight this combo in the history"}
+            >
+              <span className="ov-tile-dps">
+                <span className="ov-swatch" style={{ background: comboColor(key, colors) }} />
+                {fmtK(r.dps)} <span className="munit">dps</span>
+                {isCurrent(r) && <span className="ov-now">now</span>}
+              </span>
+              <span className="ov-tile-combo">
+                ⚔ {stanceLabel(r.melee)} · ✦ {stanceLabel(r.invocation)}
+              </span>
+            </div>
+          );
+        })}
       </div>
+      <EncounterHistory points={points} colors={colors} selected={selected} onSelect={setSelected} />
     </section>
   );
 }

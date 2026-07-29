@@ -53,6 +53,19 @@ export interface StanceOverviewWindow {
   rows: StanceOverviewRow[];
 }
 
+/** One finished encounter, from my point of view — the history chart's data point. */
+export interface SelfEncounterPoint {
+  id: string;
+  name: string;
+  endMs: number;
+  durationSec: number;
+  dps: number; // my damage per second in this encounter
+  damage: number; // my total damage
+  taken: number; // total damage I took
+  melee: string; // stance combo I spent the most time in during this encounter
+  invocation: string;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -119,6 +132,7 @@ export interface Snapshot {
   recentEncounters: EncounterView[];
   stance: StanceState;
   stanceOverview: StanceOverviewWindow[];
+  encounterHistory: SelfEncounterPoint[]; // newest first, up to 50
 }
 
 export interface LogInfo {

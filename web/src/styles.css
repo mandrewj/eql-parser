@@ -18,6 +18,18 @@ html { font-size: 14px; }
   --melee: #c9a45b;
   --spell: #7b6fd6;
   --dot: #5bb0c9;
+
+  /* Categorical slots for stance combos. Dark-mode steps, validated against the
+     panel surface (#1c2029): lightness band, chroma floor, adjacent CVD separation,
+     normal-vision floor and >=3:1 contrast all pass. Assign in order, never cycle —
+     a 7th combo falls through to --s-other. */
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #c98500;
+  --s5: #d55181;
+  --s6: #008300;
+  --s-other: #77808f;
 }
 
 * { box-sizing: border-box; }
@@ -253,3 +265,34 @@ body { margin: 0; }
 .ov-tile-dps { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ov-tile-dps .munit { font-size: 0.62rem; font-weight: 400; color: var(--muted); }
 .ov-tile-combo { font-size: 0.68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-tile { cursor: pointer; transition: opacity 0.12s ease; }
+.ov-tile.sel { border-color: #7d879b; box-shadow: inset 0 0 0 1px #7d879b; }
+.ov-tile.dim { opacity: 0.4; }
+.ov-swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 0.35rem; vertical-align: baseline; }
+
+/* encounter history — diverging bars, dps above the baseline, damage taken below.
+   Each half is scaled to its own peak (both labelled in the header): the halves are
+   mirrored panels over a shared encounter axis, not one continuous scale. */
+.hist { margin-top: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.5rem; }
+.hist-head { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem; }
+.hist-title { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; }
+.hist-scale, .hist-readout {
+  margin-left: auto; font-size: 0.68rem; color: var(--muted); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hist-readout { color: #b8c0cc; }
+.hist-readout b { color: var(--text); font-weight: 700; }
+.hswatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 0.3rem; }
+.hist-plot { display: flex; flex-direction: column; }
+.hrow { display: flex; align-items: stretch; gap: 2px; }
+.hrow.up { height: 58px; }
+.hrow.down { height: 34px; }
+.hist-base { height: 1px; margin: 3px 0; background: #4a5468; }
+.hcell { flex: 1 1 0; min-width: 2px; display: flex; justify-content: center; cursor: pointer; transition: opacity 0.12s ease; }
+.hrow.up .hcell { align-items: flex-end; }
+.hrow.down .hcell { align-items: flex-start; }
+.hcell.dim { opacity: 0.18; }
+.hcell.hov { background: #ffffff0f; }
+/* thin marks: bars stay slim and centred in their slot however few encounters are shown */
+.hbar { width: 100%; max-width: 14px; border-radius: 3px 3px 0 0; min-height: 1px; }
+.hbar.tank { border-radius: 0 0 3px 3px; opacity: 0.5; }

@@ -70,6 +70,15 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 - Bolder theme: darker page behind raised panels, heavier type on names/numbers, and a loud
   active-encounter treatment (accent stripe, warm frame, pulsing live dot) versus neutral finished ones.
 
+## Post-v1 — Encounter history chart in the My DPS panel  ✅
+- Engine ships `encounterHistory`: the last 50 finished encounters from my side (dps, damage,
+  damage taken, duration) tagged with the stance combo I spent the most time in during each.
+- The stance-combo cards stay; below them a diverging bar chart plots those encounters —
+  DPS above the baseline, damage taken below, each half scaled to its own labelled peak.
+- Bars are coloured by stance combo, matching a swatch on each card; hover names the encounter,
+  clicking a card highlights only that combo. Colour follows the combo (first-seen order), so
+  switching the 10/25/50 window never repaints a bar.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.

@@ -20,6 +20,7 @@ import type {
   Fight,
   FightSummary,
   MetricStat,
+  SelfEncounterPoint,
   StanceBreakdown,
   StanceDim,
   StanceOverviewRow,
@@ -176,6 +177,7 @@ export class Engine {
   private finishedSummaries: FightSummary[] = []; // cached; a closed fight never changes
   private finishedEncounters: EncounterView[] = []; // newest first, rolling
   private overviewCache: Array<{ n: number; rows: StanceOverviewRow[] }> | null = null;
+  private historyCache: SelfEncounterPoint[] | null = null;
   private fightSeq = 0;
   private encounterSeq = 0;
   private readonly now: () => number;
@@ -259,6 +261,7 @@ export class Engine {
     recentEncounters: EncounterView[];
     stance: StanceState;
     stanceOverview: Array<{ n: number; rows: StanceOverviewRow[] }>;
+    encounterHistory: SelfEncounterPoint[];
   } {
     return {
       current: this.current ? this.buildFight(this.current) : null,
@@ -267,7 +270,33 @@ export class Engine {
       recentEncounters: this.finishedEncounters.slice(0, 5),
       stance: { ...this.currentStances },
       stanceOverview: (this.overviewCache ??= this.buildStanceOverviews()),
+      encounterHistory: (this.historyCache ??= this.buildEncounterHistory()),
     };
+  }
+
+  /** My per-encounter damage/tanking for the last 50 finished encounters, newest first,
+   *  each tagged with the stance combo I spent the most time in during it. */
+  private buildEncounterHistory(): SelfEncounterPoint[] {
+    return this.finishedEncounters.slice(0, 50).map((e) => {
+      const self = e.cards.find((c) => c.isSelf);
+      let combo = "";
+      let bestSec = -1;
+      for (const [c, sec] of this.comboSecondsIn(e.startMs, e.endMs)) {
+        if (sec > bestSec) [combo, bestSec] = [c, sec];
+      }
+      const [melee = "none", invocation = "none"] = combo.split("|");
+      return {
+        id: e.id,
+        name: e.name,
+        endMs: e.endMs,
+        durationSec: e.durationSec,
+        dps: self?.damage.perSec ?? 0,
+        damage: self?.damage.total ?? 0,
+        taken: self?.taken.total ?? 0,
+        melee,
+        invocation,
+      };
+    });
   }
 
   /** Seconds spent in each stance combo within [startMs, endMs] (incl. the open segment). */
@@ -549,6 +578,7 @@ export class Engine {
     this.encounterSeq++;
     this.finishedEncounters.unshift(view);
     this.overviewCache = null; // a new encounter changes the stance overview
+    this.historyCache = null;
     if (this.finishedEncounters.length > 60) this.finishedEncounters.length = 60;
     // Drop combo-log entries older than the oldest encounter we still keep.
     const oldest = this.finishedEncounters[this.finishedEncounters.length - 1]?.startMs ?? 0;
