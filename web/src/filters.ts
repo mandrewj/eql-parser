@@ -33,8 +33,3 @@ export function rankedCombatants(
   };
   return { rows, maxima };
 }
-
-export function stancesOf(fight: Fight | null): string[] {
-  const self = fight?.combatants.find((c) => c.isSelf);
-  return self?.stances?.map((s) => s.stance) ?? [];
-}

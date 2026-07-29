@@ -20,8 +20,13 @@ import type {
   Fight,
   FightSummary,
   MetricStat,
+  StanceBreakdown,
+  StanceDim,
   StanceSegment,
+  StanceState,
 } from "../types.js";
+
+const STANCE_DIMS: StanceDim[] = ["melee", "invocation"];
 
 export interface EngineOptions {
   selfName: string; // resolved from the log filename; "You" maps to this
@@ -51,7 +56,7 @@ interface CombatantAgg {
   done: MetricAcc; // damage done
   heal: MetricAcc; // healing done
   taken: MetricAcc; // damage taken
-  stanceTotals: Map<string, number>; // self only, damage done by stance
+  stanceTotals: Record<StanceDim, Map<string, number>>; // self only, damage by each stance dim
 }
 
 interface FightState {
@@ -115,8 +120,8 @@ export class Engine {
   private readonly selfKey: string;
   private readonly display = new Map<string, string>();
 
-  private currentStance = "unknown";
-  private stanceSegments: StanceSegment[] = [];
+  private readonly currentStances: StanceState = { melee: "none", invocation: "none" };
+  private readonly stanceSegments: Record<StanceDim, StanceSegment[]> = { melee: [], invocation: [] };
   private readonly petOwners = new Map<string, string>(); // petKey → ownerKey (global)
 
   private current: FightState | null = null;
@@ -133,7 +138,7 @@ export class Engine {
 
   handle(ev: CombatEvent): void {
     if (ev.type === "stance") {
-      this.applyStance(ev.tsMs, ev.stance);
+      this.applyStance(ev.tsMs, ev.dim, ev.stance);
       return;
     }
     if (ev.type === "pet") {
@@ -166,8 +171,8 @@ export class Engine {
     if (this.current) this.closeFight(this.current.lastActivityMs);
   }
 
-  get stance(): string {
-    return this.currentStance;
+  get stance(): StanceState {
+    return { ...this.currentStances };
   }
 
   fights(): Fight[] {
@@ -175,22 +180,23 @@ export class Engine {
     return states.map((s) => this.buildFight(s));
   }
 
-  snapshot(): { current: Fight | null; recent: FightSummary[]; stance: string } {
+  snapshot(): { current: Fight | null; recent: FightSummary[]; stance: StanceState } {
     const recent = this.finished.slice(-20).map((s) => this.summarize(this.buildFight(s)));
     return {
       current: this.current ? this.buildFight(this.current) : null,
       recent,
-      stance: this.currentStance,
+      stance: { ...this.currentStances },
     };
   }
 
   // --- stances ------------------------------------------------------------
 
-  private applyStance(tsMs: number, stance: string): void {
-    const last = this.stanceSegments[this.stanceSegments.length - 1];
+  private applyStance(tsMs: number, dim: StanceDim, stance: string): void {
+    const segs = this.stanceSegments[dim];
+    const last = segs[segs.length - 1];
     if (last && last.endMs === null) last.endMs = tsMs;
-    this.stanceSegments.push({ startMs: tsMs, endMs: null, stance });
-    this.currentStance = stance;
+    segs.push({ startMs: tsMs, endMs: null, stance });
+    this.currentStances[dim] = stance;
   }
 
   // --- identity -----------------------------------------------------------
@@ -249,7 +255,14 @@ export class Engine {
   private combatant(f: FightState, key: string): CombatantAgg {
     let c = f.combatants.get(key);
     if (!c) {
-      c = { key, name: this.nameOf(key), done: newMetric(), heal: newMetric(), taken: newMetric(), stanceTotals: new Map() };
+      c = {
+        key,
+        name: this.nameOf(key),
+        done: newMetric(),
+        heal: newMetric(),
+        taken: newMetric(),
+        stanceTotals: { melee: new Map(), invocation: new Map() },
+      };
       f.combatants.set(key, c);
     }
     return c;
@@ -302,7 +315,10 @@ export class Engine {
 
     if (aKey === this.selfKey) {
       const c = this.combatant(f, aKey);
-      c.stanceTotals.set(this.currentStance, (c.stanceTotals.get(this.currentStance) ?? 0) + ev.amount);
+      for (const dim of STANCE_DIMS) {
+        const s = this.currentStances[dim];
+        c.stanceTotals[dim].set(s, (c.stanceTotals[dim].get(s) ?? 0) + ev.amount);
+      }
     }
   }
 
@@ -423,10 +439,11 @@ export class Engine {
         healing: this.toStat(c.heal, dur),
         taken: this.toStat(c.taken, dur),
       };
-      if (isSelf && c.stanceTotals.size > 0) {
-        stats.stances = [...c.stanceTotals.entries()]
-          .map(([stance, total]) => ({ stance, total, dps: Math.round(total / dur), activeSeconds: 0 }))
-          .sort((a, b) => b.total - a.total);
+      if (isSelf && (c.stanceTotals.melee.size > 0 || c.stanceTotals.invocation.size > 0)) {
+        stats.stances = {
+          melee: this.stanceBreakdown(c.stanceTotals.melee, this.stanceSegments.melee, f, dur),
+          invocation: this.stanceBreakdown(c.stanceTotals.invocation, this.stanceSegments.invocation, f, dur),
+        };
       }
       byKey.set(c.key, { key: c.key, ownerKey, stats });
     }
@@ -448,17 +465,7 @@ export class Engine {
       .filter((c) => c.damage.total > 0 || c.healing.total > 0 || c.taken.total > 0)
       .sort((a, b) => b.damage.total - a.damage.total);
 
-    const stanceTimeline = this.clipStances(f);
-    const self = combatants.find((c) => c.isSelf);
-    if (self?.stances) {
-      const secByStance = new Map<string, number>();
-      for (const seg of stanceTimeline) {
-        const end = seg.endMs ?? (f.endMs ?? f.lastActivityMs);
-        secByStance.set(seg.stance, (secByStance.get(seg.stance) ?? 0) + Math.max(0, (end - seg.startMs) / 1000));
-      }
-      for (const s of self.stances) s.activeSeconds = Math.round(secByStance.get(s.stance) ?? 0);
-    }
-
+    const stanceTimeline = this.clipStances(this.stanceSegments.melee, f);
     const encounters = this.buildEncounters(f, friendly, npc, dur);
 
     const headline = [...f.targetIncoming.entries()]
@@ -518,15 +525,38 @@ export class Engine {
     return encounters.sort((a, b) => Number(b.active) - Number(a.active) || b.total - a.total);
   }
 
-  private clipStances(f: FightState): StanceSegment[] {
+  private clipStances(segments: StanceSegment[], f: FightState): StanceSegment[] {
     const end = f.endMs ?? f.lastActivityMs;
     const out: StanceSegment[] = [];
-    for (const seg of this.stanceSegments) {
+    for (const seg of segments) {
       const segEnd = seg.endMs ?? end;
       if (segEnd < f.startMs || seg.startMs > end) continue;
       out.push({ startMs: Math.max(seg.startMs, f.startMs), endMs: Math.min(segEnd, end), stance: seg.stance });
     }
     return out;
+  }
+
+  /** Damage-by-stance for one dimension, with active-seconds from the clipped timeline. */
+  private stanceBreakdown(
+    totals: Map<string, number>,
+    segments: StanceSegment[],
+    f: FightState,
+    dur: number,
+  ): StanceBreakdown[] {
+    const end = f.endMs ?? f.lastActivityMs;
+    const secByStance = new Map<string, number>();
+    for (const seg of this.clipStances(segments, f)) {
+      const segEnd = seg.endMs ?? end;
+      secByStance.set(seg.stance, (secByStance.get(seg.stance) ?? 0) + Math.max(0, (segEnd - seg.startMs) / 1000));
+    }
+    return [...totals.entries()]
+      .map(([stance, total]) => ({
+        stance,
+        total,
+        dps: Math.round(total / dur),
+        activeSeconds: Math.round(secByStance.get(stance) ?? 0),
+      }))
+      .sort((a, b) => b.total - a.total);
   }
 
   private summarize(fight: Fight): FightSummary {

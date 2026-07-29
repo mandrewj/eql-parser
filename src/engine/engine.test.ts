@@ -88,18 +88,21 @@ test("damage-type split and per-ability drill-down", () => {
   assert.equal(dot.total, 15);
 });
 
-test("stance changes correlate with self damage", () => {
+test("damage correlates with both stance dimensions (melee + invocation) at once", () => {
   const engine = feed([
     L("01:00:00", "You assume an offensive stance."),
+    L("01:00:00", "You begin reciting the spellblade invocation."),
     L("01:00:01", "You strike orc for 100 points of damage."),
-    L("01:00:05", "You assume a balanced stance."),
+    L("01:00:05", "You assume a defensive stance."),
     L("01:00:06", "You strike orc for 40 points of damage."),
     L("01:00:07", "You have slain orc!"),
   ]);
   const self = engine.fights()[0]!.combatants.find((c) => c.isSelf)!;
-  const byStance = Object.fromEntries((self.stances ?? []).map((s) => [s.stance, s.total]));
-  assert.equal(byStance["offensive"], 100);
-  assert.equal(byStance["balanced"], 40);
+  const melee = Object.fromEntries(self.stances!.melee.map((s) => [s.stance, s.total]));
+  assert.equal(melee["offensive"], 100);
+  assert.equal(melee["defensive"], 40);
+  const inv = Object.fromEntries(self.stances!.invocation.map((s) => [s.stance, s.total]));
+  assert.equal(inv["spellblade"], 140); // both hits under the one invocation
 });
 
 test("miss events count toward accuracy without adding damage", () => {

@@ -47,9 +47,16 @@ function printFight(fight: Fight, detail: boolean): void {
   metricTable("Damage taken (tanking)", "dps", friendly, (c) => c.taken);
 
   const self = fight.combatants.find((c) => c.isSelf);
-  if (self?.stances?.length) {
-    console.log(`    ── Self damage by stance ──`);
-    for (const s of self.stances) console.log(`      ${s.stance.padEnd(12)} ${fmt(s.total).padStart(8)}  ${fmt(s.dps)} dps  ${s.activeSeconds}s`);
+  if (self?.stances) {
+    for (const [dim, label] of [
+      ["melee", "melee stance"],
+      ["invocation", "invocation"],
+    ] as const) {
+      const list = self.stances[dim];
+      if (!list.length) continue;
+      console.log(`    ── Self damage by ${label} ──`);
+      for (const s of list) console.log(`      ${s.stance.padEnd(16)} ${fmt(s.total).padStart(8)}  ${fmt(s.dps)} dps  ${s.activeSeconds}s`);
+    }
   }
   if (npcs.length) {
     console.log(`    ── NPC outgoing ──`);

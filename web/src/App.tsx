@@ -118,8 +118,11 @@ export default function App() {
           EQL Parser <span className="muted small">live parser</span>
         </div>
         <div className="controls">
-          <span className="stancepill" title="current stance">
-            ⛨ {snapshot?.stance ?? "—"}
+          <span className="stancepill" title="melee stance">
+            ⚔ {snapshot?.stance.melee && snapshot.stance.melee !== "none" ? snapshot.stance.melee : "—"}
+          </span>
+          <span className="stancepill" title="invocation (caster stance)">
+            ✦ {snapshot?.stance.invocation && snapshot.stance.invocation !== "none" ? snapshot.stance.invocation : "—"}
           </span>
           <span className={`conn ${connected ? "on" : ""}`}>{connected ? "live" : "offline"}</span>
         </div>

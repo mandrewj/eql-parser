@@ -18,7 +18,7 @@ import type {
 const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
-const RELEVANT_RE = /damage|slain|but |assume |heal|Master/;
+const RELEVANT_RE = /damage|slain|but |assume |heal|Master|invocation/;
 
 // A pet addressing you as "Master" (e.g. "Gore says, 'Attacking a rat Master.'")
 // only ever refers to *your* pet in your own log, so it identifies the self's pet.
@@ -40,6 +40,8 @@ const VERB_BASE: Record<string, string> = {
 const baseVerb = (v: string): string => VERB_BASE[v] ?? v;
 
 const STANCE_RE = /^You assume an? (.+?) stance\.$/;
+// Caster "stances" are invocations: "You begin reciting the spellblade invocation."
+const INVOKE_RE = /^You begin reciting the (.+?) invocation\.$/;
 const YOU_SLAIN_RE = /^You have slain (.+?)!$/;
 const SLAIN_BY_RE = /^(.+?) has been slain by (.+?)!$/;
 const MISS_YOU_RE = /^You try to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
@@ -102,10 +104,15 @@ export function parseLine(raw: string): CombatEvent | null {
   const { tsMs, body } = split;
   if (!RELEVANT_RE.test(body)) return null;
 
-  // Stance change (self only)
+  // Stance change (self only) — melee stance or caster invocation
   let m = STANCE_RE.exec(body);
   if (m) {
-    const ev: StanceEvent = { type: "stance", tsMs, raw: body, stance: m[1]! };
+    const ev: StanceEvent = { type: "stance", tsMs, raw: body, dim: "melee", stance: m[1]! };
+    return ev;
+  }
+  m = INVOKE_RE.exec(body);
+  if (m) {
+    const ev: StanceEvent = { type: "stance", tsMs, raw: body, dim: "invocation", stance: m[1]! };
     return ev;
   }
 

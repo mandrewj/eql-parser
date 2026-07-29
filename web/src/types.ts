@@ -30,6 +30,16 @@ export interface StanceBreakdown {
   activeSeconds: number;
 }
 
+export interface StanceBreakdowns {
+  melee: StanceBreakdown[];
+  invocation: StanceBreakdown[];
+}
+
+export interface StanceState {
+  melee: string;
+  invocation: string;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -38,7 +48,7 @@ export interface CombatantStats {
   damage: MetricStat; // damage done
   healing: MetricStat; // healing done
   taken: MetricStat; // damage taken
-  stances?: StanceBreakdown[]; // self only — damage done by stance
+  stances?: StanceBreakdowns; // self only — damage by melee stance and by invocation
 }
 
 export interface StanceSegment {
@@ -89,7 +99,7 @@ export interface FightSummary {
 export interface Snapshot {
   current: Fight | null;
   recent: FightSummary[];
-  stance: string;
+  stance: StanceState;
 }
 
 export interface LogInfo {

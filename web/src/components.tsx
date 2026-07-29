@@ -1,4 +1,4 @@
-import type { CombatantStats, Encounter, Filters, FightSummary, MetricKind, MetricStat } from "./types";
+import type { CombatantStats, Encounter, Filters, FightSummary, MetricKind, MetricStat, StanceBreakdown } from "./types";
 import { metricMeta } from "./filters";
 
 const fmt = (n: number) => n.toLocaleString();
@@ -97,6 +97,29 @@ function MetricLine({
   );
 }
 
+function StanceTable({ icon, label, rows }: { icon: string; label: string; rows: StanceBreakdown[] }) {
+  if (!rows.some((s) => s.stance !== "none")) return null; // dimension never used
+  return (
+    <div className="stances">
+      <div className="stances-label">{label}</div>
+      <table className="cats">
+        <tbody>
+          {rows.map((s) => (
+            <tr key={s.stance}>
+              <td>
+                {icon} {s.stance === "none" ? "(none)" : s.stance}
+              </td>
+              <td className="r">{fmt(s.total)}</td>
+              <td className="r muted">{fmt(s.dps)} dps</td>
+              <td className="r muted">{s.activeSeconds}s</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function CharacterCard({
   c,
   filters,
@@ -164,22 +187,11 @@ export function CharacterCard({
           ) : (
             <div className="muted small">No {meta.label.toLowerCase()} recorded.</div>
           )}
-          {metric === "damage" && c.isSelf && c.stances && c.stances.length > 0 && (
-            <div className="stances">
-              <div className="stances-label">Damage by stance</div>
-              <table className="cats">
-                <tbody>
-                  {c.stances.map((s) => (
-                    <tr key={s.stance}>
-                      <td>⛨ {s.stance}</td>
-                      <td className="r">{fmt(s.total)}</td>
-                      <td className="r muted">{fmt(s.dps)} dps</td>
-                      <td className="r muted">{s.activeSeconds}s</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {metric === "damage" && c.isSelf && c.stances && (
+            <>
+              <StanceTable icon="⚔" label="Damage by melee stance" rows={c.stances.melee} />
+              <StanceTable icon="✦" label="Damage by invocation" rows={c.stances.invocation} />
+            </>
           )}
         </div>
       )}

@@ -190,11 +190,23 @@ Stance changes are logged **only for the logging character**:
 ```
 ^You assume an? (?<stance>.+?) stance\.$
 ```
-- Observed: `offensive`, `striker`, `evasive`, `balanced` (more exist per class/level).
-- There is **no "return to normal" message** — a stance stays active until the next `You assume …`
-  line. Before the first stance line in a session, treat stance as `unknown`.
-- Other players' stances are **not visible** in the log, so stance correlation applies to `You` only.
+A character is in **two independent stances at once** — a melee stance and a caster *invocation* —
+so we track two dimensions:
 
-The engine keeps a global **stance timeline** (`[startMs, endMs, stance]` segments) and tags every
-self damage event with the stance active at its timestamp. This powers "damage/DPS by stance",
-"which stance was active during this fight", and stance-filtered drill-downs.
+- **Melee stance** — `You assume a/an <stance> stance.` Observed: `offensive`, `defensive`,
+  `evasive`, `striker`, `mage hunter`, `balanced` (more per class/level).
+- **Invocation** (caster stance) — `You begin reciting the <name> invocation.` Observed:
+  `spellblade`, `arcane mastery`, `recovery`, `inversion`, `divine`. (`You begin to change your
+  invocation.` is just a transition and carries no name.)
+
+```
+^You assume an? (?<stance>.+?) stance\.$
+^You begin reciting the (?<invocation>.+?) invocation\.$
+```
+- There is **no "return to normal" message** — each stays active until the next change on its
+  dimension. Before the first line in a session, a dimension is `none`.
+- Other players' stances/invocations are **not visible**, so this applies to `You` only.
+
+The engine keeps a **timeline per dimension** and tags every self damage event with *both* the
+melee stance and invocation active at its timestamp — powering "damage by melee stance" and
+"damage by invocation" side by side, and a header that shows both current stances.

@@ -78,9 +78,12 @@ export interface DeathEvent extends BaseEvent {
   killer: string | null;
 }
 
+export type StanceDim = "melee" | "invocation";
+
 export interface StanceEvent extends BaseEvent {
   type: "stance";
-  stance: string; // offensive, striker, evasive, balanced, ... (self only)
+  dim: StanceDim; // "melee" (assume … stance) or "invocation" (reciting … invocation)
+  stance: string; // offensive/defensive/… or spellblade/arcane mastery/… (self only)
 }
 
 export interface HealEvent extends BaseEvent {
@@ -140,6 +143,18 @@ export interface StanceBreakdown {
   activeSeconds: number;
 }
 
+/** Self damage split by each stance dimension (a character is in both at once). */
+export interface StanceBreakdowns {
+  melee: StanceBreakdown[];
+  invocation: StanceBreakdown[];
+}
+
+/** The two stances active right now (self). */
+export interface StanceState {
+  melee: string;
+  invocation: string;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -148,7 +163,7 @@ export interface CombatantStats {
   damage: MetricStat; // damage done
   healing: MetricStat; // healing done
   taken: MetricStat; // damage taken (tanking)
-  stances?: StanceBreakdown[]; // self only — damage done by stance
+  stances?: StanceBreakdowns; // self only — damage by melee stance and by invocation
 }
 
 export interface StanceSegment {
