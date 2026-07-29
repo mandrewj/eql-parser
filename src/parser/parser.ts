@@ -13,12 +13,17 @@ import type {
   PetEvent,
   SpellDamageEvent,
   StanceEvent,
+  ZoneEvent,
 } from "../types.js";
 
 const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
-const RELEVANT_RE = /damage|slain|but |assume |heal|Master|invocation/;
+const RELEVANT_RE = /damage|slain|but |assume |heal|Master|invocation|entered/;
+
+// Zoning is a hard fight boundary: "You have entered The Greater Faydark."
+// (guard against the non-zone "You have entered an area where …" warning).
+const ZONE_RE = /^You have entered (?!an area\b)(.+?)\.$/;
 
 // A pet addressing you as "Master" (e.g. "Gore says, 'Attacking a rat Master.'")
 // only ever refers to *your* pet in your own log, so it identifies the self's pet.
@@ -113,6 +118,13 @@ export function parseLine(raw: string): CombatEvent | null {
   m = INVOKE_RE.exec(body);
   if (m) {
     const ev: StanceEvent = { type: "stance", tsMs, raw: body, dim: "invocation", stance: m[1]! };
+    return ev;
+  }
+
+  // Zoning — ends all current encounters
+  m = ZONE_RE.exec(body);
+  if (m) {
+    const ev: ZoneEvent = { type: "zone", tsMs, raw: body, zone: m[1]! };
     return ev;
   }
 

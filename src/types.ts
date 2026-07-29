@@ -101,6 +101,11 @@ export interface PetEvent extends BaseEvent {
   owner: string; // "You" for the logging character's pet
 }
 
+export interface ZoneEvent extends BaseEvent {
+  type: "zone";
+  zone: string; // destination zone name — ends the current fight
+}
+
 export type CombatEvent =
   | MeleeDamageEvent
   | SpellDamageEvent
@@ -109,7 +114,8 @@ export type CombatEvent =
   | DeathEvent
   | StanceEvent
   | HealEvent
-  | PetEvent;
+  | PetEvent
+  | ZoneEvent;
 
 // ---------------------------------------------------------------------------
 // Aggregated views (output of the engine → sent to the UI)

@@ -165,6 +165,11 @@ export class Engine {
       this.petOwners.set(pk, this.keyOf(ev.owner));
       return;
     }
+    if (ev.type === "zone") {
+      // Zoning leaves all mobs behind — end the current fight immediately.
+      if (this.current) this.closeFight(this.current.lastActivityMs);
+      return;
+    }
     this.maybeCloseForInactivity(ev.tsMs);
     if (ev.type === "heal") {
       this.recordHeal(ev.healer, ev.target, ev.amount, ev.spell, ev.tsMs);

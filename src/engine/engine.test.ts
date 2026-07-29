@@ -187,6 +187,19 @@ test("an encounter goes inactive after 90s of no activity on that NPC", () => {
   assert.equal(enc["orc b"], false, "B stale (92s idle > 90)");
 });
 
+test("zoning ends the current fight and all its encounters", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 40 points of damage."),
+    L("01:00:01", "You crush a bat for 10 points of damage."),
+    L("01:00:03", "You have entered The Greater Faydark."), // zone — ends combat
+    L("01:00:20", "You crush a rat for 15 points of damage."), // new zone, new fight
+  ]);
+  const fights = engine.fights();
+  assert.equal(fights.length, 2, "zoning split the session into two fights");
+  assert.ok(fights[0]!.npcs.some((n) => n.toLowerCase().includes("orc")), "pre-zone fight has the orc");
+  assert.ok(fights[1]!.npcs.some((n) => n.toLowerCase().includes("rat")), "post-zone fight has the rat");
+});
+
 test("tick() closes an abandoned fight after the inactivity window", () => {
   let clock = at("01:00:00");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

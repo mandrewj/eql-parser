@@ -205,6 +205,17 @@ test("stance — assume", () => {
   }
 });
 
+test("zone — 'You have entered' captures the zone", () => {
+  const e = parseLine(TS + "You have entered The Greater Faydark.");
+  assert.equal(e?.type, "zone");
+  if (e?.type !== "zone") return;
+  assert.equal(e.zone, "The Greater Faydark");
+});
+
+test("zone — the 'an area where' warning is not a zone", () => {
+  assert.equal(parseLine(TS + "You have entered an area where levitation effects do not function."), null);
+});
+
 test("noise lines return null", () => {
   const noise = [
     "[Sat Jul 18 01:49:00 2026] Your wounds begin to heal.",

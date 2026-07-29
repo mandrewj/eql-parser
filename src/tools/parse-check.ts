@@ -27,6 +27,7 @@ function main(): void {
     stance: 0,
     heal: 0,
     pet: 0,
+    zone: 0,
   };
   let total = 0;
   let damageTotal = 0;
