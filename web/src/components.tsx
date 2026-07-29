@@ -174,6 +174,11 @@ export function StanceOverview({
   const points = history.slice(0, n).reverse(); // history is newest-first; the chart reads left→right
   const isCurrent = (r: { melee: string; invocation: string }) =>
     stance != null && r.melee === stance.melee && r.invocation === stance.invocation;
+
+  // How the combo I'm standing in right now compares with the window's best.
+  const best = rows[0] ?? null;
+  const cur = rows.find(isCurrent) ?? null;
+  const gap = best && cur && best.dps > 0 ? Math.round(((cur.dps - best.dps) / best.dps) * 100) : null;
   return (
     <section className="overview">
       <div className="ov-head">
@@ -185,6 +190,16 @@ export function StanceOverview({
             </button>
           ))}
         </div>
+        {rows.length > 0 &&
+          (gap === null ? (
+            <span className="ov-delta none">current combo · no data in window</span>
+          ) : gap >= 0 ? (
+            <span className="ov-delta good">current combo · best of {rows.length}</span>
+          ) : (
+            <span className="ov-delta bad">
+              current combo <b>−{Math.abs(gap)}%</b> vs best ({fmtK(best!.dps)} dps)
+            </span>
+          ))}
         <span className="ov-overall">
           {fmtK(overall)} <span className="munit">avg dps</span>
         </span>
@@ -199,12 +214,20 @@ export function StanceOverview({
               key={key}
               className={`ov-tile ${isCurrent(r) ? "current" : ""} ${selected === key ? "sel" : ""} ${dimmed ? "dim" : ""}`}
               onClick={() => setSelected(selected === key ? null : key)}
-              title={selected === key ? "Click to clear the highlight" : "Click to highlight this combo in the history"}
+              title={
+                `${fmt(r.dps)} dps · ${fmt(r.takenPerSec)}/sec taken · ${r.timeShare}% of the window's combat time ` +
+                `(${r.seconds}s) — click to ${selected === key ? "clear the highlight" : "highlight this combo below"}`
+              }
             >
               <span className="ov-tile-dps">
                 <span className="ov-swatch" style={{ background: comboColor(key, colors) }} />
                 {fmtK(r.dps)} <span className="munit">dps</span>
                 {isCurrent(r) && <span className="ov-now">now</span>}
+              </span>
+              <span className="ov-tile-sub">
+                🛡 {r.taken > 0 && r.takenPerSec === 0 ? "<1" : fmtDrill(r.takenPerSec)}
+                <span className="munit">/s</span> · ⏱ {r.timeShare}
+                <span className="munit">%</span>
               </span>
               <span className="ov-tile-combo">
                 ⚔ {stanceLabel(r.melee)} · ✦ {stanceLabel(r.invocation)}

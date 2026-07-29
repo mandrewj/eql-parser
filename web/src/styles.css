@@ -241,7 +241,7 @@ body { margin: 0; }
   border: 1px solid var(--border); border-radius: 9px; background: var(--panel);
   padding: 0.55rem 0.7rem; margin-bottom: 1rem; box-shadow: 0 1px 3px #00000055;
 }
-.ov-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem; }
+.ov-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem; flex-wrap: wrap; }
 .ov-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .ov-windows { display: flex; gap: 0.2rem; }
 .ov-windows .wchip {
@@ -250,7 +250,16 @@ body { margin: 0; }
 }
 .ov-windows .wchip.on { background: #2f3846; color: var(--text); border-color: #46506180; }
 .ov-overall { margin-left: auto; }
+.ov-delta + .ov-overall { margin-left: 0.7rem; }
 .ov-overall { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* how the combo I'm in right now compares with the window's best */
+.ov-delta {
+  margin-left: auto; font-size: 0.7rem; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ov-delta b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ov-delta.good { color: var(--player); }
+.ov-delta.bad b { color: #e08585; }
 .ov-overall .munit { font-size: 0.7rem; font-weight: 400; color: var(--muted); }
 .ov-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.4rem; }
 .ov-tile {
@@ -264,6 +273,8 @@ body { margin: 0; }
 }
 .ov-tile-dps { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ov-tile-dps .munit { font-size: 0.62rem; font-weight: 400; color: var(--muted); }
+.ov-tile-sub { font-size: 0.7rem; color: #a8b1bf; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-tile-sub .munit { font-size: 0.62rem; }
 .ov-tile-combo { font-size: 0.68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ov-tile { cursor: pointer; transition: opacity 0.12s ease; }
 .ov-tile.sel { border-color: #7d879b; box-shadow: inset 0 0 0 1px #7d879b; }

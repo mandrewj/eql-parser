@@ -170,6 +170,8 @@ export class Engine {
   private readonly comboSegments: Array<{ startMs: number; endMs: number; combo: string }> = [];
   private comboStartMs = 0;
   private readonly selfComboLog: Array<{ combo: string; amount: number; ts: number }> = [];
+  // Same, for damage *taken* — so a combo's defensive cost sits next to its DPS.
+  private readonly selfTakenComboLog: Array<{ combo: string; amount: number; ts: number }> = [];
   private readonly petOwners = new Map<string, string>(); // petKey → ownerKey (global)
 
   private current: FightState | null = null;
@@ -330,25 +332,43 @@ export class Engine {
     }
     const inMerged = (ts: number) => merged.some(([s, e]) => ts >= s && ts <= e);
 
-    const agg = new Map<string, { damage: number; seconds: number }>();
+    const blank = () => ({ damage: 0, taken: 0, seconds: 0 });
+    const agg = new Map<string, ReturnType<typeof blank>>();
     for (const [s, e] of merged) {
       for (const [combo, sec] of this.comboSecondsIn(s, e)) {
-        const a = agg.get(combo) ?? { damage: 0, seconds: 0 };
+        const a = agg.get(combo) ?? blank();
         a.seconds += sec;
         agg.set(combo, a);
       }
     }
     for (const ent of this.selfComboLog) {
       if (!inMerged(ent.ts)) continue;
-      const a = agg.get(ent.combo) ?? { damage: 0, seconds: 0 };
+      const a = agg.get(ent.combo) ?? blank();
       a.damage += ent.amount;
       agg.set(ent.combo, a);
     }
+    for (const ent of this.selfTakenComboLog) {
+      if (!inMerged(ent.ts)) continue;
+      const a = agg.get(ent.combo) ?? blank();
+      a.taken += ent.amount;
+      agg.set(ent.combo, a);
+    }
 
+    const windowSec = [...agg.values()].reduce((s, v) => s + v.seconds, 0);
     return [...agg.entries()]
       .map(([combo, v]) => {
         const [melee = "none", invocation = "none"] = combo.split("|");
-        return { melee, invocation, damage: v.damage, seconds: Math.round(v.seconds), dps: Math.round(v.damage / Math.max(1, v.seconds)) };
+        const seconds = Math.max(1, v.seconds);
+        return {
+          melee,
+          invocation,
+          damage: v.damage,
+          taken: v.taken,
+          seconds: Math.round(v.seconds),
+          dps: Math.round(v.damage / seconds),
+          takenPerSec: Math.round(v.taken / seconds),
+          timeShare: windowSec > 0 ? Math.round((v.seconds / windowSec) * 100) : 0,
+        };
       })
       .filter((r) => r.damage > 0)
       .sort((a, b) => b.dps - a.dps);
@@ -524,6 +544,9 @@ export class Engine {
       }
       this.selfComboLog.push({ combo: this.combo(), amount: ev.amount, ts: ev.tsMs });
     }
+    if (tKey === this.selfKey && aKey !== this.selfKey) {
+      this.selfTakenComboLog.push({ combo: this.combo(), amount: ev.amount, ts: ev.tsMs });
+    }
   }
 
   private recordMiss(attacker: string, target: string, tsMs: number): void {
@@ -582,9 +605,11 @@ export class Engine {
     if (this.finishedEncounters.length > 60) this.finishedEncounters.length = 60;
     // Drop combo-log entries older than the oldest encounter we still keep.
     const oldest = this.finishedEncounters[this.finishedEncounters.length - 1]?.startMs ?? 0;
-    let drop = 0;
-    while (drop < this.selfComboLog.length && this.selfComboLog[drop]!.ts < oldest) drop++;
-    if (drop > 0) this.selfComboLog.splice(0, drop);
+    for (const log of [this.selfComboLog, this.selfTakenComboLog]) {
+      let drop = 0;
+      while (drop < log.length && log[drop]!.ts < oldest) drop++;
+      if (drop > 0) log.splice(0, drop);
+    }
   }
 
   /** Clear a mob's per-encounter tracking so the next same-named mob starts fresh. */

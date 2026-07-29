@@ -44,8 +44,11 @@ export interface StanceOverviewRow {
   melee: string;
   invocation: string;
   damage: number;
+  taken: number; // damage taken while in this combo — the defensive cost of the DPS
   seconds: number;
   dps: number;
+  takenPerSec: number;
+  timeShare: number; // percent of the window's combat time spent in this combo
 }
 
 export interface StanceOverviewWindow {

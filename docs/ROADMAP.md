@@ -79,6 +79,13 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
   clicking a card highlights only that combo. Colour follows the combo (first-seen order), so
   switching the 10/25/50 window never repaints a bar.
 
+## Post-v1 — Stance cards answer "what does it cost me?"  ✅
+- Engine mirrors the self combo log for **incoming** damage, so each stance combo reports
+  damage taken per second next to its DPS — the defensive half of the stance choice.
+- Cards also show **time share** (percent of the window's combat seconds spent in the combo),
+  which exposes a high-DPS tile built on a thin sample.
+- Panel header compares the combo you're in right now against the window's best.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.

@@ -310,6 +310,46 @@ test("stance overview: self DPS split by stance+invocation combination", () => {
   assert.equal(off.damage, 200);
   assert.equal(def.damage, 40);
   assert.ok(off.dps > def.dps, "offensive+spellblade out-DPSes defensive+spellblade");
+  assert.equal(off.timeShare + def.timeShare, 100, "time shares cover the window");
+});
+
+test("stance overview: damage taken and time share are split by combo too", () => {
+  let clock = at("01:02:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You assume an offensive stance."),
+    L("01:00:00", "You begin reciting the spellblade invocation."),
+    L("01:00:02", "You crush an orc for 100 points of damage."),
+    L("01:00:04", "an orc hits You for 60 points of damage."), // taken while offensive
+    L("01:00:10", "You have slain an orc!"),
+    L("01:00:12", "You assume a defensive stance."),
+    L("01:00:14", "You crush a bat for 20 points of damage."),
+    L("01:00:16", "a bat hits You for 5 points of damage."), // taken while defensive
+    L("01:00:26", "You have slain a bat!"),
+  ]);
+  const rows = engine.snapshot().stanceOverview.find((w) => w.n === 10)!.rows;
+  const off = rows.find((r) => r.melee === "offensive")!;
+  const def = rows.find((r) => r.melee === "defensive")!;
+  assert.equal(off.taken, 60, "damage taken is attributed to the combo active at the time");
+  assert.equal(def.taken, 5);
+  assert.ok(off.takenPerSec > def.takenPerSec, "the offensive combo costs more incoming damage");
+  assert.ok(off.takenPerSec > 0, "a meaningful rate is populated");
+  // Rates are whole numbers like DPS, so a trickle rounds to 0/sec — the total still
+  // records it, and the card renders "<1" rather than a bare 0.
+  assert.equal(def.takenPerSec, 0);
+  assert.ok(def.taken > 0);
+});
+
+test("stance overview: my own damage is never counted as damage taken", () => {
+  let clock = at("01:02:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You assume an offensive stance."),
+    L("01:00:02", "You crush an orc for 100 points of damage."),
+    L("01:00:10", "You have slain an orc!"),
+  ]);
+  const rows = engine.snapshot().stanceOverview.find((w) => w.n === 10)!.rows;
+  assert.equal(rows[0]!.taken, 0, "outgoing damage stays out of the taken column");
 });
 
 test("zoning ends the current fight and all its encounters", () => {
