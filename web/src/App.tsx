@@ -179,6 +179,9 @@ export default function App() {
             windows={snapshot?.stanceOverview ?? []}
             history={snapshot?.encounterHistory ?? []}
             stance={snapshot?.stance ?? null}
+            milestones={snapshot?.milestones ?? []}
+            progressWindows={snapshot?.progressWindows ?? []}
+            progress={snapshot?.progress ?? { level: null, abilityPoints: null }}
           />
           {activeEncounters.length > 0 && (
             <section className="block">

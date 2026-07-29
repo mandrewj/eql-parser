@@ -106,6 +106,24 @@ export interface ZoneEvent extends BaseEvent {
   zone: string; // destination zone name — ends the current fight
 }
 
+/** Character progression (self only) — what changed about *me* between fights. */
+export type ProgressKind =
+  | "level" // "You have gained a level! Welcome to level 34!"
+  | "ap" // "You have gained 2 ability point(s)! You now have 4 ability point(s)."
+  | "ability" // an AA bought or ranked up
+  | "unlock" // "You have gained the ability to use Double Attack."
+  | "skill" // "You have become better at Kick! (112)"
+  | "xp"; // "You gain party experience! (8.995%)"
+
+export interface ProgressEvent extends BaseEvent {
+  type: "progress";
+  kind: ProgressKind;
+  name?: string; // ability / skill name
+  value?: number; // level reached, AP gained, skill level, xp percent
+  total?: number; // AP now unspent
+  rank?: number; // AA rank, when the line names one
+}
+
 export type CombatEvent =
   | MeleeDamageEvent
   | SpellDamageEvent
@@ -115,7 +133,8 @@ export type CombatEvent =
   | StanceEvent
   | HealEvent
   | PetEvent
-  | ZoneEvent;
+  | ZoneEvent
+  | ProgressEvent;
 
 // ---------------------------------------------------------------------------
 // Aggregated views (output of the engine → sent to the UI)
@@ -173,10 +192,41 @@ export interface StanceOverviewRow {
   timeShare: number; // percent of the window's combat time spent in this combo
 }
 
+/** A dated, one-off event worth a mark on the encounter timeline. Deliberately rare
+ *  kinds only — skill-ups and xp ticks are counted in `ProgressWindow`, not marked. */
+export type MilestoneKind = "level" | "ap" | "ability" | "death" | "zone";
+
+export interface Milestone {
+  id: string;
+  kind: MilestoneKind;
+  tsMs: number;
+  label: string; // short, drawn next to the glyph when there's room
+  detail: string; // full sentence for the hover readout
+  value?: number; // level reached / AP gained — what the window counters sum
+}
+
+/** Progression totals over the same 10/25/50-encounter window the chart plots. */
+export interface ProgressWindow {
+  n: number;
+  levels: number;
+  apGained: number;
+  abilities: number; // AAs bought/ranked + skill unlocks
+  skillUps: number;
+  xpPct: number; // summed "% of a level" from xp ticks
+  deaths: number;
+}
+
+/** Where I stand right now (latest values seen in the log). */
+export interface ProgressState {
+  level: number | null;
+  abilityPoints: number | null; // unspent AP
+}
+
 /** One finished encounter, from my point of view — the history chart's data point. */
 export interface SelfEncounterPoint {
   id: string;
   name: string;
+  startMs: number;
   endMs: number;
   durationSec: number;
   dps: number; // my damage per second in this encounter

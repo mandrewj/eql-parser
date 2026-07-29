@@ -28,6 +28,7 @@ function main(): void {
     heal: 0,
     pet: 0,
     zone: 0,
+    progress: 0,
   };
   let total = 0;
   let damageTotal = 0;

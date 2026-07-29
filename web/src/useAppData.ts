@@ -42,6 +42,9 @@ export function useAppData(): AppData {
           stance: msg.stance,
           stanceOverview: msg.stanceOverview,
           encounterHistory: msg.encounterHistory ?? [],
+          milestones: msg.milestones ?? [],
+          progressWindows: msg.progressWindows ?? [],
+          progress: msg.progress ?? { level: null, abilityPoints: null },
         });
       } else if (msg.t === "activeLogChanged") {
         void refreshLogs();

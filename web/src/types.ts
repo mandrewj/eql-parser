@@ -56,10 +56,39 @@ export interface StanceOverviewWindow {
   rows: StanceOverviewRow[];
 }
 
+/** A dated, one-off event marked on the encounter timeline. */
+export type MilestoneKind = "level" | "ap" | "ability" | "death" | "zone";
+
+export interface Milestone {
+  id: string;
+  kind: MilestoneKind;
+  tsMs: number;
+  label: string;
+  detail: string;
+  value?: number;
+}
+
+/** Progression totals over the same encounter window the chart plots. */
+export interface ProgressWindow {
+  n: number;
+  levels: number;
+  apGained: number;
+  abilities: number;
+  skillUps: number;
+  xpPct: number;
+  deaths: number;
+}
+
+export interface ProgressState {
+  level: number | null;
+  abilityPoints: number | null;
+}
+
 /** One finished encounter, from my point of view — the history chart's data point. */
 export interface SelfEncounterPoint {
   id: string;
   name: string;
+  startMs: number;
   endMs: number;
   durationSec: number;
   dps: number; // my damage per second in this encounter
@@ -136,6 +165,9 @@ export interface Snapshot {
   stance: StanceState;
   stanceOverview: StanceOverviewWindow[];
   encounterHistory: SelfEncounterPoint[]; // newest first, up to 50
+  milestones: Milestone[]; // chronological, covering the retained encounter span
+  progressWindows: ProgressWindow[]; // one per chart window (10/25/50)
+  progress: ProgressState;
 }
 
 export interface LogInfo {

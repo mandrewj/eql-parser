@@ -47,7 +47,11 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 ### Parser
 - Pure function `parseLine(raw) → CombatEvent | null`.
 - **Keyword prefilter** before regex (skip lines lacking `damage`/`slain`/`but miss`/`assume`/…).
-- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
+- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
+- **`Progress`** covers self progression — level-ups, ability points, AAs bought/ranked, skill
+  unlocks, skill-ups and xp ticks. These are orders of magnitude rarer than damage lines, so they
+  are tried **last**, behind a single `^You (have )?(gain|become|improved)` prefix test: the hot
+  path never pays for them.
 - Deterministic, side-effect-free → unit-testable against fixture lines.
 
 ### Engine
@@ -57,7 +61,21 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 - **Encounter liveness**: a per-NPC pane is *active* only while the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner dies), and it has seen activity within the inactivity window (~90s).
 - **Encounters** (the primary view): each mob is a per-character table (one row per player/pet, a %-of-damage bar + DPS/HPS/tank columns, expandable to abilities). `snapshot()` exposes **`activeEncounters`** (mobs currently being fought — live tables at the top) and **`recentEncounters`** (a rolling last-5, newest first). A mob is finalized on death **or on fight close** (zone / 90s / abandon) for a boss you fled. On death the mob's per-encounter tracking is **reset**, so a same-named respawn (`a clay gargoyle`) is a fresh instance rather than merging into one inflated span; fled/closed mobs cap their end to their last combat activity. **Rates are per-person**: each character's active window starts at *their* first contact with the mob (their attack, or the mob first hitting/casting on them — tracked as per-`attacker>target` first-contact timestamps) and runs to the encounter end, so late-joiners aren't diluted. Per-(target, attacker) damage is kept as full metric accumulators.
 - **Stance overview rows** carry both sides of a combo: `damage`/`dps` from `selfComboLog` (self **outgoing**, tagged with the combo live at each event) and `taken`/`takenPerSec` from `selfTakenComboLog` (its mirror, recorded when I am the *target* and the attacker isn't me — so self-damage never lands in the taken column). `timeShare` is the combo's share of the window's total combat seconds. Both logs share the same merged-window math and are trimmed together as encounters age out. Rates are whole numbers, so a trickle of incoming damage rounds to `0`/sec while the total still records it — the UI shows `<1` for that case.
-- **Self encounter history**: `snapshot().encounterHistory` is the last **50** finished encounters seen from my side — my DPS, my total damage, damage I took, duration, and the **dominant stance combo** (the combo I spent the most seconds in over the encounter's window, via `dominantComboIn` → `comboSecondsIn`). Cached next to `overviewCache` and invalidated on the same event (a new finished encounter). This is what the overview's history chart plots; `recentEncounters` stays at 5 because it carries full per-combatant tables.
+- **Self encounter history**: `snapshot().encounterHistory` is the last **50** finished encounters seen from my side — my DPS, my total damage, damage I took, its start/end and duration, and the **dominant stance combo** (the combo I spent the most seconds in over the encounter's window, via `dominantComboIn` → `comboSecondsIn`). Cached next to `overviewCache` and invalidated on the same event (a new finished encounter). This is what the overview's history chart plots; `recentEncounters` stays at 5 because it carries full per-combatant tables.
+- **Progression** splits by frequency, because the two halves are used differently:
+  - **`milestones`** — the rare, *markable* kinds only (`level`, `ap`, `ability`, `death`, `zone`),
+    chronological, each with a short label and a full-sentence `detail`. These become glyphs on the
+    chart's timeline, so the list stays small enough to ship in every SSE snapshot.
+  - **`progressLog`** — skill-ups and xp ticks. There are thousands of them in a session (~5k skill-ups
+    in a 460k-line log), so they are never marked; they only feed counters.
+  - Both are trimmed with the combo logs when an encounter ages out, and `progressWindows` reduces
+    them to per-window totals over the same 10/25/50 slices the stance overview uses — cached and
+    invalidated on the same events. `progress` carries the latest level + unspent AP.
+  - A `Progress` event never opens, extends, or closes a fight; it only annotates the timeline.
+    A level-up fires immediately after a kill, so it lands on the boundary *between* two encounters.
+- **A friendly death ends nothing.** Only an NPC's death finalizes an encounter and resets its
+  tracking; doing that for a player would erase the corpse's damage from every mob still being
+  fought — which is precisely the run you want to keep looking at.
 - **Aggregation** per fight → per combatant:
   - totals, DPS (damage ÷ active-seconds), % of fight, hit/crit/miss counts;
   - **damage-by-type** (melee / spell / DoT) for drill-down;
@@ -80,7 +98,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   - `GET  /api/fights` → fight summaries (history).
   - `GET  /api/fights/:id` → full combatant + ability + stance detail for one fight.
   - `GET  /api/config` / `POST /api/config` → inactivityTimeout, etc.
-- `GET /events` → **SSE** stream of `snapshot`, `fightStarted`, `fightUpdate`, `fightEnded`, `stanceChanged`, `entityUpdate`.
+- `GET /events` → **SSE** stream of `snapshot`, `fightStarted`, `fightUpdate`, `fightEnded`, `stanceChanged`, `entityUpdate`. The `snapshot` payload carries `milestones`, `progressWindows` and `progress` alongside the combat state; the UI reads all three defensively so an older backend still renders.
 - Binds to `127.0.0.1` only.
 
 ## Streaming protocol (draft)
@@ -118,7 +136,11 @@ interface CombatantStats {          // one meter row
   - **Diverging bars**: my DPS above the baseline, total damage taken below. The halves are *mirrored panels over a shared encounter axis*, **not one scale** — each is normalised to its own peak and both peaks are printed in the header (`▲ peak … dps · ▼ peak … taken`), so bar heights are never compared across the baseline. (Plotting a rate and a total on one shared axis would be a dual-axis chart, which invents a correlation that isn't in the data.)
   - **Colour = stance combo**, shared between a card's swatch and its bars. Slots are handed out in the order combos **first appear in the full 50-encounter history**, never by DPS rank — so changing the window or a combo's ranking never repaints an existing bar. Six categorical slots (`--s1`…`--s6`); a seventh combo falls through to the neutral `--s-other`.
   - The six slots are the dark steps of the reference categorical palette, validated against the panel surface `#1c2029` (lightness band, chroma floor, adjacent-pair CVD separation, normal-vision floor, ≥3:1 contrast all pass). Because bar order is chronological, arbitrary combo pairs *can* end up adjacent, and the full six do not clear the stricter all-pairs CVD floor — so identity is never colour-alone: hovering any bar names the encounter and its combo in the header readout, and clicking a card highlights just that combo's bars.
-  - Bars cap at 14px wide and stay centred in their slot, so a 10-encounter window reads as a time series rather than a row of blocks.
+  - Bars cap at 14px wide and stay centred in their slot, so a 10-encounter window reads as a time series rather than a row of blocks. A vertical gradient and rounded caps give them depth; the encounter that set each half's peak carries a hairline outline, so the header's peak figure has a visible owner.
+  - A dashed **average line** crosses the DPS half at the window's avg dps — the *same figure the panel header prints*, not a second average computed a different way, so "above the line" means exactly what the header says.
+  - **Milestone rail.** The baseline between the halves is the timeline: level-ups (▲), ability points (◆), AAs and skill unlocks (★), my deaths (✕) and zone changes (»). Each mark sits on the **left edge of the encounter it belongs to** — the first encounter that ended at or after it — so a level-up earned on a kill lands exactly on the boundary between the two bars. Several in one gap (ding → ability point → new AA) cluster; past three they collapse to `+N`. Levels and deaths also draw a full-height guide, because those two are what explain a step change in the bars.
+  - Marks are identified by **shape**, not colour — the rail is far too small for colour to carry identity — and hovering any of them replaces the header readout with its full sentence and clock time.
+  - Below the chart, a **progression strip** shows current level and unspent AP, then what the window bought: levels, AP, abilities, deaths (in the rail's own glyphs, so the strip doubles as its legend), and — deliberately glyph-less, since they are counted but never marked — skill-ups and summed xp percent.
 - **Visual hierarchy** — panels sit on a raised surface above a darker page (`--panel` vs `--bg`, plus a drop shadow). **Active encounters are deliberately loud**: warm gradient, heavier frame, a `--live` accent stripe down the left edge, an accented section header, and a pulsing `⚔` dot (suppressed under `prefers-reduced-motion`). Finished encounters stay neutral so a long recent list doesn't turn into competing accents.
 - Reconnects to SSE automatically; renders from the last snapshot on load.
 

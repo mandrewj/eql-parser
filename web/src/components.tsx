@@ -7,6 +7,10 @@ import type {
   FightSummary,
   MetricKind,
   MetricStat,
+  Milestone,
+  MilestoneKind,
+  ProgressState,
+  ProgressWindow,
   SelfEncounterPoint,
   StanceBreakdown,
   StanceOverviewRow,
@@ -22,6 +26,13 @@ const fmtK = (n: number) => scaleK(n, 10000);
 const fmtTank = (n: number) => scaleK(n, 2000); // tanking totals get big fast
 const fmtDrill = (n: number) => scaleK(n, 1000); // breakdown lines stay compact
 const time = (ms: number) => new Date(ms).toLocaleTimeString();
+const span = (ms: number) => {
+  const sec = Math.round(ms / 1000);
+  if (sec < 90) return `${sec}s`; // a first session is seconds long, not "1m"
+  const min = Math.round(sec / 60);
+  return min < 60 ? `${min}m` : `${Math.floor(min / 60)}h ${min % 60}m`;
+};
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 const METRICS: Array<{ key: MetricKind; label: string }> = [
   { key: "damage", label: "Damage" },
@@ -80,32 +91,80 @@ function buildComboColors(history: SelfEncounterPoint[], rows: StanceOverviewRow
   return map;
 }
 
+// A glyph on the rail means "this kind is marked on the timeline" — the progression strip
+// below the chart reuses the same shapes, so it doubles as the legend. Shape carries the
+// identity; colour only reinforces it (the rail is too small for colour to stand alone).
+const MS_GLYPH: Record<MilestoneKind, string> = {
+  level: "▲",
+  ap: "◆",
+  ability: "★",
+  death: "✕",
+  zone: "»",
+};
+// Only the two that explain a step change in the bars get a full-height guide.
+const MS_GUIDE: MilestoneKind[] = ["level", "death"];
+
+/** Which encounter slot a timestamp belongs to: the first encounter that ended at or
+ *  after it. Markers draw on that slot's *left edge*, so a level-up earned on a kill
+ *  lands exactly on the boundary between the two encounters. */
+function markerSlot(tsMs: number, points: SelfEncounterPoint[]): number {
+  const i = points.findIndex((p) => p.endMs >= tsMs);
+  return i === -1 ? points.length : i;
+}
+
+/** Keep a marker sitting on the very first/last boundary from hanging off the plot. */
+const markerShift = (x: number) => (x <= 0.001 ? "0%" : x >= 0.999 ? "-100%" : "-50%");
+
 /** Diverging bars: my DPS above the baseline, damage taken below. The two halves are
  *  separate panels sharing an encounter axis — each is scaled to its own peak (labelled
- *  in the header), so heights are never compared across the baseline. */
+ *  in the header), so heights are never compared across the baseline. Between them runs
+ *  a milestone rail: levels, ability points, AAs, deaths and zone changes, placed at the
+ *  encounter boundary they happened on. */
 function EncounterHistory({
   points,
   colors,
   selected,
   onSelect,
+  milestones,
+  avgDps,
 }: {
   points: SelfEncounterPoint[];
   colors: Map<string, number>;
   selected: string | null;
   onSelect: (key: string | null) => void;
+  milestones: Milestone[];
+  avgDps: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const [hoverMs, setHoverMs] = useState<Milestone | null>(null);
   if (points.length === 0) return null;
 
   const maxDps = Math.max(1, ...points.map((p) => p.dps));
   const maxTaken = Math.max(1, ...points.map((p) => p.taken));
   const hp = hover === null ? null : points[hover] ?? null;
+  const from = points[0]!.startMs;
+  const elapsed = points[points.length - 1]!.endMs - from;
 
   // Resolve each point's combo identity once — both halves of the chart draw from this.
   const marks = points.map((p) => ({ p, key: comboKey(p), color: comboColor(comboKey(p), colors) }));
 
+  // Milestones inside the plotted span, bucketed onto the boundary they fall on so
+  // several in the same gap (ding → ability point → new AA) render as one cluster.
+  const bySlot = new Map<number, Milestone[]>();
+  for (const m of milestones) {
+    if (m.tsMs < from) continue;
+    const slot = markerSlot(m.tsMs, points);
+    const at = bySlot.get(slot);
+    if (at) at.push(m);
+    else bySlot.set(slot, [m]);
+  }
+  const groups = [...bySlot.entries()].map(([slot, items]) => ({ slot, x: slot / points.length, items }));
+  const guides = groups.flatMap(({ x, items }) =>
+    items.filter((m) => MS_GUIDE.includes(m.kind)).map((m) => ({ m, x })),
+  );
+
   /** One half of the diverging pair, scaled to its own peak. */
-  const half = (cls: string, value: (p: SelfEncounterPoint) => number, max: number) => (
+  const half = (cls: "up" | "down", value: (p: SelfEncounterPoint) => number, max: number) => (
     <div className={`hrow ${cls}`}>
       {marks.map(({ p, key, color }, i) => (
         <div
@@ -115,17 +174,34 @@ function EncounterHistory({
           onClick={() => onSelect(selected === key ? null : key)}
           title={`${p.name} · ${fmtDrill(p.dps)} dps · ${fmtDrill(p.taken)} taken`}
         >
-          <div className={cls === "up" ? "hbar" : "hbar tank"} style={{ height: `${(value(p) / max) * 100}%`, background: color }} />
+          <div
+            className={`hbar ${cls === "down" ? "tank" : ""} ${value(p) === max ? "peak" : ""}`}
+            style={{ height: `${(value(p) / max) * 100}%`, backgroundColor: color }}
+          />
         </div>
       ))}
     </div>
   );
 
   return (
-    <div className="hist" onMouseLeave={() => setHover(null)}>
+    <div
+      className="hist"
+      onMouseLeave={() => {
+        setHover(null);
+        setHoverMs(null);
+      }}
+    >
       <div className="hist-head">
-        <span className="hist-title">Per encounter · oldest → newest</span>
-        {hp ? (
+        {/* The window is too narrow to spell the axis direction out next to the span. */}
+        <span className="hist-title" title="Oldest on the left, newest on the right">
+          Per encounter · {points.length} over {span(elapsed)}
+        </span>
+        {hoverMs ? (
+          <span className="hist-readout">
+            <span className={`hswatch ms ${hoverMs.kind}`}>{MS_GLYPH[hoverMs.kind]}</span>
+            <b>{hoverMs.detail}</b> · {time(hoverMs.tsMs)}
+          </span>
+        ) : hp ? (
           <span className="hist-readout">
             <span className="hswatch" style={{ background: comboColor(comboKey(hp), colors) }} />
             {hp.name} · {hp.durationSec}s · <b>{fmtDrill(hp.dps)}</b> dps · <b>{fmtDrill(hp.taken)}</b> taken · ⚔{" "}
@@ -138,10 +214,83 @@ function EncounterHistory({
         )}
       </div>
       <div className="hist-plot">
-        {half("up", (p) => p.dps, maxDps)}
-        <div className="hist-base" />
+        <div className="hist-guides">
+          {guides.map(({ m, x }) => (
+            <span
+              key={m.id}
+              className={`hguide ${m.kind} ${hoverMs?.id === m.id ? "on" : ""}`}
+              style={{ left: `${x * 100}%` }}
+            />
+          ))}
+        </div>
+        <div className="hist-up">
+          {half("up", (p) => p.dps, maxDps)}
+          {/* The window's average, matching the figure in the panel header. */}
+          {avgDps > 0 && (
+            <div className="hist-avg" style={{ bottom: `${Math.min(100, (avgDps / maxDps) * 100)}%` }}>
+              <span className="hist-avg-tag">avg {fmtDrill(avgDps)}</span>
+            </div>
+          )}
+        </div>
+        <div className={`hist-rail ${groups.length ? "" : "bare"}`}>
+          {groups.map(({ slot, x, items }) => (
+            <span key={slot} className="hgroup" style={{ left: `${x * 100}%`, transform: `translateX(${markerShift(x)})` }}>
+              {items.slice(0, 3).map((m) => (
+                <span
+                  key={m.id}
+                  className={`hms ${m.kind}`}
+                  title={`${m.detail} · ${time(m.tsMs)}`}
+                  onMouseEnter={() => setHoverMs(m)}
+                  onMouseLeave={() => setHoverMs(null)}
+                >
+                  {MS_GLYPH[m.kind]}
+                </span>
+              ))}
+              {items.length > 3 && (
+                <span className="hms more" title={items.map((m) => m.detail).join(" · ")}>
+                  +{items.length - 3}
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
         {half("down", (p) => p.taken, maxTaken)}
       </div>
+    </div>
+  );
+}
+
+/** What the window bought me, in the same glyphs the rail uses — so it reads as the
+ *  rail's legend as well as a scoreboard. Skill-ups and xp have no glyph on purpose:
+ *  they're far too frequent to mark, so they stay plain text. */
+function ProgressStrip({ w, now }: { w: ProgressWindow | undefined; now: ProgressState }) {
+  const standing = [
+    now.level === null ? null : `Lv ${now.level}`,
+    now.abilityPoints === null ? null : `${now.abilityPoints} AP unspent`,
+  ].filter(Boolean);
+  const marks: Array<{ kind: MilestoneKind; text: string }> = [];
+  if (w) {
+    if (w.levels) marks.push({ kind: "level", text: plural(w.levels, "level") });
+    if (w.apGained) marks.push({ kind: "ap", text: `+${w.apGained} AP` });
+    if (w.abilities) marks.push({ kind: "ability", text: plural(w.abilities, "ability", "abilities") });
+    if (w.deaths) marks.push({ kind: "death", text: plural(w.deaths, "death") });
+  }
+  const tail = [
+    w?.skillUps ? plural(w.skillUps, "skill-up") : null,
+    w?.xpPct ? `+${w.xpPct}% xp` : null,
+  ].filter(Boolean);
+  if (standing.length === 0 && marks.length === 0 && tail.length === 0) return null;
+
+  return (
+    <div className="prog">
+      {standing.length > 0 && <span className="prog-now">{standing.join(" · ")}</span>}
+      {marks.map((m) => (
+        <span key={m.kind} className={`pstat ${m.kind}`}>
+          <span className="pglyph">{MS_GLYPH[m.kind]}</span>
+          {m.text}
+        </span>
+      ))}
+      {tail.length > 0 && <span className="pstat muted">{tail.join(" · ")}</span>}
     </div>
   );
 }
@@ -150,10 +299,16 @@ export function StanceOverview({
   windows,
   history,
   stance,
+  milestones,
+  progressWindows,
+  progress,
 }: {
   windows: StanceOverviewWindow[];
   history: SelfEncounterPoint[];
   stance: StanceState | null;
+  milestones: Milestone[];
+  progressWindows: ProgressWindow[];
+  progress: ProgressState;
 }) {
   const [n, setN] = useState(25);
   const [selected, setSelected] = useState<string | null>(null);
@@ -227,7 +382,15 @@ export function StanceOverview({
           );
         })}
       </div>
-      <EncounterHistory points={points} colors={colors} selected={selected} onSelect={setSelected} />
+      <EncounterHistory
+        points={points}
+        colors={colors}
+        selected={selected}
+        onSelect={setSelected}
+        milestones={milestones}
+        avgDps={overall}
+      />
+      <ProgressStrip w={progressWindows.find((p) => p.n === n)} now={progress} />
     </section>
   );
 }

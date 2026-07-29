@@ -11,6 +11,7 @@ import type {
   MeleeDamageEvent,
   MissEvent,
   PetEvent,
+  ProgressEvent,
   SpellDamageEvent,
   StanceEvent,
   ZoneEvent,
@@ -19,7 +20,8 @@ import type {
 const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
-const RELEVANT_RE = /damage|slain|but |assume |heal|Master|invocation|entered/;
+const RELEVANT_RE =
+  /damage|slain|but |assume |heal|Master|invocation|entered|a level|ability|better at|experience/;
 
 // Zoning is a hard fight boundary: "You have entered The Greater Faydark."
 // (guard against the non-zone "You have entered an area where …" warning).
@@ -48,6 +50,8 @@ const STANCE_RE = /^You assume an? (.+?) stance\.$/;
 // Caster "stances" are invocations: "You begin reciting the spellblade invocation."
 const INVOKE_RE = /^You begin reciting the (.+?) invocation\.$/;
 const YOU_SLAIN_RE = /^You have slain (.+?)!$/;
+// My own death reads "have been", not "has been", so SLAIN_BY_RE never covers it.
+const SELF_SLAIN_RE = /^You have been slain by (.+?)!$/;
 const SLAIN_BY_RE = /^(.+?) has been slain by (.+?)!$/;
 const MISS_YOU_RE = /^You try to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
 const MISS_OTHER_RE = /^(.+?) tries to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
@@ -65,6 +69,23 @@ const MELEE_OTHER_RE = new RegExp(
 // optional HoT phrase, effective/raw amounts, spell, and a trailing " (Critical)" flag.
 const HEAL_RE =
   /^(.+?) (?:heals|healed) (.+?)(?: over time)? for (\d+)(?: \((\d+)\))? hit points(?: by (.+?))?[.!](?: \([^)]+\))?$/;
+
+// --- character progression (self only) --------------------------------------
+const LEVEL_RE = /^You have gained a level! Welcome to level (\d+)!$/;
+// Note the double space the game emits between the two sentences — \s+ absorbs it.
+const AP_GAIN_RE = /^You have gained (\d+) ability point\(s\)!\s+You now have (\d+) ability point\(s\)\.$/;
+const AA_BUY_RE = /^You have gained the ability "(.+?)" at a cost of (\d+) ability points?\.$/;
+const AA_RANK_RE = /^You have improved (.+?) at a cost of (\d+) ability points?\.$/;
+// Distinct from AA_BUY_RE: a *skill* becoming usable, not an alternate advancement.
+const UNLOCK_RE = /^You have gained the ability to use (.+?)\.$/;
+const SKILL_RE = /^You have become better at (.+?)! \((\d+)\)$/;
+const XP_RE = /^You gain (?:party )?experience! \(([\d.]+)%\)$/;
+
+/** "Mnemonic Retention 2" -> name + rank; a bare name is rank 1. */
+function splitRank(name: string): { name: string; rank: number } {
+  const m = /^(.+?) (\d+)$/.exec(name);
+  return m ? { name: m[1]!, rank: Number(m[2]) } : { name, rank: 1 };
+}
 
 /** Canonicalize the self-references (You/YOU/Your/YOUR) to a single "You" token. */
 function normName(name: string): string {
@@ -139,6 +160,11 @@ export function parseLine(raw: string): CombatEvent | null {
   m = YOU_SLAIN_RE.exec(body);
   if (m) {
     const ev: DeathEvent = { type: "death", tsMs, raw: body, victim: m[1]!, killer: "You" };
+    return ev;
+  }
+  m = SELF_SLAIN_RE.exec(body);
+  if (m) {
+    const ev: DeathEvent = { type: "death", tsMs, raw: body, victim: "You", killer: m[1]! };
     return ev;
   }
   m = SLAIN_BY_RE.exec(body);
@@ -263,6 +289,46 @@ export function parseLine(raw: string): CombatEvent | null {
     };
     return ev;
   }
+
+  // Progression last: these lines are rare next to damage, so the hot path never
+  // pays for them. One cheap prefix test gates the whole block.
+  if (/^You (?:have )?(?:gain|become|improved)/.test(body)) return parseProgress(tsMs, body);
+
+  return null;
+}
+
+/** Level-ups, ability points, AAs, skill unlocks/ups, and xp ticks — all self-only. */
+function parseProgress(tsMs: number, body: string): ProgressEvent | null {
+  const ev = (fields: Omit<ProgressEvent, "type" | "tsMs" | "raw">): ProgressEvent => ({
+    type: "progress",
+    tsMs,
+    raw: body,
+    ...fields,
+  });
+
+  let m = LEVEL_RE.exec(body);
+  if (m) return ev({ kind: "level", value: Number(m[1]) });
+
+  m = AP_GAIN_RE.exec(body);
+  if (m) return ev({ kind: "ap", value: Number(m[1]), total: Number(m[2]) });
+
+  m = AA_BUY_RE.exec(body);
+  if (m) return ev({ kind: "ability", name: m[1]!, value: Number(m[2]), rank: 1 });
+
+  m = AA_RANK_RE.exec(body);
+  if (m) {
+    const { name, rank } = splitRank(m[1]!);
+    return ev({ kind: "ability", name, rank, value: Number(m[2]) });
+  }
+
+  m = UNLOCK_RE.exec(body);
+  if (m) return ev({ kind: "unlock", name: m[1]! });
+
+  m = SKILL_RE.exec(body);
+  if (m) return ev({ kind: "skill", name: m[1]!, value: Number(m[2]) });
+
+  m = XP_RE.exec(body);
+  if (m) return ev({ kind: "xp", value: Number(m[1]) });
 
   return null;
 }

@@ -20,6 +20,11 @@ import type {
   Fight,
   FightSummary,
   MetricStat,
+  Milestone,
+  MilestoneKind,
+  ProgressEvent,
+  ProgressState,
+  ProgressWindow,
   SelfEncounterPoint,
   StanceBreakdown,
   StanceDim,
@@ -174,12 +179,22 @@ export class Engine {
   private readonly selfTakenComboLog: Array<{ combo: string; amount: number; ts: number }> = [];
   private readonly petOwners = new Map<string, string>(); // petKey → ownerKey (global)
 
+  // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
+  // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
+  // live in `progressLog` and only ever feed the window counters. Both are trimmed with
+  // the combo logs when an encounter ages out.
+  private readonly milestones: Milestone[] = []; // chronological
+  private readonly progressLog: Array<{ ts: number; kind: "skill" | "xp"; value: number }> = []; // chronological
+  private readonly progress: ProgressState = { level: null, abilityPoints: null };
+  private milestoneSeq = 0;
+
   private current: FightState | null = null;
   private finished: FightState[] = [];
   private finishedSummaries: FightSummary[] = []; // cached; a closed fight never changes
   private finishedEncounters: EncounterView[] = []; // newest first, rolling
   private overviewCache: Array<{ n: number; rows: StanceOverviewRow[] }> | null = null;
   private historyCache: SelfEncounterPoint[] | null = null;
+  private progressCache: ProgressWindow[] | null = null;
   private fightSeq = 0;
   private encounterSeq = 0;
   private readonly now: () => number;
@@ -221,6 +236,12 @@ export class Engine {
     if (ev.type === "zone") {
       // Zoning leaves all mobs behind — end the current fight immediately.
       if (this.current) this.closeFight(this.current.lastActivityMs);
+      this.pushMilestone(ev.tsMs, "zone", ev.zone, `Zoned into ${ev.zone}`);
+      return;
+    }
+    if (ev.type === "progress") {
+      // Progression never opens, extends, or closes a fight — it only annotates the timeline.
+      this.recordProgress(ev);
       return;
     }
     this.maybeCloseForInactivity(ev.tsMs);
@@ -264,6 +285,9 @@ export class Engine {
     stance: StanceState;
     stanceOverview: Array<{ n: number; rows: StanceOverviewRow[] }>;
     encounterHistory: SelfEncounterPoint[];
+    milestones: Milestone[];
+    progressWindows: ProgressWindow[];
+    progress: ProgressState;
   } {
     return {
       current: this.current ? this.buildFight(this.current) : null,
@@ -273,7 +297,91 @@ export class Engine {
       stance: { ...this.currentStances },
       stanceOverview: (this.overviewCache ??= this.buildStanceOverviews()),
       encounterHistory: (this.historyCache ??= this.buildEncounterHistory()),
+      milestones: [...this.milestones],
+      progressWindows: (this.progressCache ??= this.buildProgressWindows()),
+      progress: { ...this.progress },
     };
+  }
+
+  // --- progression --------------------------------------------------------
+
+  private recordProgress(ev: ProgressEvent): void {
+    switch (ev.kind) {
+      case "level":
+        this.progress.level = ev.value ?? this.progress.level;
+        this.pushMilestone(ev.tsMs, "level", `Lv ${ev.value}`, `Gained a level — now level ${ev.value}`, ev.value);
+        break;
+      case "ap":
+        this.progress.abilityPoints = ev.total ?? this.progress.abilityPoints;
+        this.pushMilestone(
+          ev.tsMs,
+          "ap",
+          `+${ev.value} AP`,
+          `Gained ${ev.value} ability point(s) — ${ev.total} unspent`,
+          ev.value,
+        );
+        break;
+      case "ability": {
+        const named = ev.rank && ev.rank > 1 ? `${ev.name} ${ev.rank}` : ev.name ?? "ability";
+        const cost = ev.value ? `${ev.value} AP` : "free";
+        this.pushMilestone(ev.tsMs, "ability", named, `Trained ${named} (${cost})`);
+        break;
+      }
+      case "unlock":
+        this.pushMilestone(ev.tsMs, "ability", ev.name ?? "skill", `Learned to use ${ev.name}`);
+        break;
+      case "skill":
+      case "xp":
+        this.progressLog.push({ ts: ev.tsMs, kind: ev.kind, value: ev.value ?? 0 });
+        if (this.progressLog.length > 4000) this.progressLog.shift();
+        this.progressCache = null;
+        break;
+    }
+  }
+
+  private pushMilestone(
+    tsMs: number,
+    kind: MilestoneKind,
+    label: string,
+    detail: string,
+    value?: number,
+  ): void {
+    this.milestones.push({
+      id: `ms-${++this.milestoneSeq}`,
+      kind,
+      tsMs,
+      label,
+      detail,
+      ...(value === undefined ? {} : { value }),
+    });
+    if (this.milestones.length > 120) this.milestones.shift();
+    this.progressCache = null;
+  }
+
+  /** Progression totals over the same encounter windows the stance overview uses. */
+  private buildProgressWindows(): ProgressWindow[] {
+    return [10, 25, 50].map((n) => {
+      const encs = this.finishedEncounters.slice(0, n);
+      const w: ProgressWindow = { n, levels: 0, apGained: 0, abilities: 0, skillUps: 0, xpPct: 0, deaths: 0 };
+      if (encs.length === 0) return w;
+      // Everything from the oldest encounter in the window onward, so progression that
+      // landed after the last kill (the level-up you just dinged) still counts.
+      const from = encs[encs.length - 1]!.startMs;
+      for (const m of this.milestones) {
+        if (m.tsMs < from) continue;
+        if (m.kind === "level") w.levels++;
+        else if (m.kind === "ap") w.apGained += m.value ?? 0;
+        else if (m.kind === "ability") w.abilities++;
+        else if (m.kind === "death") w.deaths++;
+      }
+      for (const p of this.progressLog) {
+        if (p.ts < from) continue;
+        if (p.kind === "skill") w.skillUps++;
+        else w.xpPct += p.value;
+      }
+      w.xpPct = Math.round(w.xpPct * 10) / 10;
+      return w;
+    });
   }
 
   /** My per-encounter damage/tanking for the last 50 finished encounters, newest first,
@@ -285,6 +393,7 @@ export class Engine {
       return {
         id: e.id,
         name: e.name,
+        startMs: e.startMs,
         endMs: e.endMs,
         durationSec: e.durationSec,
         dps: self?.damage.perSec ?? 0,
@@ -588,6 +697,11 @@ export class Engine {
     if (kKey && killer) this.see(kKey, killer);
     f.deaths.push({ victim: vKey, killer: kKey, killerSelf });
     if (killerSelf) f.npcSeeds.add(vKey);
+    // My own death is the single biggest explanation for a collapsed DPS bar — mark it.
+    if (vKey === this.selfKey) {
+      const by = kKey ? this.nameOf(kKey) : "something";
+      this.pushMilestone(tsMs, "death", "Died", `Slain by ${by}`);
+    }
     // A slain NPC completes its encounter → add it to the rolling recent list.
     this.finalizeEncounter(f, vKey, tsMs);
     if (f.aliveEngaged.delete(vKey) && f.aliveEngaged.size === 0 && f.npcSeeds.size > 0) {
@@ -595,12 +709,15 @@ export class Engine {
     }
   }
 
-  /** On death: record the completed encounter, then reset the mob's tracking so a
-   *  same-named respawn is a fresh instance (fixes generic-name merging). */
-  private finalizeEncounter(f: FightState, npcKey: string, deathMs: number): void {
+  /** On an NPC's death: record the completed encounter, then reset that mob's tracking so a
+   *  same-named respawn is a fresh instance (fixes generic-name merging). A *friendly*
+   *  death ends nothing — resetting there would erase the corpse's damage from every mob
+   *  still being fought, which is exactly the run you want to keep looking at. */
+  private finalizeEncounter(f: FightState, victimKey: string, deathMs: number): void {
     const { friendly, npc } = this.resolveKinds(f);
-    if (npc.has(npcKey)) this.pushEncounter(f, npcKey, deathMs, friendly);
-    this.resetNpcTracking(f, npcKey);
+    if (!npc.has(victimKey)) return;
+    this.pushEncounter(f, victimKey, deathMs, friendly);
+    this.resetNpcTracking(f, victimKey);
   }
 
   private pushEncounter(f: FightState, npcKey: string, endMs: number, friendly: Set<string>): void {
@@ -610,14 +727,20 @@ export class Engine {
     this.finishedEncounters.unshift(view);
     this.overviewCache = null; // a new encounter changes the stance overview
     this.historyCache = null;
+    this.progressCache = null; // …and shifts the window the progression counters cover
     if (this.finishedEncounters.length > 60) this.finishedEncounters.length = 60;
-    // Drop combo-log entries older than the oldest encounter we still keep.
+    // Drop timestamped log entries older than the oldest encounter we still keep.
     const oldest = this.finishedEncounters[this.finishedEncounters.length - 1]?.startMs ?? 0;
-    for (const log of [this.selfComboLog, this.selfTakenComboLog]) {
+    const trim = <T>(log: T[], tsOf: (e: T) => number): void => {
       let drop = 0;
-      while (drop < log.length && log[drop]!.ts < oldest) drop++;
+      while (drop < log.length && tsOf(log[drop]!) < oldest) drop++;
       if (drop > 0) log.splice(0, drop);
-    }
+    };
+    const byTs = (e: { ts: number }) => e.ts;
+    trim(this.selfComboLog, byTs);
+    trim(this.selfTakenComboLog, byTs);
+    trim(this.progressLog, byTs);
+    trim(this.milestones, (m) => m.tsMs);
   }
 
   /** Clear a mob's per-encounter tracking so the next same-named mob starts fresh. */

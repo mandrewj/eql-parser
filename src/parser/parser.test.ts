@@ -191,6 +191,15 @@ test("death — slain by", () => {
   assert.equal(e.killer, "Feydie");
 });
 
+// My own death says "have been", so the third-person "has been" pattern misses it.
+test("death — my own", () => {
+  const e = parseLine(TS + "You have been slain by a greater mummy!");
+  assert.deepEqual(
+    { ...e, tsMs: 0, raw: "" },
+    { type: "death", tsMs: 0, raw: "", victim: "You", killer: "a greater mummy" },
+  );
+});
+
 test("stance — assume", () => {
   for (const [line, stance] of [
     ["You assume an offensive stance.", "offensive"],
@@ -223,9 +232,95 @@ test("noise lines return null", () => {
     "[Sat Jul 18 01:49:43 2026] You are surrounded by flickering flames.", // no amount -> not damage
     "[Sat Jul 18 02:27:54 2026] Trukster tells General:2, 'even a stance'",
     "[Sat Jul 18 02:33:31 2026] Calis begins casting Burst of Flame.",
-    "[Sat Jul 18 02:32:43 2026] You have become better at Mend! (56)",
+    "[Sat Jul 18 02:32:43 2026] You have reached the experience cap and will not gain any further experience.",
+    // Someone quoting a progression message in chat is not my progression.
+    "[Sat Jul 18 02:32:43 2026] Penlog tells NewPlayers1:1, 'You have become better at athletics (20).'",
   ];
   for (const line of noise) assert.equal(parseLine(line), null, line);
+});
+
+// --- progression (self only) ----------------------------------------------
+
+/** Parse a body and drop the envelope fields, so cases read as just the payload. */
+const prog = (body: string) => {
+  const e = parseLine(TS + body);
+  return e ? { ...e, tsMs: 0, raw: "" } : null;
+};
+
+test("progress — level up", () => {
+  assert.deepEqual(prog("You have gained a level! Welcome to level 34!"), {
+    type: "progress",
+    tsMs: 0,
+    raw: "",
+    kind: "level",
+    value: 34,
+  });
+});
+
+test("progress — ability points (the game emits a double space mid-line)", () => {
+  assert.deepEqual(prog("You have gained 2 ability point(s)!  You now have 4 ability point(s)."), {
+    type: "progress",
+    tsMs: 0,
+    raw: "",
+    kind: "ap",
+    value: 2,
+    total: 4,
+  });
+});
+
+test("progress — AA bought, and AA ranked up (rank split off the name)", () => {
+  assert.deepEqual(prog('You have gained the ability "Banestrike" at a cost of 0 ability points.'), {
+    type: "progress",
+    tsMs: 0,
+    raw: "",
+    kind: "ability",
+    name: "Banestrike",
+    value: 0,
+    rank: 1,
+  });
+  assert.deepEqual(prog("You have improved Mnemonic Retention 2 at a cost of 1 ability point."), {
+    type: "progress",
+    tsMs: 0,
+    raw: "",
+    kind: "ability",
+    name: "Mnemonic Retention",
+    rank: 2,
+    value: 1,
+  });
+  // A name carrying its own punctuation still splits at the trailing rank number.
+  assert.deepEqual(prog("You have improved Symphonic Aura: Enabled 10 at a cost of 0 ability points."), {
+    type: "progress",
+    tsMs: 0,
+    raw: "",
+    kind: "ability",
+    name: "Symphonic Aura: Enabled",
+    rank: 10,
+    value: 0,
+  });
+});
+
+test("progress — a skill becoming usable is an unlock, not an AA purchase", () => {
+  assert.deepEqual(prog("You have gained the ability to use Double Attack."), {
+    type: "progress",
+    tsMs: 0,
+    raw: "",
+    kind: "unlock",
+    name: "Double Attack",
+  });
+});
+
+test("progress — skill-ups and xp ticks (solo and party)", () => {
+  assert.deepEqual(prog("You have become better at Flying Kick! (112)"), {
+    type: "progress",
+    tsMs: 0,
+    raw: "",
+    kind: "skill",
+    name: "Flying Kick",
+    value: 112,
+  });
+  for (const body of ["You gain party experience! (8.995%)", "You gain experience! (8.995%)"]) {
+    assert.deepEqual(prog(body), { type: "progress", tsMs: 0, raw: "", kind: "xp", value: 8.995 }, body);
+  }
 });
 
 // Coverage check against the real log (skipped when the log isn't present).

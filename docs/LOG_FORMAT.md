@@ -134,6 +134,48 @@ add accuracy so swing counts are correct.
 ```
 Note names can contain backticks/apostrophes (`D`Vinn`) — don't assume `[A-Za-z ]` only.
 
+Your own death needs its own pattern: it reads **"You *have* been slain"**, so the
+third-person `has been slain by` form never matches it.
+
+## Character progression (self only)
+
+Rare, dated events that explain a step change in the numbers — a ding, a new ability, a
+death, a zone. Every one of these is about **you**; other characters' progression isn't
+in your log.
+
+```
+[..] You have gained a level! Welcome to level 34!
+[..] You have gained 2 ability point(s)!  You now have 4 ability point(s).
+[..] You have gained the ability "Banestrike" at a cost of 0 ability points.
+[..] You have improved Mnemonic Retention 2 at a cost of 1 ability point.
+[..] You have gained the ability to use Double Attack.
+[..] You have become better at Flying Kick! (112)
+[..] You gain party experience! (8.995%)
+[..] You gain experience! (2.761%)
+```
+```
+^You have gained a level! Welcome to level (?<level>\d+)!$
+^You have gained (?<gained>\d+) ability point\(s\)!\s+You now have (?<total>\d+) ability point\(s\)\.$
+^You have gained the ability "(?<aa>.+?)" at a cost of (?<cost>\d+) ability points?\.$
+^You have improved (?<aa>.+?) at a cost of (?<cost>\d+) ability points?\.$
+^You have gained the ability to use (?<skill>.+?)\.$
+^You have become better at (?<skill>.+?)! \((?<level>\d+)\)$
+^You gain (?:party )?experience! \((?<pct>[\d.]+)%\)$
+```
+- The ability-point line carries a **double space** between its two sentences — match `\s+`.
+- `gained the ability "X"` (quoted, with a cost) is an **AA purchase**; `gained the ability
+  to use X` (unquoted, no cost) is a **skill unlock**. Same opening words, different events.
+- `improved <X> <rank>` puts the rank on the end of the name, and the name may carry its own
+  punctuation (`Symphonic Aura: Enabled 10`) — split at the **trailing** number only.
+- Cost can be `0` (granted by the level, not bought), and the singular/plural of
+  "ability point" varies with the number.
+- Percentages are **percent of the current level**, so summing them gives "how much of a
+  level did this stretch earn".
+- These are far rarer than damage lines, so the parser only tries them after every damage
+  pattern has missed, behind one `^You (have )?(gain|become|improved)` prefix test.
+- `You have reached the experience cap and will not gain any further experience.` is not an
+  xp tick and must not match.
+
 ## Non-combat noise to ignore
 
 The log is dominated by chatter and spam that the parser must cheaply skip:

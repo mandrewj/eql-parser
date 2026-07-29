@@ -30,6 +30,15 @@ html { font-size: 14px; }
   --s5: #d55181;
   --s6: #008300;
   --s-other: #77808f;
+
+  /* Milestone marks on the encounter timeline. Shape carries the identity (see
+     MS_GLYPH); these only reinforce it, so they're free to be conventional —
+     gold for a ding, red for a death, grey for a zone line. */
+  --ms-level: #e8b73a;
+  --ms-ap: #a184e8;
+  --ms-ability: #45b5cf;
+  --ms-death: #e05c5c;
+  --ms-zone: #8d95a2;
 }
 
 * { box-sizing: border-box; }
@@ -283,7 +292,8 @@ body { margin: 0; }
 
 /* encounter history — diverging bars, dps above the baseline, damage taken below.
    Each half is scaled to its own peak (both labelled in the header): the halves are
-   mirrored panels over a shared encounter axis, not one continuous scale. */
+   mirrored panels over a shared encounter axis, not one continuous scale. Between them
+   runs the milestone rail (levels, AP, AAs, deaths, zones). */
 .hist { margin-top: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.5rem; }
 .hist-head { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem; }
 .hist-title { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; }
@@ -294,16 +304,81 @@ body { margin: 0; }
 .hist-readout { color: #b8c0cc; }
 .hist-readout b { color: var(--text); font-weight: 700; }
 .hswatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 0.3rem; }
-.hist-plot { display: flex; flex-direction: column; }
+.hist-plot { display: flex; flex-direction: column; position: relative; }
 .hrow { display: flex; align-items: stretch; gap: 2px; }
-.hrow.up { height: 58px; }
+.hrow.up { height: 62px; }
 .hrow.down { height: 34px; }
-.hist-base { height: 1px; margin: 3px 0; background: #4a5468; }
 .hcell { flex: 1 1 0; min-width: 2px; display: flex; justify-content: center; cursor: pointer; transition: opacity 0.12s ease; }
 .hrow.up .hcell { align-items: flex-end; }
 .hrow.down .hcell { align-items: flex-start; }
 .hcell.dim { opacity: 0.18; }
 .hcell.hov { background: #ffffff0f; }
-/* thin marks: bars stay slim and centred in their slot however few encounters are shown */
-.hbar { width: 100%; max-width: 14px; border-radius: 3px 3px 0 0; min-height: 1px; }
-.hbar.tank { border-radius: 0 0 3px 3px; opacity: 0.5; }
+/* thin marks: bars stay slim and centred in their slot however few encounters are shown.
+   The gradient is an overlay on the inline background-color, so one combo colour still
+   drives both the bar and its card swatch. */
+.hbar {
+  width: 100%; max-width: 14px; min-height: 1px; border-radius: 3px 3px 0 0;
+  background-image: linear-gradient(to bottom, #ffffff2e, #ffffff00 65%);
+  transition: filter 0.12s ease;
+}
+.hbar.tank {
+  border-radius: 0 0 3px 3px; opacity: 0.55;
+  background-image: linear-gradient(to top, #00000038, #ffffff00 70%);
+}
+.hbar.peak { box-shadow: 0 0 0 1px #ffffff70; } /* which encounter set the peak in the header */
+.hcell.hov .hbar { filter: brightness(1.3); }
+
+/* the window's average dps — the same figure the panel header prints */
+.hist-up { position: relative; }
+.hist-avg { position: absolute; left: 0; right: 0; border-top: 1px dashed #ffffff33; pointer-events: none; }
+.hist-avg-tag {
+  position: absolute; right: 0; top: -0.62rem; padding: 0 0.2rem;
+  background: var(--panel); font-size: 0.56rem; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+
+/* full-height guides for the two milestone kinds that explain a step in the bars */
+.hist-guides { position: absolute; inset: 0; pointer-events: none; }
+.hguide { position: absolute; top: 0; bottom: 0; width: 1px; opacity: 0.3; }
+.hguide.on { opacity: 0.9; }
+.hguide.level { background: var(--ms-level); }
+.hguide.death { background: var(--ms-death); }
+
+/* milestone rail — the baseline doubles as the timeline the marks sit on */
+.hist-rail {
+  position: relative; height: 15px; margin: 3px 0;
+  border-top: 1px solid #4a5468; border-bottom: 1px solid var(--hair);
+}
+.hist-rail.bare { height: 0; border-bottom: 0; margin: 3px 0 4px; }
+.hgroup { position: absolute; top: 1px; display: flex; gap: 1px; line-height: 1; }
+.hms {
+  font-size: 0.6rem; cursor: default; padding: 0 1px;
+  text-shadow: 0 0 3px #0f1116;
+}
+.hms.level { color: var(--ms-level); }
+.hms.ap { color: var(--ms-ap); }
+.hms.ability { color: var(--ms-ability); }
+.hms.death { color: var(--ms-death); }
+.hms.zone { color: var(--ms-zone); }
+.hms.more { color: var(--muted); font-size: 0.54rem; }
+.hswatch.ms { width: auto; height: auto; font-size: 0.66rem; background: none; }
+.hswatch.ms.level { color: var(--ms-level); }
+.hswatch.ms.ap { color: var(--ms-ap); }
+.hswatch.ms.ability { color: var(--ms-ability); }
+.hswatch.ms.death { color: var(--ms-death); }
+.hswatch.ms.zone { color: var(--ms-zone); }
+
+/* progression strip — what the window bought me; reuses the rail's glyphs as its legend */
+.prog {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.6rem;
+  margin-top: 0.5rem; padding-top: 0.45rem; border-top: 1px solid var(--hair);
+  font-size: 0.7rem; font-variant-numeric: tabular-nums;
+}
+.prog-now { font-weight: 700; color: var(--text); margin-right: 0.1rem; }
+.pstat { color: #b8c0cc; white-space: nowrap; }
+.pstat.muted { color: var(--muted); margin-left: auto; }
+.pglyph { margin-right: 0.25rem; font-size: 0.66rem; }
+.pstat.level .pglyph { color: var(--ms-level); }
+.pstat.ap .pglyph { color: var(--ms-ap); }
+.pstat.ability .pglyph { color: var(--ms-ability); }
+.pstat.death .pglyph { color: var(--ms-death); }
+.pstat.zone .pglyph { color: var(--ms-zone); }

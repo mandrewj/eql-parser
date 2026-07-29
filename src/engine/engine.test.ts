@@ -377,6 +377,108 @@ test("tick() closes an abandoned fight after the inactivity window", () => {
   assert.equal(engine.hasCurrent, false);
 });
 
+// --- progression milestones -----------------------------------------------
+
+test("milestones: levels, ability points, AAs, deaths and zones land on the timeline", () => {
+  let clock = at("01:02:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:04", "You have slain an orc!"),
+    L("01:00:05", "You have gained a level! Welcome to level 34!"),
+    L("01:00:06", "You have gained 2 ability point(s)!  You now have 4 ability point(s)."),
+    L("01:00:07", 'You have gained the ability "Banestrike" at a cost of 0 ability points.'),
+    L("01:00:20", "a bat hits You for 5 points of damage."),
+    L("01:00:22", "You have been slain by a bat!"),
+    L("01:00:30", "You have entered The Greater Faydark."),
+  ]);
+  const snap = engine.snapshot();
+  assert.deepEqual(
+    snap.milestones.map((m) => m.kind),
+    ["level", "ap", "ability", "death", "zone"],
+    "chronological, one per event",
+  );
+  assert.equal(snap.progress.level, 34);
+  assert.equal(snap.progress.abilityPoints, 4, "unspent AP is the 'you now have' figure");
+  assert.equal(snap.milestones.find((m) => m.kind === "death")!.detail, "Slain by a bat");
+  assert.equal(snap.milestones.find((m) => m.kind === "ability")!.label, "Banestrike");
+});
+
+test("a friendly death does not erase that character's damage from the live fight", () => {
+  let clock = at("01:00:20");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:01", "Feydie kicks an orc for 60 points of damage."),
+    L("01:00:02", "Feydie has been slain by an orc!"),
+    L("01:00:03", "You have been slain by an orc!"),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase().includes("orc"))!;
+  assert.equal(enc.cards.find((c) => c.isSelf)!.damage.total, 100);
+  assert.equal(enc.cards.find((c) => c.name === "Feydie")!.damage.total, 60);
+});
+
+test("milestones: an AA rank-up carries the rank in its label", () => {
+  const engine = feed([L("01:00:01", "You have improved Lay on Hands 3 at a cost of 0 ability points.")]);
+  assert.equal(engine.snapshot().milestones[0]!.label, "Lay on Hands 3");
+});
+
+test("progression never opens or extends a fight", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 40 points of damage."),
+    L("01:00:02", "You have slain an orc!"),
+    // Long after the fight closed: these must not resurrect it or start a new one.
+    L("01:05:00", "You have gained a level! Welcome to level 12!"),
+    L("01:05:01", "You gain party experience! (8.995%)"),
+  ]);
+  assert.equal(engine.hasCurrent, false);
+  assert.equal(engine.fights().length, 1);
+  assert.equal(engine.snapshot().milestones.filter((m) => m.kind === "level").length, 1);
+});
+
+test("progress windows: skill-ups and xp are counted, not marked", () => {
+  let clock = at("01:02:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:01", "You have become better at Kick! (110)"),
+    L("01:00:02", "You have become better at Kick! (111)"),
+    L("01:00:03", "You gain party experience! (8.5%)"),
+    L("01:00:04", "You gain experience! (1.5%)"),
+    L("01:00:05", "You have slain an orc!"),
+    L("01:00:06", "You have gained 2 ability point(s)!  You now have 2 ability point(s)."),
+  ]);
+  const snap = engine.snapshot();
+  assert.equal(snap.milestones.some((m) => m.kind === ("skill" as never)), false, "skill-ups stay off the rail");
+  const w = snap.progressWindows.find((p) => p.n === 10)!;
+  assert.equal(w.skillUps, 2);
+  assert.equal(w.xpPct, 10);
+  assert.equal(w.apGained, 2, "AP gained after the last kill still counts in the window");
+  assert.equal(w.levels, 0);
+  assert.deepEqual(snap.progressWindows.map((p) => p.n), [10, 25, 50]);
+});
+
+test("progress windows are empty until an encounter exists to scope them", () => {
+  const engine = feed([L("01:00:01", "You have become better at Kick! (110)")]);
+  assert.deepEqual(
+    engine.snapshot().progressWindows.map((w) => w.skillUps),
+    [0, 0, 0],
+  );
+});
+
+test("encounter history points carry the window the chart needs", () => {
+  let clock = at("01:02:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:10", "You have slain an orc!"),
+  ]);
+  const p = engine.snapshot().encounterHistory[0]!;
+  assert.equal(p.startMs, at("01:00:00"));
+  assert.equal(p.endMs, at("01:00:10"));
+  assert.equal(p.durationSec, 10);
+});
+
 test("damage taken (tanking) aggregates incoming damage per target", () => {
   const engine = feed([
     L("01:00:00", "You strike orc for 30 points of damage."),

@@ -94,6 +94,24 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
   dominant-combo scan is its own helper, the two identical combo-log scans merged, and the chart's
   two diverging halves share one builder instead of being duplicated.
 
+## Post-v1 — Progression on the encounter timeline  ✅
+- Parser learns **character progression**: level-ups, ability points, AAs bought and ranked up,
+  skill unlocks, skill-ups and xp ticks. Tried last, behind one prefix test, so the damage path
+  is unaffected.
+- Two bugs surfaced doing it, both now fixed: **my own death never parsed** (the log says "You
+  *have* been slain", which the third-person pattern can't match), and a **friendly death wiped
+  that character's damage** from every mob still being fought.
+- Engine ships `milestones` (the rare, markable kinds), `progressWindows` (per-window totals over
+  the same 10/25/50 slices) and `progress` (level + unspent AP). Progression never opens or closes
+  a fight.
+- The history chart gains a **milestone rail** on its baseline — ▲ level, ◆ ability point,
+  ★ ability, ✕ death, » zone — placed on the encounter boundary each event landed on, with
+  full-height guides for levels and deaths. Identity is shape, not colour; hover names the event.
+- Chart polish: gradient bars with rounded caps, an outline on the encounter that set each peak,
+  a dashed average line matching the header's figure, and a header that reports the window's span.
+- A **progression strip** under the chart reports current level / unspent AP and what the window
+  earned, reusing the rail's glyphs as its own legend.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.
