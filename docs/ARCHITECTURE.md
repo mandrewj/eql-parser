@@ -57,7 +57,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 - **Encounter liveness**: a per-NPC pane is *active* only while the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner dies), and it has seen activity within the inactivity window (~90s).
 - **Encounters** (the primary view): each mob is a per-character table (one row per player/pet, a %-of-damage bar + DPS/HPS/tank columns, expandable to abilities). `snapshot()` exposes **`activeEncounters`** (mobs currently being fought — live tables at the top) and **`recentEncounters`** (a rolling last-5, newest first). A mob is finalized on death **or on fight close** (zone / 90s / abandon) for a boss you fled. On death the mob's per-encounter tracking is **reset**, so a same-named respawn (`a clay gargoyle`) is a fresh instance rather than merging into one inflated span; fled/closed mobs cap their end to their last combat activity. **Rates are per-person**: each character's active window starts at *their* first contact with the mob (their attack, or the mob first hitting/casting on them — tracked as per-`attacker>target` first-contact timestamps) and runs to the encounter end, so late-joiners aren't diluted. Per-(target, attacker) damage is kept as full metric accumulators.
 - **Stance overview rows** carry both sides of a combo: `damage`/`dps` from `selfComboLog` (self **outgoing**, tagged with the combo live at each event) and `taken`/`takenPerSec` from `selfTakenComboLog` (its mirror, recorded when I am the *target* and the attacker isn't me — so self-damage never lands in the taken column). `timeShare` is the combo's share of the window's total combat seconds. Both logs share the same merged-window math and are trimmed together as encounters age out. Rates are whole numbers, so a trickle of incoming damage rounds to `0`/sec while the total still records it — the UI shows `<1` for that case.
-- **Self encounter history**: `snapshot().encounterHistory` is the last **50** finished encounters seen from my side — my DPS, my total damage, damage I took, duration, and the **dominant stance combo** (the combo I spent the most seconds in over the encounter's window, via `comboSecondsIn`). Cached next to `overviewCache` and invalidated on the same event (a new finished encounter). This is what the overview's history chart plots; `recentEncounters` stays at 5 because it carries full per-combatant tables.
+- **Self encounter history**: `snapshot().encounterHistory` is the last **50** finished encounters seen from my side — my DPS, my total damage, damage I took, duration, and the **dominant stance combo** (the combo I spent the most seconds in over the encounter's window, via `dominantComboIn` → `comboSecondsIn`). Cached next to `overviewCache` and invalidated on the same event (a new finished encounter). This is what the overview's history chart plots; `recentEncounters` stays at 5 because it carries full per-combatant tables.
 - **Aggregation** per fight → per combatant:
   - totals, DPS (damage ÷ active-seconds), % of fight, hit/crit/miss counts;
   - **damage-by-type** (melee / spell / DoT) for drill-down;
@@ -67,6 +67,12 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 
 ### Server
 - Serves the built SPA statically (embedded in the binary at packaging time).
+- **Cache headers matter here.** Vite fingerprints every bundle, so `assets/*` is served
+  `public, max-age=31536000, immutable`, while `index.html` (and anything else unfingerprinted) is
+  `no-store`. Without that split a browser caches the HTML heuristically, and the next rebuild leaves
+  it requesting a bundle hash that no longer exists — a 404 that presents as a *blank page* (the old
+  CSS is still cached and paints the background, so it reads as a broken render, not a missing file).
+  A hard reload fixes it for one person; the headers fix it for everyone, including packaged builds.
 - JSON API (draft):
   - `GET  /api/logs` → current folder + its `eqlog_*.txt` (path, character, server, size, mtime), newest first.
   - `POST /api/log-dir` `{ dir }` → change the scanned logs folder (validated), re-list, auto-select newest.

@@ -86,6 +86,14 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
   which exposes a high-DPS tile built on a thin sample.
 - Panel header compares the combo you're in right now against the window's best.
 
+## Post-v1 — Cache headers & a cleanup pass  ✅
+- Static responses carried no `Cache-Control`, so a browser-cached `index.html` outlived the bundle
+  hash it named after a rebuild — a 404 that looks like a blank page. `assets/*` is now immutable,
+  everything else `no-store`.
+- Tidy-up over the new code: `comboSecondsIn` no longer copies the segment array per call, the
+  dominant-combo scan is its own helper, the two identical combo-log scans merged, and the chart's
+  two diverging halves share one builder instead of being duplicated.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.
