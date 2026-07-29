@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppData } from "./useAppData";
-import { CharacterCard, EncounterPane, FightList, FilterBar } from "./components";
+import { CharacterCard, EncounterPane, EncounterSection, FightList, FilterBar } from "./components";
 import { metricMeta, rankedCombatants } from "./filters";
 import type { Fight, Filters, FightSummary } from "./types";
 
@@ -72,8 +72,9 @@ export default function App() {
 
   const shownFight = tab === "live" ? snapshot?.current ?? null : selectedFight;
   const { rows, maxima } = rankedCombatants(shownFight, filters);
-  const allEncounters = shownFight?.encounters ?? [];
-  const encounters = tab === "live" ? allEncounters.filter((e) => e.active) : allEncounters;
+  const activeEncounters = (snapshot?.current?.encounters ?? []).filter((e) => e.active);
+  const recentEncounters = snapshot?.recentEncounters ?? [];
+  const historyEncounters = tab === "history" ? shownFight?.encounters ?? [] : [];
   const rankLabel = metricMeta(filters.metric).label;
 
   const cards = (
@@ -98,13 +99,11 @@ export default function App() {
     </section>
   );
 
-  const encounterGrid = encounters.length > 0 && (
+  const historyEncounterGrid = historyEncounters.length > 0 && (
     <section className="block">
-      <div className="section-title">
-        Encounters · {encounters.length} {tab === "live" ? "active" : ""}
-      </div>
+      <div className="section-title">Encounters · {historyEncounters.length}</div>
       <div className="enc-grid">
-        {encounters.map((e) => (
+        {historyEncounters.map((e) => (
           <EncounterPane key={e.name} encounter={e} />
         ))}
       </div>
@@ -164,17 +163,27 @@ export default function App() {
         </button>
       </nav>
 
-      <FilterBar filters={filters} onChange={setFilters} />
-
       {tab === "live" ? (
         <main className="pane wide">
-          {snapshot?.current ? (
-            <>
-              {encounterGrid}
-              {cards}
-            </>
+          {activeEncounters.length > 0 && (
+            <section className="block">
+              <div className="section-title">Active · {activeEncounters.length}</div>
+              <div className="enc-grid">
+                {activeEncounters.map((e) => (
+                  <EncounterPane key={e.name} encounter={e} />
+                ))}
+              </div>
+            </section>
+          )}
+          {recentEncounters.length > 0 ? (
+            <section className="block">
+              <div className="section-title">Last {recentEncounters.length} encounters</div>
+              {recentEncounters.map((e) => (
+                <EncounterSection key={e.id} enc={e} expanded={expanded} onToggle={toggle} />
+              ))}
+            </section>
           ) : (
-            <div className="idle">No active fight — waiting for combat…</div>
+            activeEncounters.length === 0 && <div className="idle">No combat yet — waiting for a fight…</div>
           )}
         </main>
       ) : (
@@ -185,7 +194,8 @@ export default function App() {
           <section className="detail">
             {shownFight ? (
               <>
-                {encounterGrid}
+                <FilterBar filters={filters} onChange={setFilters} />
+                {historyEncounterGrid}
                 {cards}
               </>
             ) : (

@@ -1,4 +1,14 @@
-import type { CombatantStats, Encounter, Filters, FightSummary, MetricKind, MetricStat, StanceBreakdown } from "./types";
+import type {
+  CombatantStats,
+  Encounter,
+  EncounterCard as EncounterCardData,
+  Filters,
+  FightSummary,
+  MetricKind,
+  MetricStat,
+  RecentEncounter,
+  StanceBreakdown,
+} from "./types";
 import { metricMeta } from "./filters";
 
 const fmt = (n: number) => n.toLocaleString();
@@ -200,6 +210,109 @@ export function CharacterCard({
 }
 
 // ---------------------------------------------------------------------------
+
+// --- per-mob encounter sections (grouped stats) ---------------------------
+
+function EncounterCharCard({
+  card,
+  encTotal,
+  max,
+  open,
+  onToggle,
+}: {
+  card: EncounterCardData;
+  encTotal: number;
+  max: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const d = card.damage;
+  const pct = encTotal > 0 ? Math.round((d.total / encTotal) * 100) : 0;
+  return (
+    <div className={`card ${card.isSelf ? "is-self" : ""} ${open ? "open" : ""}`}>
+      <div className="card-head" onClick={onToggle}>
+        <span className="card-name">
+          {open ? "▾ " : "▸ "}
+          {card.name}
+          {card.isSelf && <span className="tag you">you</span>}
+        </span>
+        <span className="card-kind">{pct}%</span>
+      </div>
+      <div className="mline on">
+        <span className="micon">⚔</span>
+        <div className="mbar dmg">
+          <div className="fill" style={{ width: `${(d.total / max) * 100}%` }} />
+        </div>
+        <span className="mval">
+          {fmt(d.perSec)} <span className="munit">dps</span>
+        </span>
+        <span className="mtot">{fmt(d.total)}</span>
+      </div>
+      {open && (
+        <div className="card-drill">
+          <div className="drill-meta">
+            melee {fmt(d.byType.melee)} · spell {fmt(d.byType.spell)} · dot {fmt(d.byType.dot)} · {d.crits} crit · took{" "}
+            {fmt(card.taken.total)} from mob
+          </div>
+          {d.entries.length > 0 && (
+            <table className="cats">
+              <tbody>
+                {d.entries.slice(0, 8).map((e) => (
+                  <tr key={e.name}>
+                    <td>
+                      {e.damageType !== "unknown" && <span className={`typedot ${e.damageType}`} />}
+                      {e.name}
+                    </td>
+                    <td className="r">{fmt(e.total)}</td>
+                    <td className="r muted">
+                      ×{e.hits}
+                      {e.crits ? ` · ${e.crits}c` : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function EncounterSection({
+  enc,
+  expanded,
+  onToggle,
+}: {
+  enc: RecentEncounter;
+  expanded: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  const max = Math.max(1, ...enc.cards.map((c) => c.damage.total));
+  const dps = Math.round(enc.total / Math.max(1, enc.durationSec));
+  return (
+    <section className="enc-section">
+      <div className="enc-section-head">
+        <span className="enc-section-name">{enc.name}</span>
+        <span className="muted">
+          {time(enc.endMs)} · {enc.durationSec}s · {fmt(enc.total)} dmg · {fmt(dps)} dps
+        </span>
+      </div>
+      <div className="card-grid">
+        {enc.cards.map((c) => (
+          <EncounterCharCard
+            key={c.name}
+            card={c}
+            encTotal={enc.total}
+            max={max}
+            open={expanded.has(`${enc.id}:${c.name}`)}
+            onToggle={() => onToggle(`${enc.id}:${c.name}`)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export function FightList({
   fights,

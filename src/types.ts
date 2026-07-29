@@ -197,6 +197,26 @@ export interface Encounter {
   attackers: EncounterEntry[]; // friendly attackers, ranked by damage
 }
 
+/** One character's contribution to a single mob encounter (ranked by damage). */
+export interface EncounterCard {
+  name: string;
+  kind: EntityKind;
+  isSelf: boolean;
+  damage: MetricStat; // damage this character did to the NPC
+  taken: MetricStat; // damage this character took from the NPC
+}
+
+/** A finished per-mob encounter with per-character cards (for the "last N" list). */
+export interface RecentEncounter {
+  id: string;
+  name: string; // NPC display name
+  startMs: number;
+  endMs: number;
+  durationSec: number;
+  total: number; // total damage dealt to the NPC
+  cards: EncounterCard[]; // self + top others, ranked by damage
+}
+
 export interface Fight {
   id: string;
   title: string; // named boss, or "Trash pull"

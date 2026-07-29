@@ -202,3 +202,14 @@ body { margin: 0; }
 
 .card-drill { margin-top: 0.55rem; border-top: 1px solid var(--border); padding-top: 0.5rem; }
 .drill-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.3rem; }
+
+/* recent per-mob encounter sections */
+.enc-section {
+  border: 1px solid var(--border); border-radius: 12px; background: #191c22;
+  padding: 0.7rem 0.85rem 0.85rem; margin-bottom: 0.9rem;
+}
+.enc-section-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 0.6rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+}
+.enc-section-name { font-size: 1.05rem; font-weight: 700; }

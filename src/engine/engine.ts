@@ -16,10 +16,12 @@ import type {
   CombatantStats,
   DamageType,
   Encounter,
+  EncounterCard,
   EncounterEntry,
   Fight,
   FightSummary,
   MetricStat,
+  RecentEncounter,
   StanceBreakdown,
   StanceDim,
   StanceSegment,
@@ -71,7 +73,8 @@ interface FightState {
   deaths: Array<{ victim: string; killer: string | null; killerSelf: boolean }>;
   npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
-  perTarget: Map<string, Map<string, number>>; // targetKey → attackerKey → damage
+  perTarget: Map<string, Map<string, MetricAcc>>; // targetKey → attackerKey → damage breakdown
+  firstSeen: Map<string, number>; // entityKey → first event ms (encounter start)
   lastSeen: Map<string, number>; // entityKey → last event ms (for per-NPC staleness)
   aliveEngaged: Set<string>;
 }
@@ -102,6 +105,32 @@ function addAbility(m: MetricAcc, name: string, type: DamageType, amount: number
   if (crit) a.crits++;
 }
 
+/** Merge one raw metric accumulator into another (used to fold pet → owner per encounter). */
+function mergeAcc(dst: MetricAcc, src: MetricAcc, petTag: string | null): void {
+  dst.total += src.total;
+  dst.hits += src.hits;
+  dst.crits += src.crits;
+  dst.avoided += src.avoided;
+  (Object.keys(dst.byType) as DamageType[]).forEach((t) => (dst.byType[t] += src.byType[t]));
+  for (const [k, a] of src.abilities) {
+    const key = petTag ? `pet:${k}` : k;
+    const existing = dst.abilities.get(key);
+    if (existing) {
+      existing.total += a.total;
+      existing.hits += a.hits;
+      existing.crits += a.crits;
+    } else {
+      dst.abilities.set(key, {
+        name: petTag ? `${petTag} ${a.name}` : a.name,
+        damageType: a.damageType,
+        total: a.total,
+        hits: a.hits,
+        crits: a.crits,
+      });
+    }
+  }
+}
+
 /** Fold a pet's metric into its owner's (operates on already-built output objects). */
 function mergeStat(dst: MetricStat, src: MetricStat, dur: number): void {
   if (src.total === 0 && src.avoided === 0 && src.entries.length === 0) return;
@@ -128,7 +157,9 @@ export class Engine {
 
   private current: FightState | null = null;
   private finished: FightState[] = [];
+  private finishedEncounters: RecentEncounter[] = []; // newest first, rolling
   private fightSeq = 0;
+  private encounterSeq = 0;
   private readonly now: () => number;
 
   constructor(opts: EngineOptions) {
@@ -203,11 +234,17 @@ export class Engine {
     return states.map((s) => this.buildFight(s));
   }
 
-  snapshot(): { current: Fight | null; recent: FightSummary[]; stance: StanceState } {
+  snapshot(): {
+    current: Fight | null;
+    recent: FightSummary[];
+    recentEncounters: RecentEncounter[];
+    stance: StanceState;
+  } {
     const recent = this.finished.slice(-20).map((s) => this.summarize(this.buildFight(s)));
     return {
       current: this.current ? this.buildFight(this.current) : null,
       recent,
+      recentEncounters: this.finishedEncounters.slice(0, 5),
       stance: { ...this.currentStances },
     };
   }
@@ -254,6 +291,7 @@ export class Engine {
       npcSeeds: new Set(),
       targetIncoming: new Map(),
       perTarget: new Map(),
+      firstSeen: new Map(),
       lastSeen: new Map(),
       aliveEngaged: new Set(),
     };
@@ -304,6 +342,8 @@ export class Engine {
     this.see(aKey, attacker);
     this.see(tKey, target);
     f.damagePairs.push([aKey, tKey]);
+    if (!f.firstSeen.has(aKey)) f.firstSeen.set(aKey, tsMs);
+    if (!f.firstSeen.has(tKey)) f.firstSeen.set(tKey, tsMs);
     f.lastSeen.set(aKey, tsMs);
     f.lastSeen.set(tKey, tsMs);
     if (aKey === this.selfKey && tKey !== this.selfKey) {
@@ -325,19 +365,24 @@ export class Engine {
     inc.total += ev.amount;
     f.targetIncoming.set(tKey, inc);
 
-    // Per-target attacker breakdown (for per-NPC encounter meters).
-    let byAttacker = f.perTarget.get(tKey);
-    if (!byAttacker) {
-      byAttacker = new Map();
-      f.perTarget.set(tKey, byAttacker);
-    }
-    byAttacker.set(aKey, (byAttacker.get(aKey) ?? 0) + ev.amount);
-
     const abilityName = ev.type === "melee" ? ev.verb : ev.type === "spell" ? ev.effect : ev.spell;
     const crit = ev.type === "melee" ? ev.crit : false;
 
     addAbility(this.combatant(f, aKey).done, abilityName, ev.type, ev.amount, crit);
     addAbility(this.combatant(f, tKey).taken, abilityName, ev.type, ev.amount, false);
+
+    // Per-target attacker breakdown (for per-NPC encounters + cards).
+    let byAttacker = f.perTarget.get(tKey);
+    if (!byAttacker) {
+      byAttacker = new Map();
+      f.perTarget.set(tKey, byAttacker);
+    }
+    let cell = byAttacker.get(aKey);
+    if (!cell) {
+      cell = newMetric();
+      byAttacker.set(aKey, cell);
+    }
+    addAbility(cell, abilityName, ev.type, ev.amount, crit);
 
     if (aKey === this.selfKey) {
       const c = this.combatant(f, aKey);
@@ -378,9 +423,64 @@ export class Engine {
     if (kKey && killer) this.see(kKey, killer);
     f.deaths.push({ victim: vKey, killer: kKey, killerSelf });
     if (killerSelf) f.npcSeeds.add(vKey);
+    // A slain NPC completes its encounter → add it to the rolling recent list.
+    this.finalizeEncounter(f, vKey, tsMs);
     if (f.aliveEngaged.delete(vKey) && f.aliveEngaged.size === 0 && f.npcSeeds.size > 0) {
       this.closeFight(tsMs);
     }
+  }
+
+  /** Snapshot a slain NPC's per-character breakdown into the recent-encounters list. */
+  private finalizeEncounter(f: FightState, npcKey: string, endMs: number): void {
+    const attackers = f.perTarget.get(npcKey);
+    if (!attackers) return;
+    const { friendly, npc } = this.resolveKinds(f);
+    if (!npc.has(npcKey)) return;
+
+    // Fold pets into owners; friendly attackers only.
+    const byOwner = new Map<string, MetricAcc>();
+    for (const [aKey, cell] of attackers) {
+      const ownerKey = this.petOwners.get(aKey) ?? aKey;
+      if (ownerKey !== this.selfKey && !friendly.has(ownerKey)) continue;
+      let dst = byOwner.get(ownerKey);
+      if (!dst) {
+        dst = newMetric();
+        byOwner.set(ownerKey, dst);
+      }
+      mergeAcc(dst, cell, ownerKey === aKey ? null : "🐾");
+    }
+    if (byOwner.size === 0) return;
+
+    const startMs = f.firstSeen.get(npcKey) ?? f.startMs;
+    const dur = Math.max(1, (endMs - startMs) / 1000);
+
+    const allCards: EncounterCard[] = [...byOwner.entries()].map(([ownerKey, acc]): EncounterCard => {
+      const takenAcc = f.perTarget.get(ownerKey)?.get(npcKey) ?? newMetric();
+      return {
+        name: this.nameOf(ownerKey),
+        kind: ownerKey === this.selfKey ? "self" : "player",
+        isSelf: ownerKey === this.selfKey,
+        damage: this.toStat(acc, dur),
+        taken: this.toStat(takenAcc, dur),
+      };
+    });
+    allCards.sort((a, b) => b.damage.total - a.damage.total);
+
+    // Me plus up to 5 others, displayed in DPS order.
+    const self = allCards.find((c) => c.isSelf);
+    const others = allCards.filter((c) => !c.isSelf).slice(0, 5);
+    const cards = (self ? [self, ...others] : others).sort((a, b) => b.damage.total - a.damage.total);
+
+    this.finishedEncounters.unshift({
+      id: `enc-${++this.encounterSeq}`,
+      name: this.nameOf(npcKey),
+      startMs,
+      endMs,
+      durationSec: Math.round(dur),
+      total: allCards.reduce((s, c) => s + c.damage.total, 0),
+      cards,
+    });
+    if (this.finishedEncounters.length > 20) this.finishedEncounters.length = 20;
   }
 
   // --- classification + view building -------------------------------------
@@ -523,10 +623,10 @@ export class Engine {
     for (const [tKey, attackers] of f.perTarget) {
       if (!npc.has(tKey)) continue;
       const byOwner = new Map<string, number>();
-      for (const [aKey, amt] of attackers) {
+      for (const [aKey, cell] of attackers) {
         const ownerKey = this.petOwners.get(aKey) ?? aKey; // fold pet damage into owner
         if (ownerKey !== this.selfKey && !friendly.has(ownerKey)) continue; // friendly attackers only
-        byOwner.set(ownerKey, (byOwner.get(ownerKey) ?? 0) + amt);
+        byOwner.set(ownerKey, (byOwner.get(ownerKey) ?? 0) + cell.total);
       }
       const total = [...byOwner.values()].reduce((s, v) => s + v, 0);
       if (total === 0) continue;

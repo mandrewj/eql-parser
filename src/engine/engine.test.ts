@@ -187,6 +187,23 @@ test("an encounter goes inactive after 90s of no activity on that NPC", () => {
   assert.equal(enc["orc b"], false, "B stale (92s idle > 90)");
 });
 
+test("recent encounters: one per kill, newest first, oldest drops past 5", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90 });
+  for (let i = 1; i <= 7; i++) {
+    feedInto(engine, [
+      L("01:00:00", `You crush mob${i} for 10 points of damage.`),
+      L("01:00:01", `Feydie kicks mob${i} for 40 points of damage.`),
+      L("01:00:02", `You have slain mob${i}!`),
+    ]);
+  }
+  const recent = engine.snapshot().recentEncounters;
+  assert.equal(recent.length, 5, "only the last 5 encounters are kept");
+  assert.equal(recent[0]!.name, "mob7", "newest encounter is first");
+  assert.equal(recent[4]!.name, "mob3", "oldest kept is mob3 (mob1/mob2 dropped)");
+  // Cards ranked by DPS in that encounter (Feydie 40 > Sanluen 10), self present.
+  assert.deepEqual(recent[0]!.cards.map((c) => c.name), ["Feydie", "Sanluen"]);
+});
+
 test("zoning ends the current fight and all its encounters", () => {
   const engine = feed([
     L("01:00:00", "You crush an orc for 40 points of damage."),

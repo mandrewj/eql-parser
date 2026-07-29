@@ -74,6 +74,24 @@ export interface Encounter {
   attackers: EncounterEntry[];
 }
 
+export interface EncounterCard {
+  name: string;
+  kind: EntityKind;
+  isSelf: boolean;
+  damage: MetricStat; // damage this character did to the NPC
+  taken: MetricStat; // damage this character took from the NPC
+}
+
+export interface RecentEncounter {
+  id: string;
+  name: string;
+  startMs: number;
+  endMs: number;
+  durationSec: number;
+  total: number;
+  cards: EncounterCard[];
+}
+
 export interface Fight {
   id: string;
   title: string;
@@ -99,6 +117,7 @@ export interface FightSummary {
 export interface Snapshot {
   current: Fight | null;
   recent: FightSummary[];
+  recentEncounters: RecentEncounter[];
   stance: StanceState;
 }
 
