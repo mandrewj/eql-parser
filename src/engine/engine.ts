@@ -70,6 +70,8 @@ interface FightState {
   combatants: Map<string, CombatantAgg>;
   damagePairs: Array<[string, string]>; // [attackerKey, targetKey], incl. misses
   healPairs: Array<[string, string]>; // [healerKey, targetKey] — same faction
+  healLog: Array<{ healer: string; amount: number; spell: string; tsMs: number }>; // for windowed HPS
+  finalizedNpcs: Set<string>; // NPCs already added to the recent-encounters list
   deaths: Array<{ victim: string; killer: string | null; killerSelf: boolean }>;
   npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
@@ -287,6 +289,8 @@ export class Engine {
       combatants: new Map(),
       damagePairs: [],
       healPairs: [],
+      healLog: [],
+      finalizedNpcs: new Set(),
       deaths: [],
       npcSeeds: new Set(),
       targetIncoming: new Map(),
@@ -300,9 +304,19 @@ export class Engine {
 
   private closeFight(endMs: number): void {
     if (!this.current) return;
+    // Any engaged-but-unslain NPCs (a boss you fled, a zoned pull) still complete.
+    this.finalizeOpenEncounters(this.current, endMs);
     this.current.endMs = endMs;
     this.finished.push(this.current);
     this.current = null;
+  }
+
+  /** Finalize every damaged NPC in the fight that wasn't already added on death. */
+  private finalizeOpenEncounters(f: FightState, endMs: number): void {
+    const { npc } = this.resolveKinds(f);
+    for (const tKey of f.perTarget.keys()) {
+      if (npc.has(tKey) && !f.finalizedNpcs.has(tKey)) this.finalizeEncounter(f, tKey, endMs);
+    }
   }
 
   private maybeCloseForInactivity(tsMs: number): void {
@@ -410,6 +424,7 @@ export class Engine {
     this.see(hKey, healer);
     this.see(tKey, target);
     f.healPairs.push([hKey, tKey]);
+    f.healLog.push({ healer: hKey, amount, spell: spell ?? "Heal", tsMs });
     addAbility(this.combatant(f, hKey).heal, spell ?? "Heal", "unknown", amount, false);
   }
 
@@ -432,10 +447,12 @@ export class Engine {
 
   /** Snapshot a slain NPC's per-character breakdown into the recent-encounters list. */
   private finalizeEncounter(f: FightState, npcKey: string, endMs: number): void {
+    if (f.finalizedNpcs.has(npcKey)) return; // don't double-add (death + close)
     const attackers = f.perTarget.get(npcKey);
     if (!attackers) return;
     const { friendly, npc } = this.resolveKinds(f);
     if (!npc.has(npcKey)) return;
+    f.finalizedNpcs.add(npcKey);
 
     // Fold pets into owners; friendly attackers only.
     const byOwner = new Map<string, MetricAcc>();
@@ -456,11 +473,19 @@ export class Engine {
 
     const allCards: EncounterCard[] = [...byOwner.entries()].map(([ownerKey, acc]): EncounterCard => {
       const takenAcc = f.perTarget.get(ownerKey)?.get(npcKey) ?? newMetric();
+      // Healing isn't mob-specific — window it to this encounter's time span.
+      const healAcc = newMetric();
+      for (const h of f.healLog) {
+        if (h.healer === ownerKey && h.tsMs >= startMs && h.tsMs <= endMs) {
+          addAbility(healAcc, h.spell, "unknown", h.amount, false);
+        }
+      }
       return {
         name: this.nameOf(ownerKey),
         kind: ownerKey === this.selfKey ? "self" : "player",
         isSelf: ownerKey === this.selfKey,
         damage: this.toStat(acc, dur),
+        healing: this.toStat(healAcc, dur),
         taken: this.toStat(takenAcc, dur),
       };
     });

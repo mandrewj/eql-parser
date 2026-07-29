@@ -204,6 +204,49 @@ test("recent encounters: one per kill, newest first, oldest drops past 5", () =>
   assert.deepEqual(recent[0]!.cards.map((c) => c.name), ["Feydie", "Sanluen"]);
 });
 
+test("recent-encounter cards carry windowed healing + taken-from-mob", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 60 points of damage."),
+    L("01:00:01", "Orson healed you for 25 hit points by Healing."), // within the window
+    L("01:00:01", "an orc hits You for 15 points of damage."),
+    L("01:00:02", "You have slain an orc!"),
+  ]);
+  const enc = engine.snapshot().recentEncounters[0]!;
+  const self = enc.cards.find((c) => c.isSelf)!;
+  assert.equal(self.damage.total, 60);
+  assert.equal(self.taken.total, 15, "damage taken from this mob");
+  const orson = enc.cards.find((c) => c.name === "Orson");
+  // Orson didn't damage the orc, so isn't a card here; healing shows on healers who also dealt dmg.
+  assert.equal(orson, undefined);
+  // Self healed 0 (Orson healed self); confirm the healing field exists and is a number.
+  assert.equal(self.healing.total, 0);
+});
+
+test("healer's own healing surfaces on their encounter card (windowed)", () => {
+  const engine = feed([
+    L("01:00:00", "Orson crushes an orc for 20 points of damage."), // Orson also deals dmg
+    L("01:00:00", "You crush an orc for 60 points of damage."),
+    L("01:00:01", "Orson healed you for 25 hit points by Healing."),
+    L("01:00:02", "You have slain an orc!"),
+  ]);
+  const orson = engine.snapshot().recentEncounters[0]!.cards.find((c) => c.name === "Orson")!;
+  assert.equal(orson.damage.total, 20);
+  assert.equal(orson.healing.total, 25, "Orson's heal in the encounter window");
+});
+
+test("fleeing (zoning) still finalizes the un-slain boss into the recent list", () => {
+  const engine = feed([
+    L("01:00:00", "You crush a dragon for 500 points of damage."),
+    L("01:00:01", "a dragon hits You for 80 points of damage."),
+    L("01:00:05", "You have entered The Greater Faydark."), // fled, dragon never died
+  ]);
+  const recent = engine.snapshot().recentEncounters;
+  assert.equal(recent[0]!.name, "a dragon", "the boss you fled is in the recent list");
+  const self = recent[0]!.cards.find((c) => c.isSelf)!;
+  assert.equal(self.damage.total, 500);
+  assert.equal(self.taken.total, 80);
+});
+
 test("zoning ends the current fight and all its encounters", () => {
   const engine = feed([
     L("01:00:00", "You crush an orc for 40 points of damage."),

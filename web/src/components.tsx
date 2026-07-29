@@ -216,13 +216,13 @@ export function CharacterCard({
 function EncounterCharCard({
   card,
   encTotal,
-  max,
+  maxima,
   open,
   onToggle,
 }: {
   card: EncounterCardData;
   encTotal: number;
-  max: number;
+  maxima: { damage: number; healing: number; taken: number };
   open: boolean;
   onToggle: () => void;
 }) {
@@ -238,21 +238,13 @@ function EncounterCharCard({
         </span>
         <span className="card-kind">{pct}%</span>
       </div>
-      <div className="mline on">
-        <span className="micon">⚔</span>
-        <div className="mbar dmg">
-          <div className="fill" style={{ width: `${(d.total / max) * 100}%` }} />
-        </div>
-        <span className="mval">
-          {fmt(d.perSec)} <span className="munit">dps</span>
-        </span>
-        <span className="mtot">{fmt(d.total)}</span>
-      </div>
+      <MetricLine icon="⚔" stat={card.damage} unit="dps" accent="dmg" active max={maxima.damage} />
+      <MetricLine icon="✚" stat={card.healing} unit="hps" accent="heal" active={false} max={maxima.healing} />
+      <MetricLine icon="🛡" stat={card.taken} unit="dps" accent="tank" active={false} max={maxima.taken} />
       {open && (
         <div className="card-drill">
           <div className="drill-meta">
-            melee {fmt(d.byType.melee)} · spell {fmt(d.byType.spell)} · dot {fmt(d.byType.dot)} · {d.crits} crit · took{" "}
-            {fmt(card.taken.total)} from mob
+            damage: melee {fmt(d.byType.melee)} · spell {fmt(d.byType.spell)} · dot {fmt(d.byType.dot)} · {d.crits} crit
           </div>
           {d.entries.length > 0 && (
             <table className="cats">
@@ -288,7 +280,11 @@ export function EncounterSection({
   expanded: Set<string>;
   onToggle: (key: string) => void;
 }) {
-  const max = Math.max(1, ...enc.cards.map((c) => c.damage.total));
+  const maxima = {
+    damage: Math.max(1, ...enc.cards.map((c) => c.damage.total)),
+    healing: Math.max(1, ...enc.cards.map((c) => c.healing.total)),
+    taken: Math.max(1, ...enc.cards.map((c) => c.taken.total)),
+  };
   const dps = Math.round(enc.total / Math.max(1, enc.durationSec));
   return (
     <section className="enc-section">
@@ -304,7 +300,7 @@ export function EncounterSection({
             key={c.name}
             card={c}
             encTotal={enc.total}
-            max={max}
+            maxima={maxima}
             open={expanded.has(`${enc.id}:${c.name}`)}
             onToggle={() => onToggle(`${enc.id}:${c.name}`)}
           />

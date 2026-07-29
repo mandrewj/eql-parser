@@ -203,6 +203,7 @@ export interface EncounterCard {
   kind: EntityKind;
   isSelf: boolean;
   damage: MetricStat; // damage this character did to the NPC
+  healing: MetricStat; // healing this character did during the encounter window
   taken: MetricStat; // damage this character took from the NPC
 }
 
