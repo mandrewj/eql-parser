@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Engine } from "./engine.js";
 import { parseLine } from "../parser/parser.js";
-import type { CombatEvent } from "../types.js";
 
 // Helper: build a chronological event stream from raw log lines.
 function feed(lines: string[], selfName = "Sanluen", timeoutSec = 20) {

@@ -16,7 +16,6 @@ export class App {
   private tailer: Tailer | null = null;
   private logDir: string | null; // the actively scanned folder (changeable at runtime)
   private activeLogPath: string | null = null;
-  private mode: ParseMode = "backfill";
   private onUpdate: () => void = () => {};
   private broadcastTimer: NodeJS.Timeout | null = null;
 
@@ -68,7 +67,6 @@ export class App {
   /** Switch the actively parsed log, resetting engine state. */
   setActiveLog(logPath: string, mode: ParseMode = "backfill"): void {
     this.tailer?.stop();
-    this.mode = mode;
     this.activeLogPath = logPath;
     this.engine = this.newEngine(logPath);
 

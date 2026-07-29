@@ -101,16 +101,25 @@ function EncounterHistory({
   const maxTaken = Math.max(1, ...points.map((p) => p.taken));
   const hp = hover === null ? null : points[hover] ?? null;
 
-  const col = (p: SelfEncounterPoint, i: number) => {
-    const key = comboKey(p);
-    const dimmed = selected !== null && selected !== key;
-    return `hcell ${dimmed ? "dim" : ""} ${hover === i ? "hov" : ""}`;
-  };
-  const bind = (p: SelfEncounterPoint, i: number) => ({
-    onMouseEnter: () => setHover(i),
-    onClick: () => onSelect(selected === comboKey(p) ? null : comboKey(p)),
-    title: `${p.name} · ${fmtDrill(p.dps)} dps · ${fmtDrill(p.taken)} taken`,
-  });
+  // Resolve each point's combo identity once — both halves of the chart draw from this.
+  const marks = points.map((p) => ({ p, key: comboKey(p), color: comboColor(comboKey(p), colors) }));
+
+  /** One half of the diverging pair, scaled to its own peak. */
+  const half = (cls: string, value: (p: SelfEncounterPoint) => number, max: number) => (
+    <div className={`hrow ${cls}`}>
+      {marks.map(({ p, key, color }, i) => (
+        <div
+          key={p.id}
+          className={`hcell ${selected !== null && selected !== key ? "dim" : ""} ${hover === i ? "hov" : ""}`}
+          onMouseEnter={() => setHover(i)}
+          onClick={() => onSelect(selected === key ? null : key)}
+          title={`${p.name} · ${fmtDrill(p.dps)} dps · ${fmtDrill(p.taken)} taken`}
+        >
+          <div className={cls === "up" ? "hbar" : "hbar tank"} style={{ height: `${(value(p) / max) * 100}%`, background: color }} />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="hist" onMouseLeave={() => setHover(null)}>
@@ -129,27 +138,9 @@ function EncounterHistory({
         )}
       </div>
       <div className="hist-plot">
-        <div className="hrow up">
-          {points.map((p, i) => (
-            <div key={p.id} className={col(p, i)} {...bind(p, i)}>
-              <div
-                className="hbar"
-                style={{ height: `${(p.dps / maxDps) * 100}%`, background: comboColor(comboKey(p), colors) }}
-              />
-            </div>
-          ))}
-        </div>
+        {half("up", (p) => p.dps, maxDps)}
         <div className="hist-base" />
-        <div className="hrow down">
-          {points.map((p, i) => (
-            <div key={p.id} className={col(p, i)} {...bind(p, i)}>
-              <div
-                className="hbar tank"
-                style={{ height: `${(p.taken / maxTaken) * 100}%`, background: comboColor(comboKey(p), colors) }}
-              />
-            </div>
-          ))}
-        </div>
+        {half("down", (p) => p.taken, maxTaken)}
       </div>
     </div>
   );

@@ -281,12 +281,7 @@ export class Engine {
   private buildEncounterHistory(): SelfEncounterPoint[] {
     return this.finishedEncounters.slice(0, 50).map((e) => {
       const self = e.cards.find((c) => c.isSelf);
-      let combo = "";
-      let bestSec = -1;
-      for (const [c, sec] of this.comboSecondsIn(e.startMs, e.endMs)) {
-        if (sec > bestSec) [combo, bestSec] = [c, sec];
-      }
-      const [melee = "none", invocation = "none"] = combo.split("|");
+      const { melee, invocation } = this.dominantComboIn(e.startMs, e.endMs);
       return {
         id: e.id,
         name: e.name,
@@ -301,16 +296,30 @@ export class Engine {
     });
   }
 
+  /** The combo I spent the most time in over [startMs, endMs], split into its two dimensions. */
+  private dominantComboIn(startMs: number, endMs: number): { melee: string; invocation: string } {
+    let combo = "";
+    let bestSec = -1;
+    for (const [c, sec] of this.comboSecondsIn(startMs, endMs)) {
+      if (sec > bestSec) [combo, bestSec] = [c, sec];
+    }
+    const [melee, invocation] = combo.split("|");
+    return { melee: melee || "none", invocation: invocation || "none" };
+  }
+
   /** Seconds spent in each stance combo within [startMs, endMs] (incl. the open segment). */
   private comboSecondsIn(startMs: number, endMs: number): Map<string, number> {
-    const segs = [...this.comboSegments, { startMs: this.comboStartMs, endMs, combo: this.combo() }];
     const out = new Map<string, number>();
-    for (const seg of segs) {
+    // Walk the closed segments plus the still-open one without copying the array — this runs
+    // once per encounter when the history is rebuilt, and once per merged window per overview.
+    const add = (seg: { startMs: number; endMs: number; combo: string }) => {
       const s = Math.max(seg.startMs, startMs);
       const e = Math.min(seg.endMs, endMs);
-      if (e <= s) continue;
+      if (e <= s) return;
       out.set(seg.combo, (out.get(seg.combo) ?? 0) + (e - s) / 1000);
-    }
+    };
+    for (const seg of this.comboSegments) add(seg);
+    add({ startMs: this.comboStartMs, endMs, combo: this.combo() });
     return out;
   }
 
@@ -341,17 +350,16 @@ export class Engine {
         agg.set(combo, a);
       }
     }
-    for (const ent of this.selfComboLog) {
-      if (!inMerged(ent.ts)) continue;
-      const a = agg.get(ent.combo) ?? blank();
-      a.damage += ent.amount;
-      agg.set(ent.combo, a);
-    }
-    for (const ent of this.selfTakenComboLog) {
-      if (!inMerged(ent.ts)) continue;
-      const a = agg.get(ent.combo) ?? blank();
-      a.taken += ent.amount;
-      agg.set(ent.combo, a);
+    for (const [log, field] of [
+      [this.selfComboLog, "damage"],
+      [this.selfTakenComboLog, "taken"],
+    ] as const) {
+      for (const ent of log) {
+        if (!inMerged(ent.ts)) continue;
+        const a = agg.get(ent.combo) ?? blank();
+        a[field] += ent.amount;
+        agg.set(ent.combo, a);
+      }
     }
 
     const windowSec = [...agg.values()].reduce((s, v) => s + v.seconds, 0);
