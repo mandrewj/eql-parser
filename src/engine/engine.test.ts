@@ -173,6 +173,20 @@ test("enemy pet encounter goes inactive when its owner is slain", () => {
   assert.equal(active.includes("an orc thaumaturgist pet"), false, "pet is inactive once its owner is dead");
 });
 
+test("a same-named respawn shows as active (not hidden by the earlier death)", () => {
+  let clock = at("01:00:12");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush a rat for 30 points of damage."), // rat #1
+    L("01:00:01", "You crush a bat for 30 points of damage."), // bat keeps the fight open
+    L("01:00:02", "You have slain a rat!"), // rat #1 dies; fight stays open via the bat
+    L("01:00:08", "You crush a rat for 30 points of damage."), // rat #2 respawn, same key
+  ]);
+  const active = engine.snapshot().activeEncounters.map((e) => e.name.toLowerCase());
+  assert.ok(active.includes("a rat"), "the respawned rat is an active encounter");
+  assert.ok(active.includes("a bat"), "the bat is still active");
+});
+
 test("an encounter goes inactive after 90s of no activity on that NPC", () => {
   let clock = at("01:00:00");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

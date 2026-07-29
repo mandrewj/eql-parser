@@ -81,6 +81,17 @@ interface FightState {
 }
 
 const emptyByType = (): Record<DamageType, number> => ({ melee: 0, spell: 0, dot: 0, unknown: 0 });
+
+/** A metric with only a total + per-second (no per-ability breakdown) — used for healing rows. */
+const rateStat = (total: number, dur: number): MetricStat => ({
+  total,
+  perSec: Math.round(total / dur),
+  hits: 0,
+  crits: 0,
+  avoided: 0,
+  byType: emptyByType(),
+  entries: [],
+});
 const newMetric = (): MetricAcc => ({
   total: 0,
   hits: 0,
@@ -162,7 +173,9 @@ export class Engine {
 
   private current: FightState | null = null;
   private finished: FightState[] = [];
+  private finishedSummaries: FightSummary[] = []; // cached; a closed fight never changes
   private finishedEncounters: EncounterView[] = []; // newest first, rolling
+  private overviewCache: Array<{ n: number; rows: StanceOverviewRow[] }> | null = null;
   private fightSeq = 0;
   private encounterSeq = 0;
   private readonly now: () => number;
@@ -247,14 +260,13 @@ export class Engine {
     stance: StanceState;
     stanceOverview: Array<{ n: number; rows: StanceOverviewRow[] }>;
   } {
-    const recent = this.finished.slice(-20).map((s) => this.summarize(this.buildFight(s)));
     return {
       current: this.current ? this.buildFight(this.current) : null,
-      recent,
+      recent: this.finishedSummaries.slice(-20),
       activeEncounters: this.current ? this.buildLiveEncounters(this.current) : [],
       recentEncounters: this.finishedEncounters.slice(0, 5),
       stance: { ...this.currentStances },
-      stanceOverview: this.buildStanceOverviews(),
+      stanceOverview: (this.overviewCache ??= this.buildStanceOverviews()),
     };
   }
 
@@ -377,7 +389,11 @@ export class Engine {
     // Any engaged-but-unslain NPCs (a boss you fled, a zoned pull) still complete.
     this.finalizeOpenEncounters(this.current, endMs);
     this.current.endMs = endMs;
+    this.finishedSummaries.push(this.summarize(this.buildFight(this.current)));
     this.finished.push(this.current);
+    // Bound memory over long sessions (fights() / report still see the recent window).
+    if (this.finished.length > 60) this.finished.shift();
+    if (this.finishedSummaries.length > 60) this.finishedSummaries.shift();
     this.current = null;
   }
 
@@ -532,6 +548,7 @@ export class Engine {
     if (!view) return;
     this.encounterSeq++;
     this.finishedEncounters.unshift(view);
+    this.overviewCache = null; // a new encounter changes the stance overview
     if (this.finishedEncounters.length > 60) this.finishedEncounters.length = 60;
     // Drop combo-log entries older than the oldest encounter we still keep.
     const oldest = this.finishedEncounters[this.finishedEncounters.length - 1]?.startMs ?? 0;
@@ -560,9 +577,12 @@ export class Engine {
     const idleMs = this.opts.inactivityTimeoutSec * 1000;
     const out: EncounterView[] = [];
     for (const tKey of f.perTarget.keys()) {
-      if (!npc.has(tKey) || slain.has(tKey)) continue;
+      // A mob in perTarget is always a live instance (dead ones are reset out on death),
+      // so we don't consult the deaths list for the mob itself — that would wrongly hide a
+      // same-named respawn. We only use it to despawn a pet whose owner is dead and gone.
+      if (!npc.has(tKey)) continue;
       const ownerKey = tKey.endsWith(" pet") ? tKey.slice(0, -4) : null;
-      if (ownerKey && slain.has(ownerKey)) continue; // pet despawns with its owner
+      if (ownerKey && slain.has(ownerKey) && !f.perTarget.has(ownerKey)) continue; // pet despawns with owner
       if (now - (f.lastSeen.get(tKey) ?? now) > idleMs) continue; // gone stale
       const view = this.encounterView(f, tKey, now, true, `live-${tKey}`, friendly);
       if (view) out.push(view);
@@ -602,6 +622,13 @@ export class Engine {
     const startMs = f.firstSeen.get(npcKey) ?? f.startMs;
     const total = [...byOwner.values()].reduce((s, a) => s + a.total, 0);
 
+    // Healing in this encounter window, summed per healer once (a healer's heals all fall
+    // inside their own activity, so windowing to [start, end] equals the per-person window).
+    const healByHealer = new Map<string, number>();
+    for (const h of f.healLog) {
+      if (h.tsMs >= startMs && h.tsMs <= endMs) healByHealer.set(h.healer, (healByHealer.get(h.healer) ?? 0) + h.amount);
+    }
+
     const allCards: EncounterCard[] = [...byOwner.entries()].map(([ownerKey, acc]): EncounterCard => {
       // Per-person active window: from their first engagement (their attack, or the NPC first
       // hitting/casting on them) to the encounter's end.
@@ -612,18 +639,12 @@ export class Engine {
       const activeDur = Math.max(1, (endMs - activeStart) / 1000);
 
       const takenAcc = f.perTarget.get(ownerKey)?.get(npcKey) ?? newMetric();
-      const healAcc = newMetric(); // healing windowed to this person's active time
-      for (const h of f.healLog) {
-        if (h.healer === ownerKey && h.tsMs >= activeStart && h.tsMs <= endMs) {
-          addAbility(healAcc, h.spell, "unknown", h.amount, false);
-        }
-      }
       return {
         name: this.nameOf(ownerKey),
         kind: ownerKey === this.selfKey ? "self" : "player",
         isSelf: ownerKey === this.selfKey,
         damage: this.toStat(acc, activeDur),
-        healing: this.toStat(healAcc, activeDur),
+        healing: rateStat(healByHealer.get(ownerKey) ?? 0, activeDur),
         taken: this.toStat(takenAcc, activeDur),
         pct: total > 0 ? Math.round((acc.total / total) * 1000) / 10 : 0,
       };

@@ -104,36 +104,11 @@ body { margin: 0; }
 .idle { color: var(--muted); padding: 2rem 0.5rem; text-align: center; }
 .idle.small { padding: 1rem; }
 
-/* meter */
-.meter { max-width: 760px; }
-.meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
-.fight-title { font-size: 1.05rem; font-weight: 600; }
 .live-dot { color: var(--npc); }
-
-.row-wrap { margin: 6px 0; }
-.bar {
-  position: relative; height: 32px; border-radius: 6px; background: var(--panel2);
-  overflow: hidden; cursor: pointer; border: 1px solid transparent;
-}
-.bar:hover { border-color: #3a4150; }
-.bar > .fill { position: absolute; inset: 0 auto 0 0; opacity: 0.85; }
-.bar.self > .fill { background: linear-gradient(90deg, #34528f, var(--self)); }
-.bar.player > .fill { background: linear-gradient(90deg, #2c6f4e, var(--player)); }
-.bar.npc > .fill { background: linear-gradient(90deg, #8f3a3a, var(--npc)); }
-.bar.pet > .fill { background: linear-gradient(90deg, #3f7d6a, #57b39a); }
-.bar.unknown > .fill { background: #444b57; }
-.bar > .txt {
-  position: relative; display: flex; justify-content: space-between; align-items: center;
-  height: 100%; padding: 0 0.65rem; font-size: 0.86rem;
-}
-.bar .name { font-weight: 600; }
-.bar .nums { font-variant-numeric: tabular-nums; }
 .tag { background: #00000055; border-radius: 4px; padding: 0 0.35rem; margin-left: 0.4rem; font-size: 0.72rem; }
 
 /* drill-down */
-.drill { background: var(--panel); border: 1px solid var(--border); border-top: none; border-radius: 0 0 6px 6px; padding: 0.5rem 0.7rem; }
 .drill-meta { color: var(--muted); font-size: 0.78rem; margin-bottom: 0.4rem; }
-.ability { display: flex; justify-content: space-between; font-size: 0.83rem; padding: 0.15rem 0; }
 .typedot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.4rem; }
 .typedot.melee { background: var(--melee); }
 .typedot.spell { background: var(--spell); }
@@ -168,21 +143,6 @@ body { margin: 0; }
 .block { margin-bottom: 1.5rem; }
 .section-title { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 0.6rem; }
 
-/* encounter panes (per-NPC DPS) */
-.enc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 0.5rem; }
-.encounter { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.6rem; }
-.encounter.live { border-color: #7a3b3b; }
-.enc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
-.enc-name { font-weight: 600; }
-.enc-dps { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
-.enc-bar { position: relative; height: 20px; border-radius: 4px; background: var(--panel2); margin: 3px 0; overflow: hidden; }
-.enc-bar > .fill { position: absolute; inset: 0 auto 0 0; opacity: 0.82; }
-.enc-bar.self > .fill { background: linear-gradient(90deg, #34528f, var(--self)); }
-.enc-bar.player > .fill { background: linear-gradient(90deg, #2c6f4e, var(--player)); }
-.enc-bar > .txt { position: relative; display: flex; justify-content: space-between; align-items: center; height: 100%; padding: 0 0.55rem; font-size: 0.8rem; }
-.enc-bar .name { font-weight: 600; }
-.enc-bar .nums { font-variant-numeric: tabular-nums; }
-
 /* character cards (all metrics at once) */
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 0.5rem; align-items: start; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.55rem; }
@@ -207,17 +167,6 @@ body { margin: 0; }
 
 .card-drill { margin-top: 0.55rem; border-top: 1px solid var(--border); padding-top: 0.5rem; }
 .drill-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.3rem; }
-
-/* recent per-mob encounter sections */
-.enc-section {
-  border: 1px solid var(--border); border-radius: 9px; background: #191c22;
-  padding: 0.5rem 0.55rem 0.55rem; margin-bottom: 0.55rem;
-}
-.enc-section-head {
-  display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.25rem;
-  margin-bottom: 0.45rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border);
-}
-.enc-section-name { font-size: 0.92rem; font-weight: 700; }
 
 /* ---- encounter table view (one row per combatant) ---- */
 .enc-table { border: 1px solid var(--border); border-radius: 8px; background: #191c22; padding: 0.4rem 0.5rem 0.5rem; margin-bottom: 0.5rem; }

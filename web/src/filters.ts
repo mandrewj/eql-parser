@@ -1,17 +1,13 @@
 import type { CombatantStats, Fight, Filters, MetricKind } from "./types";
 
-export function durationSec(fight: Fight): number {
-  return Math.max(1, ((fight.endMs ?? Date.now()) - fight.startMs) / 1000);
-}
-
-export function metricMeta(metric: MetricKind): { unit: string; label: string; icon: string; accent: string } {
+export function metricMeta(metric: MetricKind): { unit: string; label: string } {
   switch (metric) {
     case "healing":
-      return { unit: "hps", label: "Healing", icon: "✚", accent: "heal" };
+      return { unit: "hps", label: "Healing" };
     case "taken":
-      return { unit: "dps", label: "Taken", icon: "🛡", accent: "tank" };
+      return { unit: "dps", label: "Taken" };
     default:
-      return { unit: "dps", label: "Damage", icon: "⚔", accent: "dmg" };
+      return { unit: "dps", label: "Damage" };
   }
 }
 
