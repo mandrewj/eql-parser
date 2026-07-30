@@ -115,6 +115,13 @@ interface FightState {
   firstSeen: Map<string, number>; // entityKey → first event ms (encounter start)
   lastSeen: Map<string, number>; // entityKey → last event ms (for per-NPC staleness)
   aliveEngaged: Set<string>;
+  /** Every key charmed at any point in this fight, whether or not it still is. A charm on a
+   *  name we are also *fighting* flickers constantly — our swings at the other mobs of that
+   *  name land on the shared key and read as swings at our own pet — so the live flag is a
+   *  poor test of whose side a blow was struck for. This is the durable one: a hostile mob
+   *  has no reason to attack another mob, so damage from a sometimes-charmed key to a mob is
+   *  pet damage regardless of what the flag says at that instant. */
+  everCharmed: Set<string>;
 }
 
 const emptyByType = (): Record<DamageType, number> => ({ melee: 0, spell: 0, dot: 0, unknown: 0 });
@@ -656,6 +663,7 @@ export class Engine {
 
     const key = this.keyOf(ev.who);
     this.see(key, ev.who);
+    this.current?.everCharmed.add(key);
     const held = this.charmed.get(key);
     if (held) {
       // A bard's song re-lands on every pulse. That is the same pet, not a new one —
@@ -674,7 +682,7 @@ export class Engine {
       const { friendly, npc } = this.resolveKinds(f);
       if (npc.has(key)) {
         this.pushEncounter(f, key, ev.tsMs, friendly);
-        this.resetNpcTracking(f, key);
+        this.resetNpcTracking(f, key, friendly);
       }
       f.npcSeeds.delete(key);
       // Stop it holding the fight open: an un-killed pet would otherwise keep the
@@ -706,7 +714,11 @@ export class Engine {
    *  is untouched — those encounters were banked when they were finalized. */
   private breakCharm(key: string): void {
     if (!this.charmed.delete(key)) return;
-    if (this.current) this.resetNpcTracking(this.current, key);
+    // Symmetric with the reset on the charm *landing*: the mob is an enemy again, so its
+    // next encounter starts clean, and what it dealt us before the charm stays banked in
+    // the encounter that was closed back then rather than being counted a second time.
+    // `resolveKinds` is affordable here — this runs once per actual break, not per blow.
+    if (this.current) this.resetNpcTracking(this.current, key, this.resolveKinds(this.current).friendly);
   }
 
   /** The charm breaks that need no message — which is the only kind another player's
@@ -768,6 +780,7 @@ export class Engine {
     const hold = this.charmed.get(key);
     this.charmed.delete(key);
     this.charmed.set(twin, hold ?? { ownerKey: this.charmOwner(tsMs), spell: null, sinceMs: tsMs });
+    this.current?.everCharmed.add(twin);
     this.display.set(twin, this.nameOf(key));
     const owner = this.petOwners.get(key);
     if (owner) this.petOwners.set(twin, owner);
@@ -796,6 +809,7 @@ export class Engine {
       firstSeen: new Map(),
       lastSeen: new Map(),
       aliveEngaged: new Set(),
+      everCharmed: new Set(),
     };
     return this.current;
   }
@@ -1006,7 +1020,7 @@ export class Engine {
     const { friendly, npc } = this.resolveKinds(f);
     if (!npc.has(victimKey)) return;
     this.pushEncounter(f, victimKey, deathMs, friendly);
-    this.resetNpcTracking(f, victimKey);
+    this.resetNpcTracking(f, victimKey, friendly);
   }
 
   private pushEncounter(f: FightState, npcKey: string, endMs: number, friendly: Set<string>): void {
@@ -1033,10 +1047,19 @@ export class Engine {
   }
 
   /** Clear a mob's per-encounter tracking so the next same-named mob starts fresh. */
-  private resetNpcTracking(f: FightState, npcKey: string): void {
+  private resetNpcTracking(f: FightState, npcKey: string, friendly?: Set<string>): void {
     f.perTarget.delete(npcKey);
     f.selfHits.delete(npcKey);
-    for (const m of f.perTarget.values()) m.delete(npcKey);
+    // What it dealt *out* is cleared from **friendly victims only**, so a same-named respawn's
+    // `taken` on our cards starts at zero. Damage it dealt to another *mob* is pet damage,
+    // banked in that mob's still-running encounter, and has to survive — this reset fires on
+    // every re-charm and on every death of anything sharing the name, which over one Lord
+    // Nagafen fight erased 36,439 points across 609 hits, some twenty times over. Callers on
+    // the hot path pass no `friendly` set and skip this entirely: a charm merely breaking is
+    // no reason to unpick where that mob's damage landed.
+    if (friendly) {
+      for (const [victimKey, m] of f.perTarget) if (friendly.has(victimKey)) m.delete(npcKey);
+    }
     f.firstSeen.delete(npcKey);
     f.lastSeen.delete(npcKey);
     f.targetIncoming.delete(npcKey);
@@ -1085,7 +1108,14 @@ export class Engine {
       // A charmed mob never folds: the user reads it as its own participant, and its
       // charmer may not even be in this fight. Only summoned pets collapse into an owner.
       const ownerKey = (this.charmed.has(aKey) ? undefined : this.petOwners.get(aKey)) ?? aKey;
-      if (ownerKey !== this.selfKey && !friendly.has(ownerKey)) continue;
+      // `everCharmed` and not just `friendly`: a charm on a name we are *also* fighting is
+      // broken and re-applied over and over, because our swings at the other mobs of that
+      // name land on the shared key. The mob is therefore un-charmed for most of the fight
+      // by the flag's reckoning, while plainly still fighting for us. What settles it is
+      // that it is hitting a *mob*: nothing hostile has a reason to do that, so its damage
+      // here is ours no matter what the flag said at the time. (A charmed fire giant warrior
+      // dealt 36,439 to Lord Nagafen over 609 hits and the table showed none of it.)
+      if (ownerKey !== this.selfKey && !friendly.has(ownerKey) && !f.everCharmed.has(ownerKey)) continue;
       let dst = byOwner.get(ownerKey);
       if (!dst) {
         dst = newMetric();
@@ -1110,7 +1140,9 @@ export class Engine {
     // down under `taken`, so merging its abilities here would ship that twice.
     let npcOut = 0;
     for (const [victimKey, byAttacker] of f.perTarget) {
-      if (victimKey === npcKey || !friendly.has(victimKey)) continue;
+      // Same reasoning as the attacker filter: a pet it mauled counts among what it dealt
+      // out, even during the stretches its charm flag was off.
+      if (victimKey === npcKey || !(friendly.has(victimKey) || f.everCharmed.has(victimKey))) continue;
       npcOut += byAttacker.get(npcKey)?.total ?? 0;
     }
 
@@ -1134,9 +1166,13 @@ export class Engine {
       // A summoned pet folded into its owner above and never reaches here, so a "pet"
       // card is always a charmed mob — its own row, per the owner's row alongside it.
       const charm = this.charmed.get(ownerKey);
+      // A mob that was charmed at any point in this fight reads as a pet for the whole of it.
+      // Flipping it back to a plain row for the stretches the flag happened to be off would
+      // relabel the same combatant several times inside one encounter.
+      const isPet = charm !== undefined || f.everCharmed.has(ownerKey);
       return {
         name: this.nameOf(ownerKey),
-        kind: ownerKey === this.selfKey ? "self" : charm ? "pet" : "player",
+        kind: ownerKey === this.selfKey ? "self" : isPet ? "pet" : "player",
         isSelf: ownerKey === this.selfKey,
         ...(charm?.ownerKey ? { ownerName: this.nameOf(charm.ownerKey) } : {}),
         // This row is the charmed half of a same-named pair, so its figures are the whole

@@ -332,6 +332,27 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   and grep — diffs showed `Bin 59778 -> 60341 bytes` and `grep` matched nothing in the file. It is
   now a non-ASCII marker, which the ASCII log still cannot reach.
 
+## Post-v1 — A charmed pet's damage to a boss, which two resets kept erasing  ✅
+- A fire giant warrior charmed on and off through one Lord Nagafen fight dealt **36,439 damage
+  over 609 hits** to the boss. The table showed **none** of it. Two independent causes:
+  - **The charm flag is not a usable test of allegiance** when the pet shares a name with mobs we
+    are killing: our swings at the *others* land on the shared key and break it, so the mob reads
+    as un-charmed for most of the fight while plainly still fighting for us. Encounter tables now
+    filter on `everCharmed` — charmed at any point in this fight — justified by the fact that
+    nothing hostile has a reason to attack another mob.
+  - **`resetNpcTracking` was wiping the pet's output** on every re-charm and on every death of
+    anything sharing its name — about twenty times in that fight. It now clears a mob's outgoing
+    damage from *friendly* victims only. Damage dealt to another mob is pet damage, banked in that
+    mob's still-running encounter.
+- Getting that second half wrong in the other direction is equally bad, and briefly was: preserving
+  outgoing damage wholesale meant a respawn's damage to me never cleared, and the session's damage
+  taken inflated **tenfold** (1.55M → 15.1M). Caught by the full-log check, not by the tests.
+- Validated against the raw log rather than by eye: my damage to Lord Nagafen matches to the point
+  (99,573 = 99,573), the pet's contribution matches exactly (19,680 + 16,759 = 36,439), and damage
+  taken across the session went from 93.3% of ground truth to **99.1%**. Per-mob deltas elsewhere
+  fall on both sides of zero, which is what rules out double counting — it would be uniformly
+  positive. Charmed-pet rows 361 → **453**, damage they surface 382k → **544k**.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the

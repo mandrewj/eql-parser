@@ -101,6 +101,22 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     an upper bound and the card is flagged `ambiguous`. Where the log names no charmer — and for
     another player's charm it usually names none, the cast simply not being in our file — the
     row carries no owner rather than a guess.
+- **A charm on a name we are also fighting flickers constantly**, so the live flag is a poor test
+  of whose side a blow was struck for: our swings at the *other* mobs of that name land on the
+  shared key and break it, over and over. `FightState.everCharmed` is the durable record, and it
+  is what the encounter tables filter on. The justification is that **nothing hostile has a reason
+  to attack another mob** — so damage from a sometimes-charmed key to a mob is pet damage whatever
+  the flag said at that instant. A charmed fire giant warrior dealt **36,439 over 609 hits** to
+  Lord Nagafen while the table showed none of it.
+  - `everCharmed` also decides `kind`, so a combatant is not relabelled several times inside one
+    encounter as its charm comes and goes.
+  - **`resetNpcTracking` clears a mob's outgoing damage from friendly victims only.** That reset
+    exists so a same-named respawn's `taken` on our cards starts at zero, and it fires on every
+    re-charm and on every death of anything sharing the name — which was erasing the pet's damage
+    to the boss some twenty times over one fight. Damage it dealt to another *mob* is banked in
+    that mob's still-running encounter and has to survive. Clearing indiscriminately in the other
+    direction is just as wrong: preserving it wholesale made damage taken accumulate across every
+    respawn and inflated the session total tenfold.
   - **A charmed mob never folds into its owner**, unlike a summoned pet: a charm is
     temporary, breakable, and often not even ours. A `Master` line from one therefore sets
     the *charm's* owner rather than a `petOwners` entry — filing it as a summon would fold

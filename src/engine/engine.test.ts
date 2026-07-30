@@ -804,6 +804,46 @@ test("charm: a pet fighting its own namesake is split off and shown as a partici
   assert.equal(self.damage.total, 200, "my post-charm damage lands on the enemy, not the pet");
 });
 
+test("charm: a pet's damage to a boss survives its charm flickering off", () => {
+  let clock = at("01:01:10");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush Lord Nagafen for 500 points of damage."),
+    L("01:00:01", "Lord Nagafen cleaves YOU for 200 points of damage."),
+    L("01:00:05", "a fire giant warrior has been charmed."),
+    L("01:00:10", "A fire giant warrior slashes Lord Nagafen for 300 points of damage."),
+    // Our swings land on a *different* fire giant, but share the key, so the charm breaks.
+    L("01:00:30", "You crush a fire giant warrior for 100 points of damage."),
+    L("01:00:31", "A fire giant warrior hits YOU for 40 points of damage."),
+    L("01:00:40", "You have slain a fire giant warrior!"), // …and that one dies
+    // The pet is still on the boss the whole time, flag or no flag.
+    L("01:00:50", "A fire giant warrior cleaves Lord Nagafen for 400 points of damage."),
+    L("01:01:00", "A fire giant warrior kicks Lord Nagafen for 200 points of damage."),
+  ]);
+  const naga = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "lord nagafen")!;
+  const pet = naga.cards.find((c) => c.kind === "pet")!;
+  assert.ok(pet, "a mob hitting a boss is fighting for us, whatever the charm flag says");
+  assert.equal(pet.damage.total, 900, "none of it erased by the break or by the namesake's death");
+  assert.equal(naga.cards.find((c) => c.isSelf)!.damage.total, 500);
+  assert.equal(naga.total, 1400);
+});
+
+test("charm: a respawn's damage to me still starts from zero", () => {
+  let clock = at("01:00:40");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    // Guards the reset that the test above relaxes: what a mob deals *us* must still be
+    // wiped when it dies, or every same-named respawn inherits the whole session's total.
+    L("01:00:00", "You crush a fire giant warrior for 100 points of damage."),
+    L("01:00:01", "A fire giant warrior hits YOU for 250 points of damage."),
+    L("01:00:05", "You have slain a fire giant warrior!"),
+    L("01:00:30", "You crush a fire giant warrior for 80 points of damage."),
+    L("01:00:31", "A fire giant warrior hits YOU for 30 points of damage."),
+  ]);
+  const live = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "a fire giant warrior")!;
+  assert.equal(live.cards.find((c) => c.isSelf)!.taken.total, 30, "the dead one's 250 does not carry over");
+});
+
 test("same-name: a mob fighting its own kind is a participant with no charm message at all", () => {
   let clock = at("01:01:00");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
