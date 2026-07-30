@@ -584,7 +584,7 @@ test("milestones: levels, ability points, AAs, deaths and zones land on the time
     "chronological, one per event",
   );
   assert.equal(snap.progress.level, 34);
-  assert.equal(snap.progress.abilityPoints, 4, "unspent AP is the 'you now have' figure");
+  assert.equal(snap.progress.aaUnspent, 4, "unspent AP is the 'you now have' figure");
   assert.equal(snap.milestones.find((m) => m.kind === "death")!.detail, "Slain by a bat");
   assert.equal(snap.milestones.find((m) => m.kind === "ability")!.label, "Banestrike");
 });
@@ -1196,7 +1196,7 @@ test("progress windows: skill-ups and xp are counted, not marked", () => {
   const w = snap.progressWindows.find((p) => p.n === 10)!;
   assert.equal(w.skillUps, 2);
   assert.equal(w.xpPct, 10);
-  assert.equal(w.apGained, 2, "AP gained after the last kill still counts in the window");
+  assert.equal(w.aaGained, 2, "AP gained after the last kill still counts in the window");
   assert.equal(w.levels, 0);
   assert.deepEqual(snap.progressWindows.map((p) => p.n), [10, 25, 50]);
 });

@@ -301,12 +301,12 @@ function EncounterHistory({
 function ProgressStrip({ w, now }: { w: ProgressWindow | undefined; now: ProgressState }) {
   const standing = [
     now.level === null ? null : `Lv ${now.level}`,
-    now.abilityPoints === null ? null : `${now.abilityPoints} AP unspent`,
+    now.aaUnspent === null ? null : `${now.aaUnspent} AA unspent`,
   ].filter(Boolean);
   const marks: Array<{ kind: MilestoneKind; text: string }> = [];
   if (w) {
     if (w.levels) marks.push({ kind: "level", text: plural(w.levels, "level") });
-    if (w.apGained) marks.push({ kind: "ap", text: `+${w.apGained} AP` });
+    if (w.aaGained) marks.push({ kind: "ap", text: `+${w.aaGained} AA` });
     if (w.abilities) marks.push({ kind: "ability", text: plural(w.abilities, "ability", "abilities") });
     if (w.deaths) marks.push({ kind: "death", text: plural(w.deaths, "death") });
   }
@@ -436,39 +436,10 @@ export function StanceOverview({
   );
 }
 
-// --- collapsible boxes ----------------------------------------------------
+// --- stat tabs ------------------------------------------------------------
 
-/** A panel that opens on a single click anywhere in its header. The collapsed state has to
- *  earn its place on screen, so the header carries a `summary` — the one figure worth seeing
- *  without opening it. A box that says only its own name is just a button. */
-function Box({
-  title,
-  summary,
-  accent,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  summary?: React.ReactNode;
-  accent?: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <section className={`box ${accent ?? ""} ${open ? "open" : ""}`}>
-      <button className="box-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <span className="box-caret">{open ? "▾" : "▸"}</span>
-        <span className="box-title">{title}</span>
-        {summary && <span className="box-summary">{summary}</span>}
-      </button>
-      {open && <div className="box-body">{children}</div>}
-    </section>
-  );
-}
-
-/** How many completed ability-point stretches the engine sends. */
-const AP_SHOWN = 4;
+/** How many completed AA stretches the engine sends. */
+const AA_SHOWN = 4;
 
 const hhmm = (sec: number) => {
   if (sec < 60) return `${sec}s`;
@@ -476,17 +447,21 @@ const hhmm = (sec: number) => {
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
 };
 
-/** Two long-term boxes: what recent stretches of play cost, and where the time in this zone
- *  went. Both answer questions the per-fight panels structurally cannot — those reset every
- *  pull. Completed rows are labelled by the milestone that ended them, so the box reads as
- *  "level 44 cost 175 kills and 1h 29m" rather than as a running total. */
-export function LongTermPanels({ stats }: { stats: LongTermStats }) {
+/** The long-term stats, as one container with a tab strip rather than a stack of boxes.
+ *
+ *  Four collapsed boxes cost four rows of a 540px panel to say nothing — vertical space is the
+ *  scarce resource here, and these are all things you consult occasionally rather than watch.
+ *  As tabs the closed state is a single row, and only the selected panel is ever mounted.
+ *  Clicking the open tab closes it, so "all closed" stays reachable in one click. */
+export function StatTabs({ stats, deaths }: { stats: LongTermStats; deaths: DeathReport[] }) {
+  const [open, setOpen] = useState<string | null>(null);
   const { levels, aa, zoneStance } = stats;
+
   const spanRow = (r: MilestoneSpan, i: number) => (
     <div key={`${r.label}-${r.tsMs ?? i}`} className={`lt-row ${r.open ? "open" : ""}`}>
       <span className="lt-since">
         {r.label}
-        {/* Ability-point labels are all "+2 AP" and only the clock tells them apart. */}
+        {/* AA labels are all "+2 AA" and only the clock tells them apart. */}
         {r.tsMs !== null && <span className="lt-when"> {time(r.tsMs)}</span>}
       </span>
       <span className="lt-fig">
@@ -500,7 +475,7 @@ export function LongTermPanels({ stats }: { stats: LongTermStats }) {
       </span>
     </div>
   );
-  const head = (rows: MilestoneSpan[]) => rows[0];
+
   const stanceList = (rows: Array<{ stance: string; seconds: number }>, total: number) =>
     rows.length === 0 ? (
       <span className="muted small">nothing recorded yet</span>
@@ -514,72 +489,103 @@ export function LongTermPanels({ stats }: { stats: LongTermStats }) {
     );
   const meleeTotal = zoneStance.melee.reduce((n, r) => n + r.seconds, 0);
   const invTotal = zoneStance.invocation.reduce((n, r) => n + r.seconds, 0);
-  const openLevel = head(levels);
-  const openAa = head(aa);
 
+  // A tab earns its place by carrying a figure, not just a noun — the strip is on screen
+  // permanently, so each label should be worth reading without opening anything.
+  const tabs: Array<{ key: string; label: string; note?: string; accent?: string; body: React.ReactNode }> = [
+    {
+      key: "levels",
+      label: "Levels",
+      note: levels[0] ? hhmm(levels[0].combatSec) : undefined,
+      body: (
+        <>
+          {levels.length === 0 ? (
+            <div className="muted small">No levels yet this session.</div>
+          ) : (
+            levels.map(spanRow)
+          )}
+          <div className="lt-note muted small">
+            The top row is still running; each one below is what that level cost, from the level
+            before it.
+          </div>
+        </>
+      ),
+    },
+    {
+      key: "aa",
+      label: "AA",
+      note: aa[0] ? hhmm(aa[0].combatSec) : undefined,
+      body: (
+        <>
+          {aa.length === 0 ? (
+            <div className="muted small">No Alternate Advancement earned yet this session.</div>
+          ) : (
+            aa.map(spanRow)
+          )}
+          <div className="lt-note muted small">
+            Alternate Advancement — the last {AA_SHOWN} earned, newest first.
+          </div>
+        </>
+      ),
+    },
+    {
+      key: "stances",
+      label: "Stances",
+      note: meleeTotal > 0 ? hhmm(meleeTotal) : undefined,
+      body: (
+        <>
+          <div className="lt-row stances">
+            <span className="lt-since">⚔ melee</span>
+            {stanceList(zoneStance.melee, meleeTotal)}
+          </div>
+          <div className="lt-row stances">
+            <span className="lt-since">✦ invocation</span>
+            {stanceList(zoneStance.invocation, invTotal)}
+          </div>
+          <div className="lt-note muted small">
+            Since you last entered {zoneStance.zone ?? "this zone"} — wall-clock, so time spent
+            standing in a stance between pulls counts too.
+          </div>
+        </>
+      ),
+    },
+  ];
+  // Deaths only earn a tab once there are some.
+  if (deaths.length > 0) {
+    tabs.push({
+      key: "deaths",
+      label: "Deaths",
+      note: String(deaths.length),
+      accent: "deaths",
+      body: (
+        <>
+          {deaths.map((d) => (
+            <DeathRow key={d.id} d={d} />
+          ))}
+        </>
+      ),
+    });
+  }
+
+  const active = tabs.find((t) => t.key === open);
   return (
-    <>
-      <Box
-        title="Levels"
-        summary={
-          openLevel ? (
-            <>
-              {fmt(openLevel.kills)} kills · {hhmm(openLevel.combatSec)} {openLevel.label}
-            </>
-          ) : (
-            <span className="muted">no levels yet</span>
-          )
-        }
-      >
-        {levels.map(spanRow)}
-        <div className="lt-note muted small">
-          The top row is still running; each one below is what that level cost, from the level
-          before it.
-        </div>
-      </Box>
-
-      <Box
-        title="Ability points"
-        summary={
-          openAa ? (
-            <>
-              {fmt(openAa.kills)} kills · {hhmm(openAa.combatSec)} {openAa.label}
-            </>
-          ) : (
-            <span className="muted">no ability points yet</span>
-          )
-        }
-      >
-        {aa.map(spanRow)}
-        <div className="lt-note muted small">The last {AP_SHOWN} earned, newest first.</div>
-      </Box>
-
-      <Box
-        title="Stances this zone"
-        summary={
-          zoneStance.zone ? (
-            <>
-              {zoneStance.zone} · {hhmm(meleeTotal)}
-            </>
-          ) : (
-            <span className="muted">no zone seen yet</span>
-          )
-        }
-      >
-        <div className="lt-row stances">
-          <span className="lt-since">⚔ melee</span>
-          {stanceList(zoneStance.melee, meleeTotal)}
-        </div>
-        <div className="lt-row stances">
-          <span className="lt-since">✦ invocation</span>
-          {stanceList(zoneStance.invocation, invTotal)}
-        </div>
-        <div className="lt-note muted small">
-          Since you last entered {zoneStance.zone ?? "this zone"} — wall-clock, so time spent
-          standing in a stance between pulls counts too.
-        </div>
-      </Box>
-    </>
+    <section className={`stats ${active ? "open" : ""} ${active?.accent ?? ""}`}>
+      <div className="stat-tabs" role="tablist">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={open === t.key}
+            className={`stat-tab ${open === t.key ? "on" : ""} ${t.accent ?? ""}`}
+            onClick={() => setOpen(open === t.key ? null : t.key)}
+          >
+            {t.label}
+            {t.note && <span className="stat-note">{t.note}</span>}
+          </button>
+        ))}
+      </div>
+      {active && <div className="stat-body">{active.body}</div>}
+    </section>
   );
 }
 
@@ -637,25 +643,6 @@ function DeathRow({ d }: { d: DeathReport }) {
         </span>
       </div>
     </div>
-  );
-}
-
-export function DeathPanel({ deaths }: { deaths: DeathReport[] }) {
-  if (deaths.length === 0) return null;
-  return (
-    <Box
-      title="What killed me"
-      accent="deaths"
-      summary={
-        <>
-          {plural(deaths.length, "death")} · last to {deaths[0]!.killer}
-        </>
-      }
-    >
-      {deaths.map((d) => (
-        <DeathRow key={d.id} d={d} />
-      ))}
-    </Box>
   );
 }
 

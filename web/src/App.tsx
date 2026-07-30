@@ -3,8 +3,7 @@ import { useAppData } from "./useAppData";
 import {
   buildComboColors,
   CharacterCard,
-  DeathPanel,
-  LongTermPanels,
+  StatTabs,
   EncounterTable,
   FightList,
   FilterBar,
@@ -197,10 +196,9 @@ export default function App() {
             stance={snapshot?.stance ?? null}
             milestones={snapshot?.milestones ?? []}
             progressWindows={snapshot?.progressWindows ?? []}
-            progress={snapshot?.progress ?? { level: null, abilityPoints: null }}
+            progress={snapshot?.progress ?? { level: null, aaUnspent: null }}
           />
-          {snapshot?.stats && <LongTermPanels stats={snapshot.stats} />}
-          <DeathPanel deaths={snapshot?.deaths ?? []} />
+          {snapshot?.stats && <StatTabs stats={snapshot.stats} deaths={snapshot.deaths ?? []} />}
           {activeEncounters.length > 0 && (
             <section className="block">
               <div className="section-title live">

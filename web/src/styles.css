@@ -453,23 +453,25 @@ body { margin: 0; }
 .pstat.death .pglyph { color: var(--ms-death); }
 .pstat.zone .pglyph { color: var(--ms-zone); }
 
-/* ---- collapsible boxes ---- */
-/* Default-collapsed, so the header is what's on screen most of the time: it carries a summary
-   and has to read as a complete line on its own, not as a label waiting to be clicked. */
-.box { border: 1px solid var(--border); border-radius: 9px; background: var(--panel); margin-bottom: 0.45rem; overflow: hidden; }
-.box.deaths { border-color: #7a3d3d; }
-.box-head {
-  display: flex; align-items: baseline; gap: 0.45rem; width: 100%;
-  padding: 0.4rem 0.6rem; background: none; border: 0; cursor: pointer;
-  font: inherit; color: var(--text); text-align: left;
+/* ---- stat tabs ---- */
+/* One container, not four stacked boxes: closed, these cost a single row of a 540px panel
+   instead of four rows saying nothing. Only the selected panel is mounted at all. */
+.stats { border: 1px solid var(--border); border-radius: 9px; background: var(--panel); margin-bottom: 0.5rem; overflow: hidden; }
+.stats.open.deaths { border-color: #7a3d3d; }
+.stat-tabs { display: flex; gap: 1px; background: var(--hair); }
+.stat-tab {
+  flex: 1 1 0; min-width: 0; display: flex; align-items: baseline; justify-content: center;
+  gap: 0.3rem; padding: 0.35rem 0.3rem; background: var(--panel); border: 0; cursor: pointer;
+  font: inherit; font-size: 0.74rem; font-weight: 600; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.box-head:hover { background: #ffffff08; }
-.box-caret { color: var(--muted); font-size: 0.7rem; width: 0.7rem; flex: none; }
-.box-title { font-weight: 700; font-size: 0.8rem; flex: none; }
-/* the reason the collapsed state is worth keeping */
-.box-summary { margin-left: auto; color: var(--muted); font-size: 0.74rem; font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.box.deaths .box-summary { color: #c98d8d; }
-.box-body { padding: 0.1rem 0.6rem 0.5rem; border-top: 1px solid var(--hair); }
+.stat-tab:hover { background: #ffffff0a; color: var(--text); }
+.stat-tab.on { background: var(--bg); color: var(--text); box-shadow: inset 0 -2px 0 var(--self); }
+.stat-tab.deaths.on { box-shadow: inset 0 -2px 0 var(--npc); }
+/* the figure that makes a tab worth reading before it is opened */
+.stat-note { font-weight: 400; font-size: 0.7rem; opacity: 0.75; font-variant-numeric: tabular-nums; }
+.stat-tab.deaths .stat-note { color: var(--npc); opacity: 1; }
+.stat-body { padding: 0.15rem 0.6rem 0.5rem; border-top: 1px solid var(--hair); }
 
 /* ---- long-term stat rows ---- */
 .lt-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; padding: 0.28rem 0; font-size: 0.78rem; }

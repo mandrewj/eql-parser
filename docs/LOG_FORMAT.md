@@ -232,6 +232,10 @@ in your log.
 ^You gain (?:party )?experience! \((?<pct>[\d.]+)%\)$
 ```
 - The ability-point line carries a **double space** between its two sentences — match `\s+`.
+- **The log says "ability point"; we call it Alternate Advancement (AA).** The lines and regexes
+  in this file quote the game verbatim and must keep its wording, and the parser's event kind
+  stays `"ap"` for the same reason — it names the line it came from. Everything *presented* to
+  the user says AA, and never "points".
 - `gained the ability "X"` (quoted, with a cost) is an **AA purchase**; `gained the ability
   to use X` (unquoted, no cost) is a **skill unlock**. Same opening words, different events.
 - `improved <X> <rank>` puts the rank on the end of the name, and the name may carry its own

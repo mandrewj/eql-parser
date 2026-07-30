@@ -153,8 +153,8 @@ export interface ProgressEvent extends BaseEvent {
   type: "progress";
   kind: ProgressKind;
   name?: string; // ability / skill name
-  value?: number; // level reached, AP gained, skill level, xp percent
-  total?: number; // AP now unspent
+  value?: number; // level reached, AA gained, skill level, xp percent
+  total?: number; // AA now unspent
   rank?: number; // AA rank, when the line names one
 }
 
@@ -249,14 +249,14 @@ export interface Milestone {
   tsMs: number;
   label: string; // short, drawn next to the glyph when there's room
   detail: string; // full sentence for the hover readout
-  value?: number; // level reached / AP gained — what the window counters sum
+  value?: number; // level reached / AA gained — what the window counters sum
 }
 
 /** Progression totals over the same 10/25/50-encounter window the chart plots. */
 export interface ProgressWindow {
   n: number;
   levels: number;
-  apGained: number;
+  aaGained: number;
   abilities: number; // AAs bought/ranked + skill unlocks
   skillUps: number;
   xpPct: number; // summed "% of a level" from xp ticks
@@ -266,7 +266,7 @@ export interface ProgressWindow {
 /** Where I stand right now (latest values seen in the log). */
 export interface ProgressState {
   level: number | null;
-  abilityPoints: number | null; // unspent AP
+  aaUnspent: number | null; // unspent Alternate Advancement
 }
 
 /** One finished encounter, from my point of view — the history chart's data point.

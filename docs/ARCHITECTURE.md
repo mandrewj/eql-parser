@@ -200,7 +200,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     in a 460k-line log), so they are never marked; they only feed counters.
   - Both are trimmed with the combo logs when an encounter ages out, and `progressWindows` reduces
     them to per-window totals over the same 10/25/50 slices the stance overview uses — cached and
-    invalidated on the same events. `progress` carries the latest level + unspent AP.
+    invalidated on the same events. `progress` carries the latest level + unspent AA.
   - A `Progress` event never opens, extends, or closes a fight; it only annotates the timeline.
     A level-up fires immediately after a kill, so it lands on the boundary *between* two encounters.
 - **Long-term counters are snapshots, not scans.** `kills`, `zones` and `combatMs` run as
@@ -298,7 +298,7 @@ interface Snapshot {                  // everything the UI draws
   encounterHistory: SelfEncounterPoint[];  // last 50 finished, from my side (the chart)
   milestones: Milestone[];            // the rail's marks
   progressWindows: ProgressWindow[];
-  progress: { level: number | null; abilityPoints: number | null };
+  progress: { level: number | null; aaUnspent: number | null };
   deaths: DeathReport[];              // last 5, newest first
   stats: LongTermStats;               // since-level / since-AA counters + zone stance split
 }
@@ -450,14 +450,18 @@ interface MetricStat {                // every metric group has this one shape
     to quote for "what do I actually do per second".
   - **Milestone rail.** The baseline between the halves is the timeline: level-ups (▲), ability points (◆), AAs and skill unlocks (★), my deaths (✕) and zone changes (»). Each mark sits on the **left edge of the encounter it belongs to** — the first encounter that ended at or after it — so a level-up earned on a kill lands exactly on the boundary between the two bars. Several in one gap (ding → ability point → new AA) cluster, **one mark per kind carrying a count** — four zone changes in the same gap are one `»⁴`, not four glyphs fighting over ~14px of rail; hovering the cluster names all of them. Levels and deaths also draw a full-height guide, because those two are what explain a step change in the bars.
   - Marks are identified by **shape**, not colour — the rail is far too small for colour to carry identity — and hovering any of them replaces the header readout with its full sentence and clock time.
-  - Below the chart, a **progression strip** shows current level and unspent AP, then what the window bought: levels, AP, abilities, deaths (in the rail's own glyphs, so the strip doubles as its legend), and — deliberately glyph-less, since they are counted but never marked — skill-ups and summed xp percent.
-- **Collapsible boxes sit between My DPS and the encounters** — Levels, Ability points, Stances
-  this zone, What killed me — all default-collapsed. The collapsed header is what is on screen
-  almost always, so it carries a **summary** and has to read as a complete line on its own: a
-  box that states only its own name is just a button. One click anywhere on the header toggles.
-  - Completed ability-point rows all read `+2 AP`, so each carries the **clock time** it landed;
-    without it four identical labels stack up with no way to tell them apart.
-- **The "what killed me" panel** is one of those boxes, and renders only when there are deaths. Each
+  - Below the chart, a **progression strip** shows current level and unspent AA, then what the window bought: levels, AA, abilities, deaths (in the rail's own glyphs, so the strip doubles as its legend), and — deliberately glyph-less, since they are counted but never marked — skill-ups and summed xp percent.
+- **One tabbed stats container sits between My DPS and the encounters** — Levels · AA · Stances ·
+  Deaths. Four separate collapsible boxes came first and cost **four rows of a 540px panel to say
+  nothing**; vertical space is the scarce resource here and these are all things you consult
+  occasionally rather than watch. Closed, the strip is a **single row**. Only the selected panel
+  is mounted at all, and clicking the open tab closes it, so "all closed" stays one click away.
+  - **A tab carries a figure, not just a noun** (`Levels 1h 52m`, `Deaths 5`) — the strip is on
+    screen permanently, so each label should be worth reading without opening anything.
+  - Deaths only earns a tab once there are some, and tints the container red when open.
+  - Completed AA rows all read `+2 AA`, so each carries the **clock time** it landed; without it
+    four identical labels stack up with no way to tell them apart.
+- **The "what killed me" tab** renders only when there are deaths. Each
   one is three lines: the killer and the **last blow to land**, then the damage by ability, then
   by attacker with the stance I died in. The two breakdown lines are the point — dying to one
   thing and dying to six look nothing alike, and no single total says which happened (one real

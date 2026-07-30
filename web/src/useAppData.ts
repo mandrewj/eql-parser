@@ -44,7 +44,7 @@ export function useAppData(): AppData {
           encounterHistory: msg.encounterHistory ?? [],
           milestones: msg.milestones ?? [],
           progressWindows: msg.progressWindows ?? [],
-          progress: msg.progress ?? { level: null, abilityPoints: null },
+          progress: msg.progress ?? { level: null, aaUnspent: null },
           deaths: msg.deaths ?? [],
           stats: msg.stats ?? {
             levels: [],

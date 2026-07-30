@@ -77,7 +77,7 @@ export interface Milestone {
 export interface ProgressWindow {
   n: number;
   levels: number;
-  apGained: number;
+  aaGained: number;
   abilities: number;
   skillUps: number;
   xpPct: number;
@@ -86,7 +86,7 @@ export interface ProgressWindow {
 
 export interface ProgressState {
   level: number | null;
-  abilityPoints: number | null;
+  aaUnspent: number | null;
 }
 
 /** One finished encounter, from my point of view — the history chart's data point.

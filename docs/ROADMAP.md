@@ -104,14 +104,14 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   *have* been slain", which the third-person pattern can't match), and a **friendly death wiped
   that character's damage** from every mob still being fought.
 - Engine ships `milestones` (the rare, markable kinds), `progressWindows` (per-window totals over
-  the same 10/25/50 slices) and `progress` (level + unspent AP). Progression never opens or closes
+  the same 10/25/50 slices) and `progress` (level + unspent AA). Progression never opens or closes
   a fight.
 - The history chart gains a **milestone rail** on its baseline — ▲ level, ◆ ability point,
   ★ ability, ✕ death, » zone — placed on the encounter boundary each event landed on, with
   full-height guides for levels and deaths. Identity is shape, not colour; hover names the event.
 - Chart polish: gradient bars with rounded caps, an outline on the encounter that set each peak,
   a dashed average line matching the header's figure, and a header that reports the window's span.
-- A **progression strip** under the chart reports current level / unspent AP and what the window
+- A **progression strip** under the chart reports current level / unspent AA and what the window
   earned, reusing the rail's glyphs as its own legend.
 
 ## Post-v1 — Density pass for the real side-panel width  ✅
@@ -450,13 +450,24 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
     Keeping N spans needs N+1 anchors, and the span with no predecessor is dropped rather than
     shown as a running total wearing a delta's label.
   - Combat time sums *fight* spans, since fights never overlap and encounters do.
-  - Ability-point rows all read `+2 AP`, so each carries the clock time it landed — otherwise
+  - Ability-point rows all read `+2 AA`, so each carries the clock time it landed — otherwise
     four identical labels stack up with nothing to tell them apart.
 - **Stances this zone** — seconds in each melee stance and invocation since last entering the
   current zone. Ends at wall-clock, not the last blow: standing in a stance between pulls is
   still time in it, and that is when you'd be reading the box. The still-open stance segment is
   clipped into the window too, or a stance you never changed reads as zero.
 - **What killed me** became one of the same boxes rather than a bespoke panel.
+
+## Post-v1 — AA terminology, and one tabbed container instead of four boxes  ✅
+- **"AP"/"ability points" is now "AA"/Alternate Advancement** everywhere the user sees it, and the
+  word "points" is gone. `LOG_FORMAT.md` keeps the game's own wording, because it quotes real log
+  lines, and the parser's event kind stays `"ap"` for the same reason — it names the line it came
+  from rather than the concept.
+- **The four collapsible boxes became one container with a tab strip.** Closed, they cost four
+  rows of a 540px panel to say nothing; as tabs that is a single row, and only the selected panel
+  is mounted. Clicking the open tab closes it, so "all closed" stays one click away.
+- Each tab carries a figure rather than just a noun (`Levels 1h 52m`, `Deaths 5`), since the strip
+  is on screen permanently and should be worth reading unopened.
 
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done

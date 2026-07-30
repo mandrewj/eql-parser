@@ -82,7 +82,7 @@ interface Anchor {
 /** How many completed stretches each box shows. A level is slow enough that two is a
  *  comparison; ability points come fast enough that four is. */
 const LEVEL_SPANS = 2;
-const AP_SPANS = 4;
+const AA_SPANS = 4;
 
 /** Who holds a charm, and since when. */
 interface CharmHold {
@@ -322,7 +322,7 @@ export class Engine {
   // Newest first. One more anchor than the number of completed spans shown, because a span is
   // the gap *between* two of them: 2 levels needs 3, 4 ability points needs 5.
   private readonly levelAnchors: Anchor[] = [];
-  private readonly apAnchors: Anchor[] = [];
+  private readonly aaAnchors: Anchor[] = [];
   private zone: { name: string; sinceMs: number } | null = null;
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
@@ -331,7 +331,7 @@ export class Engine {
   // the combo logs when an encounter ages out.
   private readonly milestones: Milestone[] = []; // chronological
   private readonly progressLog: Array<{ ts: number; kind: "skill" | "xp"; value: number }> = []; // chronological
-  private readonly progress: ProgressState = { level: null, abilityPoints: null };
+  private readonly progress: ProgressState = { level: null, aaUnspent: null };
   private milestoneSeq = 0;
 
   private current: FightState | null = null;
@@ -491,19 +491,19 @@ export class Engine {
         this.pushMilestone(ev.tsMs, "level", `Lv ${ev.value}`, `Gained a level — now level ${ev.value}`, ev.value);
         break;
       case "ap":
-        this.progress.abilityPoints = ev.total ?? this.progress.abilityPoints;
-        this.pushAnchor(this.apAnchors, `+${ev.value} AP`, ev.tsMs, AP_SPANS);
+        this.progress.aaUnspent = ev.total ?? this.progress.aaUnspent;
+        this.pushAnchor(this.aaAnchors, `+${ev.value} AA`, ev.tsMs, AA_SPANS);
         this.pushMilestone(
           ev.tsMs,
           "ap",
-          `+${ev.value} AP`,
-          `Gained ${ev.value} ability point(s) — ${ev.total} unspent`,
+          `+${ev.value} AA`,
+          `Gained ${ev.value} Alternate Advancement — ${ev.total} unspent`,
           ev.value,
         );
         break;
       case "ability": {
         const named = ev.rank && ev.rank > 1 ? `${ev.name} ${ev.rank}` : ev.name ?? "ability";
-        const cost = ev.value ? `${ev.value} AP` : "free";
+        const cost = ev.value ? `${ev.value} AA` : "free";
         this.pushMilestone(ev.tsMs, "ability", named, `Trained ${named} (${cost})`);
         break;
       }
@@ -591,7 +591,7 @@ export class Engine {
   private buildStats(): LongTermStats {
     return {
       levels: this.spans(this.levelAnchors, LEVEL_SPANS),
-      aa: this.spans(this.apAnchors, AP_SPANS),
+      aa: this.spans(this.aaAnchors, AA_SPANS),
       zoneStance: this.zoneStance(),
     };
   }
@@ -619,7 +619,7 @@ export class Engine {
   private buildProgressWindows(): ProgressWindow[] {
     return [10, 25, 50].map((n) => {
       const encs = this.finishedEncounters.slice(0, n);
-      const w: ProgressWindow = { n, levels: 0, apGained: 0, abilities: 0, skillUps: 0, xpPct: 0, deaths: 0 };
+      const w: ProgressWindow = { n, levels: 0, aaGained: 0, abilities: 0, skillUps: 0, xpPct: 0, deaths: 0 };
       if (encs.length === 0) return w;
       // Everything from the oldest encounter in the window onward, so progression that
       // landed after the last kill (the level-up you just dinged) still counts.
@@ -627,7 +627,7 @@ export class Engine {
       for (const m of this.milestones) {
         if (m.tsMs < from) continue;
         if (m.kind === "level") w.levels++;
-        else if (m.kind === "ap") w.apGained += m.value ?? 0;
+        else if (m.kind === "ap") w.aaGained += m.value ?? 0;
         else if (m.kind === "ability") w.abilities++;
         else if (m.kind === "death") w.deaths++;
       }
