@@ -12,5 +12,7 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["src"]
+  // Tests are typechecked by tsconfig.test.json, which is the only place Node's types live.
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
 }

@@ -1,0 +1,13 @@
+// The web tests run under `node --test` (see the root `test` script), so they need Node's
+// types — which the app itself must not have. Hence a second config rather than widening
+// tsconfig.json: a component that reaches for `process` or `fs` still fails to typecheck.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  // `exclude` is inherited, and it filters `include` — without clearing it here the test
+  // files this config exists for are silently dropped and the check passes vacuously.
+  "exclude": [],
+  "include": ["src/**/*.test.ts", "src/format.ts", "src/stats.ts", "src/types.ts"]
+}

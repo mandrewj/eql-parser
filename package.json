@@ -17,8 +17,8 @@
     "package:sea": "node scripts/package-sea.mjs",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "typecheck:web": "tsc -p web/tsconfig.json --noEmit",
-    "test": "node --import tsx --test --test-force-exit 'src/**/*.test.ts'",
+    "typecheck:web": "tsc -p web/tsconfig.json --noEmit && tsc -p web/tsconfig.test.json --noEmit",
+    "test": "node --import tsx --test --test-force-exit 'src/**/*.test.ts' 'web/src/**/*.test.ts'",
     "parse:check": "tsx src/tools/parse-check.ts",
     "report": "tsx src/tools/report.ts"
   },

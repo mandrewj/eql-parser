@@ -18,21 +18,8 @@ import type {
   StanceState,
 } from "./types";
 import { metricMeta } from "./filters";
-
-const fmt = (n: number) => n.toLocaleString();
-// k-notation past `at`, one decimal — dropped over 100k so narrow columns don't overflow
-const scaleK = (n: number, at: number) => (n >= at ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : n.toLocaleString());
-const fmtK = (n: number) => scaleK(n, 10000);
-const fmtTank = (n: number) => scaleK(n, 2000); // tanking totals get big fast
-const fmtDrill = (n: number) => scaleK(n, 1000); // breakdown lines stay compact
-const time = (ms: number) => new Date(ms).toLocaleTimeString();
-const span = (ms: number) => {
-  const sec = Math.round(ms / 1000);
-  if (sec < 90) return `${sec}s`; // a first session is seconds long, not "1m"
-  const min = Math.round(sec / 60);
-  return min < 60 ? `${min}m` : `${Math.floor(min / 60)}h ${min % 60}m`;
-};
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+import { fmt, fmtDrill, fmtK, fmtTank, plural, span, time } from "./format";
+import { isPartialWindow, weightedAvgDps } from "./stats";
 
 const METRICS: Array<{ key: MetricKind; label: string }> = [
   { key: "damage", label: "Damage" },
@@ -74,9 +61,6 @@ const comboKey = (r: { melee: string; invocation: string }) => `${r.melee}|${r.i
 
 // Six validated categorical slots (see styles.css); anything past six shares the neutral.
 const SLOTS = 6;
-/** Below this share of an encounter, a row's engaged window is worth flagging. Anything
- *  stricter lights up nearly every row — almost nobody engages on the mob's first second. */
-const PARTIAL_WINDOW = 0.7;
 const comboColor = (key: string, map: Map<string, number>) => {
   const i = map.get(key);
   return i === undefined || i >= SLOTS ? "var(--s-other)" : `var(--s${i + 1})`;
@@ -164,13 +148,10 @@ function EncounterHistory({
   const from = points[0]!.startMs;
   const elapsed = points[points.length - 1]!.endMs - from;
 
-  // The average is computed here, from the very array being drawn: total damage over total
-  // encounter seconds. That makes it the duration-weighted mean of these bars — a long
-  // encounter pulls on it harder than a short one — rather than a mean of their rates,
-  // which would let a 4-second mob count as much as a 5-minute boss.
+  // Computed from the very array being drawn, so the line can't drift from its bars.
+  const avgDps = weightedAvgDps(points);
   const totalDmg = points.reduce((s, p) => s + p.damage, 0);
   const totalSec = points.reduce((s, p) => s + p.durationSec, 0);
-  const avgDps = Math.round(totalDmg / Math.max(1, totalSec));
 
   // Resolve each point's combo identity and readout once — both halves of the chart draw
   // from this, so neither is built twice per render.
@@ -458,7 +439,7 @@ function EncounterRow({
 }) {
   const d = card.damage;
   const late = encSec - card.activeSec;
-  const partial = card.activeSec < encSec * PARTIAL_WINDOW;
+  const partial = isPartialWindow(card.activeSec, encSec);
   return (
     <>
       <div className={`erow ${card.kind} ${card.isSelf ? "is-self" : ""}`} onClick={onToggle}>
