@@ -315,6 +315,32 @@ export interface DeathReport {
   invocation: string;
 }
 
+/** Progress since a milestone, for the long-term boxes. Counters are kept as running session
+ *  totals and snapshotted when the milestone fires, so "since" is a subtraction rather than a
+ *  scan — and it survives the milestone list being trimmed as encounters age out. */
+export interface SinceMilestone {
+  label: string; // "level 44", "3 AP", or "—" when none has happened this session
+  tsMs: number | null;
+  kills: number; // NPCs slain since
+  zones: number; // zone changes since
+  combatSec: number; // seconds spent in fights since
+}
+
+/** Time in each stance since I last entered the zone I am in now. Scoped to the zone because
+ *  that is the unit of "what am I doing here" — a camp, not a session. */
+export interface ZoneStance {
+  zone: string | null;
+  sinceMs: number | null;
+  melee: Array<{ stance: string; seconds: number }>; // biggest first
+  invocation: Array<{ stance: string; seconds: number }>;
+}
+
+export interface LongTermStats {
+  sinceLevel: SinceMilestone;
+  sinceAp: SinceMilestone;
+  zoneStance: ZoneStance;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;

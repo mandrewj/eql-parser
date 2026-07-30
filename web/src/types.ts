@@ -133,6 +133,27 @@ export interface DeathReport {
   invocation: string;
 }
 
+export interface SinceMilestone {
+  label: string; // "level 44", "+3 AP", or "—" if none has happened this session
+  tsMs: number | null;
+  kills: number;
+  zones: number;
+  combatSec: number;
+}
+
+export interface ZoneStance {
+  zone: string | null;
+  sinceMs: number | null;
+  melee: Array<{ stance: string; seconds: number }>;
+  invocation: Array<{ stance: string; seconds: number }>;
+}
+
+export interface LongTermStats {
+  sinceLevel: SinceMilestone;
+  sinceAp: SinceMilestone;
+  zoneStance: ZoneStance;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -216,6 +237,7 @@ export interface Snapshot {
   progressWindows: ProgressWindow[]; // one per chart window (10/25/50)
   progress: ProgressState;
   deaths: DeathReport[]; // newest first, last 5
+  stats: LongTermStats;
 }
 
 export interface LogInfo {

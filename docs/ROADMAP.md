@@ -434,6 +434,22 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   independent grep of every incoming-damage form over the same ten seconds also sums to 723, with
   the same killing blow (`Blaze` 209).
 
+## Post-v1 — Collapsible boxes and long-term stats  ✅
+- Three default-collapsed boxes between My DPS and the encounters, each opening on a single
+  click anywhere in its header. The collapsed header is what is on screen almost always, so it
+  carries a **summary** (`101 kills · 1h 36m since level 44`) — a box stating only its own name
+  would be a button, not a panel.
+- **Since last level / AA** — kills, zones and time in combat since each landed. The counters are
+  monotonic session totals snapshotted at the milestone, so "since" is a subtraction: O(1), and
+  immune to `milestones` being trimmed as encounters age out, which would delete the anchor
+  exactly when the stretch got long enough to matter. Combat time sums *fight* spans, since
+  fights never overlap and encounters do.
+- **Stances this zone** — seconds in each melee stance and invocation since last entering the
+  current zone. Ends at wall-clock, not the last blow: standing in a stance between pulls is
+  still time in it, and that is when you'd be reading the box. The still-open stance segment is
+  clipped into the window too, or a stance you never changed reads as zero.
+- **What killed me** became one of the same boxes rather than a bespoke panel.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

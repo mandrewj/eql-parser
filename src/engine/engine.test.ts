@@ -804,6 +804,48 @@ test("charm: a pet fighting its own namesake is split off and shown as a partici
   assert.equal(self.damage.total, 200, "my post-charm damage lands on the enemy, not the pet");
 });
 
+test("long-term: kills, zones and combat time are counted from each milestone", () => {
+  const engine = feed(
+    [
+      L("01:00:00", "You crush an orc for 40 points of damage."),
+      L("01:00:10", "You have slain an orc!"),
+      L("01:00:11", "You have gained a level! Welcome to level 44!"),
+      // Everything below is "since level 44".
+      L("01:02:00", "You crush a rat for 40 points of damage."),
+      L("01:02:20", "You have slain a rat!"),
+      L("01:02:21", "You have gained 2 ability point(s)!  You now have 5 ability point(s)."),
+      L("01:05:00", "You have entered The Permafrost Caverns."),
+      L("01:06:00", "You crush a bat for 40 points of damage."),
+      L("01:06:30", "You have slain a bat!"),
+    ],
+    "Sanluen",
+    30,
+  );
+  const { sinceLevel, sinceAp } = engine.snapshot().stats;
+  assert.equal(sinceLevel.label, "level 44");
+  assert.equal(sinceLevel.kills, 2, "the rat and the bat, not the orc that earned the level");
+  assert.equal(sinceLevel.zones, 1);
+  assert.equal(sinceAp.label, "+2 AP");
+  assert.equal(sinceAp.kills, 1, "only the bat — the AP landed after the rat");
+  assert.ok(sinceAp.combatSec < sinceLevel.combatSec, "a later anchor covers less combat");
+});
+
+test("long-term: zone stances count the open segment, and reset on zoning", () => {
+  let clock = at("01:10:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    // The stance was set long before the zone change, and never changed again — the open
+    // segment still has to be clipped into the window, or a steady stance reads as zero.
+    L("01:00:00", "You assume an offensive stance."),
+    L("01:00:00", "You begin reciting the spellblade invocation."),
+    L("01:05:00", "You have entered The Permafrost Caverns."),
+  ]);
+  const z = engine.snapshot().stats.zoneStance;
+  assert.equal(z.zone, "The Permafrost Caverns");
+  assert.deepEqual(z.melee, [{ stance: "offensive", seconds: 300 }], "01:05 → 01:10, not since 01:00");
+  assert.deepEqual(z.invocation, [{ stance: "spellblade", seconds: 300 }]);
+});
+
 test("what killed me: the run-up is kept, broken down, and the last blow identified", () => {
   const engine = feed([
     L("01:00:00", "You assume a mage hunter stance."),

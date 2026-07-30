@@ -2,6 +2,7 @@ import { useState } from "react";
 import type {
   CombatantStats,
   DeathReport,
+  LongTermStats,
   EncounterCard as EncounterCardData,
   EncounterView,
   Filters,
@@ -434,6 +435,116 @@ export function StanceOverview({
   );
 }
 
+// --- collapsible boxes ----------------------------------------------------
+
+/** A panel that opens on a single click anywhere in its header. The collapsed state has to
+ *  earn its place on screen, so the header carries a `summary` — the one figure worth seeing
+ *  without opening it. A box that says only its own name is just a button. */
+function Box({
+  title,
+  summary,
+  accent,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  summary?: React.ReactNode;
+  accent?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className={`box ${accent ?? ""} ${open ? "open" : ""}`}>
+      <button className="box-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className="box-caret">{open ? "▾" : "▸"}</span>
+        <span className="box-title">{title}</span>
+        {summary && <span className="box-summary">{summary}</span>}
+      </button>
+      {open && <div className="box-body">{children}</div>}
+    </section>
+  );
+}
+
+const hhmm = (sec: number) => {
+  if (sec < 60) return `${sec}s`;
+  const m = Math.round(sec / 60);
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+};
+
+/** Two long-term boxes: what a stretch of play bought, and where the time in this zone went.
+ *  Both answer questions the per-fight panels structurally cannot — they reset every pull. */
+export function LongTermPanels({ stats }: { stats: LongTermStats }) {
+  const { sinceLevel, sinceAp, zoneStance } = stats;
+  const row = (r: typeof sinceLevel) => (
+    <div className="lt-row">
+      <span className="lt-since">since {r.label}</span>
+      <span className="lt-fig">{fmt(r.kills)} <span className="lt-unit">kills</span></span>
+      <span className="lt-fig">{fmt(r.zones)} <span className="lt-unit">zones</span></span>
+      <span className="lt-fig">{hhmm(r.combatSec)} <span className="lt-unit">in combat</span></span>
+    </div>
+  );
+  const stanceList = (rows: Array<{ stance: string; seconds: number }>, total: number) =>
+    rows.length === 0 ? (
+      <span className="muted small">nothing recorded yet</span>
+    ) : (
+      rows.map((r) => (
+        <span key={r.stance} className="lt-stance">
+          <span className="lt-stance-name">{stanceLabel(r.stance)}</span> {hhmm(r.seconds)}
+          <span className="lt-stance-pct">{total > 0 ? ` · ${Math.round((r.seconds / total) * 100)}%` : ""}</span>
+        </span>
+      ))
+    );
+  const meleeTotal = zoneStance.melee.reduce((n, r) => n + r.seconds, 0);
+  const invTotal = zoneStance.invocation.reduce((n, r) => n + r.seconds, 0);
+
+  return (
+    <>
+      <Box
+        title="Since last level / AA"
+        summary={
+          <>
+            {fmt(sinceLevel.kills)} kills · {hhmm(sinceLevel.combatSec)} since {sinceLevel.label}
+          </>
+        }
+      >
+        {row(sinceLevel)}
+        {row(sinceAp)}
+        <div className="lt-note muted small">
+          Counted from the moment each landed, so the two stretches overlap whenever an ability
+          point arrived after the level.
+        </div>
+      </Box>
+
+      <Box
+        title="Stances this zone"
+        summary={
+          zoneStance.zone ? (
+            <>
+              {zoneStance.zone} · {hhmm(meleeTotal)}
+            </>
+          ) : (
+            <span className="muted">no zone seen yet</span>
+          )
+        }
+      >
+        <div className="lt-row stances">
+          <span className="lt-since">⚔ melee</span>
+          {stanceList(zoneStance.melee, meleeTotal)}
+        </div>
+        <div className="lt-row stances">
+          <span className="lt-since">✦ invocation</span>
+          {stanceList(zoneStance.invocation, invTotal)}
+        </div>
+        <div className="lt-note muted small">
+          Since you last entered {zoneStance.zone ?? "this zone"} — wall-clock, so time spent
+          standing in a stance between pulls counts too.
+        </div>
+      </Box>
+    </>
+  );
+}
+
 // --- what killed me -------------------------------------------------------
 
 /** A death, read backwards. The question is never "how much did I take" — it is *what* was
@@ -494,15 +605,19 @@ function DeathRow({ d }: { d: DeathReport }) {
 export function DeathPanel({ deaths }: { deaths: DeathReport[] }) {
   if (deaths.length === 0) return null;
   return (
-    <section className="overview deaths">
-      <div className="ov-head">
-        <span className="ov-title">What killed me</span>
-        <span className="muted small">last {plural(deaths.length, "death")}</span>
-      </div>
+    <Box
+      title="What killed me"
+      accent="deaths"
+      summary={
+        <>
+          {plural(deaths.length, "death")} · last to {deaths[0]!.killer}
+        </>
+      }
+    >
       {deaths.map((d) => (
         <DeathRow key={d.id} d={d} />
       ))}
-    </section>
+    </Box>
   );
 }
 

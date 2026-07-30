@@ -203,6 +203,17 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     invalidated on the same events. `progress` carries the latest level + unspent AP.
   - A `Progress` event never opens, extends, or closes a fight; it only annotates the timeline.
     A level-up fires immediately after a kill, so it lands on the boundary *between* two encounters.
+- **Long-term counters are snapshots, not scans.** `kills`, `zones` and `combatMs` run as
+  monotonic session totals; when a level or an ability point lands, the engine records the
+  totals *at that moment*. "Since last level" is then a subtraction — O(1), and immune to
+  `milestones` being trimmed as encounters age out, which would otherwise delete the anchor
+  exactly when the stretch it measures got long enough to be interesting.
+  - Combat time sums **fight** spans, not encounter spans: fights never overlap, so their
+    seconds are real clock time, where two mobs at once would have counted a second twice.
+  - **Zone stance split** clips the stance segments to "since I last entered this zone", with
+    the window ending at wall-clock rather than the last blow — time spent standing in a stance
+    between pulls is still time in that stance, and that is exactly when you'd be reading it.
+    The open segment has to be clipped in too, or a stance you never changed reads as zero.
 - **"What killed me" needs no new parsing** — every field was already in the event stream, just
   never kept together. A rolling window of incoming hits (`selfBlows`) carries the attacker and
   ability that `selfTakenComboLog` and `selfTaken` both drop, alongside the heals that landed on
@@ -282,6 +293,7 @@ interface Snapshot {                  // everything the UI draws
   progressWindows: ProgressWindow[];
   progress: { level: number | null; abilityPoints: number | null };
   deaths: DeathReport[];              // last 5, newest first
+  stats: LongTermStats;               // since-level / since-AA counters + zone stance split
 }
 
 interface EncounterView {             // one per-mob card
@@ -432,7 +444,11 @@ interface MetricStat {                // every metric group has this one shape
   - **Milestone rail.** The baseline between the halves is the timeline: level-ups (▲), ability points (◆), AAs and skill unlocks (★), my deaths (✕) and zone changes (»). Each mark sits on the **left edge of the encounter it belongs to** — the first encounter that ended at or after it — so a level-up earned on a kill lands exactly on the boundary between the two bars. Several in one gap (ding → ability point → new AA) cluster, **one mark per kind carrying a count** — four zone changes in the same gap are one `»⁴`, not four glyphs fighting over ~14px of rail; hovering the cluster names all of them. Levels and deaths also draw a full-height guide, because those two are what explain a step change in the bars.
   - Marks are identified by **shape**, not colour — the rail is far too small for colour to carry identity — and hovering any of them replaces the header readout with its full sentence and clock time.
   - Below the chart, a **progression strip** shows current level and unspent AP, then what the window bought: levels, AP, abilities, deaths (in the rail's own glyphs, so the strip doubles as its legend), and — deliberately glyph-less, since they are counted but never marked — skill-ups and summed xp percent.
-- **The "what killed me" panel** sits under My DPS and renders only when there are deaths. Each
+- **Collapsible boxes sit between My DPS and the encounters**, all default-collapsed. The
+  collapsed header is what is on screen almost always, so it carries a **summary** and has to
+  read as a complete line on its own — a box that states only its own name is just a button.
+  One click anywhere on the header toggles it.
+- **The "what killed me" panel** is one of those boxes, and renders only when there are deaths. Each
   one is three lines: the killer and the **last blow to land**, then the damage by ability, then
   by attacker with the stance I died in. The two breakdown lines are the point — dying to one
   thing and dying to six look nothing alike, and no single total says which happened (one real

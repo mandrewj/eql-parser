@@ -13,6 +13,9 @@
 import { CHARM_EMOTES, type ClassCode } from "../parser/spells.js";
 import type {
   AbilityBreakdown,
+  LongTermStats,
+  SinceMilestone,
+  ZoneStance,
   DeathBlow,
   DeathReport,
   CharmEmoteKind,
@@ -297,6 +300,15 @@ export class Engine {
   private readonly deaths: DeathReport[] = []; // newest first, last 5
   private deathSeq = 0;
 
+  // Running session totals for the long-term boxes. Snapshotting these when a level or an
+  // ability point lands makes "since then" a subtraction, which is both O(1) and immune to
+  // `milestones` being trimmed as encounters age out — the anchor would otherwise vanish
+  // exactly when the stretch it measures got interesting.
+  private totals = { kills: 0, zones: 0, combatMs: 0 };
+  private atLastLevel: { label: string; tsMs: number; kills: number; zones: number; combatMs: number } | null = null;
+  private atLastAp: { label: string; tsMs: number; kills: number; zones: number; combatMs: number } | null = null;
+  private zone: { name: string; sinceMs: number } | null = null;
+
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
   // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
   // live in `progressLog` and only ever feed the window counters. Both are trimmed with
@@ -376,6 +388,8 @@ export class Engine {
     if (ev.type === "zone") {
       // Zoning leaves all mobs behind — end the current fight immediately.
       if (this.current) this.closeFight(this.current.lastActivityMs);
+      this.totals.zones++;
+      this.zone = { name: ev.zone, sinceMs: ev.tsMs };
       // A charmed pet doesn't zone with you either.
       this.charmed.clear();
       this.charmCasts = [];
@@ -433,6 +447,7 @@ export class Engine {
     progressWindows: ProgressWindow[];
     progress: ProgressState;
     deaths: DeathReport[];
+    stats: LongTermStats;
   } {
     return {
       current: this.current ? this.buildFight(this.current) : null,
@@ -446,6 +461,7 @@ export class Engine {
       progressWindows: (this.progressCache ??= this.buildProgressWindows()),
       progress: { ...this.progress },
       deaths: [...this.deaths],
+      stats: this.buildStats(),
     };
   }
 
@@ -455,10 +471,16 @@ export class Engine {
     switch (ev.kind) {
       case "level":
         this.progress.level = ev.value ?? this.progress.level;
+        this.atLastLevel = { label: `level ${ev.value}`, tsMs: ev.tsMs, ...this.snapCounters() };
         this.pushMilestone(ev.tsMs, "level", `Lv ${ev.value}`, `Gained a level — now level ${ev.value}`, ev.value);
         break;
       case "ap":
         this.progress.abilityPoints = ev.total ?? this.progress.abilityPoints;
+        this.atLastAp = {
+          label: `+${ev.value} AP`,
+          tsMs: ev.tsMs,
+          ...this.snapCounters(),
+        };
         this.pushMilestone(
           ev.tsMs,
           "ap",
@@ -483,6 +505,64 @@ export class Engine {
         this.progressCache = null;
         break;
     }
+  }
+
+  /** The running totals as they stand right now, including the fight still open — a level
+   *  earned mid-pull should not have that pull's seconds land on the *next* stretch. */
+  private snapCounters(): { kills: number; zones: number; combatMs: number } {
+    return {
+      kills: this.totals.kills,
+      zones: this.totals.zones,
+      combatMs: this.totals.combatMs + this.openFightMs(),
+    };
+  }
+
+  private openFightMs(): number {
+    const f = this.current;
+    return f ? Math.max(0, f.lastActivityMs - f.startMs) : 0;
+  }
+
+  /** What has happened since a milestone, as a subtraction of two counter snapshots. */
+  private since(at: { label: string; tsMs: number; kills: number; zones: number; combatMs: number } | null): SinceMilestone {
+    const now = this.snapCounters();
+    if (!at) {
+      // Nothing of this kind has landed yet this session, so "since" is the whole session.
+      return { label: "—", tsMs: null, kills: now.kills, zones: now.zones, combatSec: Math.round(now.combatMs / 1000) };
+    }
+    return {
+      label: at.label,
+      tsMs: at.tsMs,
+      kills: now.kills - at.kills,
+      zones: now.zones - at.zones,
+      combatSec: Math.round((now.combatMs - at.combatMs) / 1000),
+    };
+  }
+
+  /** Seconds in each stance of each dimension since I last entered the zone I am in now. */
+  private zoneStance(): ZoneStance {
+    const from = this.zone?.sinceMs ?? null;
+    // Wall-clock, not last-combat-activity: time spent standing in a stance between pulls is
+    // still time in that stance, and anchoring to the last blow would freeze the tally while
+    // you are alive and doing nothing, which is exactly when you might be checking it.
+    const to = Math.max(from ?? 0, this.now());
+    const forDim = (dim: StanceDim) => {
+      const out = new Map<string, number>();
+      if (from === null) return [];
+      for (const seg of this.stanceSegments[dim]) {
+        const s = Math.max(seg.startMs, from);
+        const e = Math.min(seg.endMs ?? to, to);
+        if (e > s) out.set(seg.stance, (out.get(seg.stance) ?? 0) + (e - s) / 1000);
+      }
+      return [...out]
+        .map(([stance, seconds]) => ({ stance, seconds: Math.round(seconds) }))
+        .filter((r) => r.seconds > 0)
+        .sort((a, b) => b.seconds - a.seconds);
+    };
+    return { zone: this.zone?.name ?? null, sinceMs: from, melee: forDim("melee"), invocation: forDim("invocation") };
+  }
+
+  private buildStats(): LongTermStats {
+    return { sinceLevel: this.since(this.atLastLevel), sinceAp: this.since(this.atLastAp), zoneStance: this.zoneStance() };
   }
 
   private pushMilestone(
@@ -972,6 +1052,9 @@ export class Engine {
     // Any engaged-but-unslain NPCs (a boss you fled, a zoned pull) still complete.
     this.finalizeOpenEncounters(this.current, endMs);
     this.current.endMs = endMs;
+    // Fights never overlap, so their spans sum to real time in combat — unlike encounters,
+    // where two mobs at once would count the same second twice.
+    this.totals.combatMs += Math.max(0, endMs - this.current.startMs);
     this.finishedSummaries.push(this.summarize(this.buildFight(this.current)));
     this.finished.push(this.current);
     // Bound memory over long sessions (fights() / report still see the recent window).
@@ -1244,6 +1327,7 @@ export class Engine {
   private finalizeEncounter(f: FightState, victimKey: string, deathMs: number): void {
     const { friendly, npc } = this.resolveKinds(f);
     if (!npc.has(victimKey)) return;
+    this.totals.kills++;
     this.pushEncounter(f, victimKey, deathMs, friendly);
     this.resetNpcTracking(f, victimKey, friendly);
   }

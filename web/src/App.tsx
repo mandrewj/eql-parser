@@ -4,6 +4,7 @@ import {
   buildComboColors,
   CharacterCard,
   DeathPanel,
+  LongTermPanels,
   EncounterTable,
   FightList,
   FilterBar,
@@ -198,6 +199,7 @@ export default function App() {
             progressWindows={snapshot?.progressWindows ?? []}
             progress={snapshot?.progress ?? { level: null, abilityPoints: null }}
           />
+          {snapshot?.stats && <LongTermPanels stats={snapshot.stats} />}
           <DeathPanel deaths={snapshot?.deaths ?? []} />
           {activeEncounters.length > 0 && (
             <section className="block">

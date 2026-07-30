@@ -453,10 +453,37 @@ body { margin: 0; }
 .pstat.death .pglyph { color: var(--ms-death); }
 .pstat.zone .pglyph { color: var(--ms-zone); }
 
+/* ---- collapsible boxes ---- */
+/* Default-collapsed, so the header is what's on screen most of the time: it carries a summary
+   and has to read as a complete line on its own, not as a label waiting to be clicked. */
+.box { border: 1px solid var(--border); border-radius: 9px; background: var(--panel); margin-bottom: 0.45rem; overflow: hidden; }
+.box.deaths { border-color: #7a3d3d; }
+.box-head {
+  display: flex; align-items: baseline; gap: 0.45rem; width: 100%;
+  padding: 0.4rem 0.6rem; background: none; border: 0; cursor: pointer;
+  font: inherit; color: var(--text); text-align: left;
+}
+.box-head:hover { background: #ffffff08; }
+.box-caret { color: var(--muted); font-size: 0.7rem; width: 0.7rem; flex: none; }
+.box-title { font-weight: 700; font-size: 0.8rem; flex: none; }
+/* the reason the collapsed state is worth keeping */
+.box-summary { margin-left: auto; color: var(--muted); font-size: 0.74rem; font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.box.deaths .box-summary { color: #c98d8d; }
+.box-body { padding: 0.1rem 0.6rem 0.5rem; border-top: 1px solid var(--hair); }
+
+/* ---- long-term stat rows ---- */
+.lt-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; padding: 0.28rem 0; font-size: 0.78rem; }
+.lt-row + .lt-row { border-top: 1px solid var(--hair); }
+.lt-since { flex: 0 0 8.2rem; color: var(--muted); font-size: 0.72rem; }
+.lt-fig { font-weight: 700; font-variant-numeric: tabular-nums; }
+.lt-unit { font-weight: 400; font-size: 0.7rem; color: var(--muted); margin-left: 0.15rem; }
+.lt-row.stances { align-items: baseline; }
+.lt-stance { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lt-stance-name { font-weight: 600; }
+.lt-stance-pct { color: var(--muted); }
+.lt-note { padding-top: 0.35rem; line-height: 1.35; }
+
 /* ---- what killed me ---- */
-/* Deaths are rare and the panel only renders when there are some, so it can afford to be
-   loud: the same red the tank column and the milestone rail's ✕ already use. */
-.overview.deaths { border-color: #7a3d3d; }
 .death { padding: 0.3rem 0 0.35rem; border-top: 1px solid var(--hair); }
 .death:first-of-type { border-top: 0; }
 .death-th { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.78rem; }
