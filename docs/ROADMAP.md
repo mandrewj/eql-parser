@@ -376,6 +376,26 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   source are three damage shields (thorns/flames/frost, now identified). Scraping all 1,965 spell
   pages would have bought nothing.
 
+## Post-v1 — The encounter sparkline becomes a full-card diverging timeline  ✅
+- The per-encounter strip was my damage only, on a fixed-width stub between header and table. It
+  now **fills the card and is drawn over the table**, with the My DPS chart's grammar: my damage
+  above a baseline, what this mob dealt me below, each half scaled to its own peak.
+- **Over rather than behind, and that had to be tried to be known.** Behind first: the rows carry
+  their own backgrounds, so the timeline survived only in the gaps between columns and read as
+  scattered blocks. Over the top spans the full width, at the cost of crossing the numbers —
+  hence 19% opacity and no interactivity.
+- Needed one new piece of engine state: **`selfTaken`**, what each mob dealt *me*, timestamped and
+  per-mob. `selfTakenComboLog` is per-session, so during a two-mob pull it would have drawn a
+  strip that disagreed with the `tank` figure on the row directly above it — the same trap
+  `selfHits` was added to avoid.
+- **Bars are coloured by the stance combo of their bucket**, from the map the My DPS chart uses,
+  so a combo means one colour everywhere. That map needed a third source: a timeline resolves a
+  combo per *bucket*, so it routinely holds one that is neither any encounter's dominant combo
+  nor an overview row — on a real boss fight that left **20 of 74 buckets** on the neutral
+  fallback. Timeline combos are appended last, so slots the charts already agreed on never move.
+- Mid-fight stance changes are rarer than expected — **1 encounter in 64** — because you don't
+  reswitch during short trash pulls. It shows on the long boss fights, which is where it matters.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the

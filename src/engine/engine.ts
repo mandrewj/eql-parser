@@ -113,6 +113,10 @@ interface FightState {
   targetIncoming: Map<string, { name: string; total: number }>;
   perTarget: Map<string, Map<string, MetricAcc>>; // targetKey → attackerKey → damage breakdown
   selfHits: Map<string, Array<{ ts: number; amount: number }>>; // targetKey → my damage, timestamped
+  /** npcKey → what that mob dealt *me*, timestamped. The mirror of `selfHits`, and per-mob for
+   *  the same reason: `selfTakenComboLog` is per-session, so during a two-mob pull it would
+   *  draw a strip that disagreed with the row above it. */
+  selfTaken: Map<string, Array<{ ts: number; amount: number }>>;
   pairFirst: Map<string, number>; // "attackerKey>targetKey" → first contact ms (per-person start)
   firstSeen: Map<string, number>; // entityKey → first event ms (encounter start)
   lastSeen: Map<string, number>; // entityKey → last event ms (for per-NPC staleness)
@@ -846,6 +850,7 @@ export class Engine {
       targetIncoming: new Map(),
       perTarget: new Map(),
       selfHits: new Map(),
+      selfTaken: new Map(),
       pairFirst: new Map(),
       firstSeen: new Map(),
       lastSeen: new Map(),
@@ -997,6 +1002,10 @@ export class Engine {
     }
     if (tKey === this.selfKey && aKey !== this.selfKey) {
       this.selfTakenComboLog.push({ combo: this.combo(), amount: ev.amount, ts: ev.tsMs });
+      // Per-mob and timestamped, so an encounter's strip can show what *this* mob did to me.
+      const taken = f.selfTaken.get(aKey);
+      if (taken) taken.push({ ts: ev.tsMs, amount: ev.amount });
+      else f.selfTaken.set(aKey, [{ ts: ev.tsMs, amount: ev.amount }]);
     }
   }
 
@@ -1091,6 +1100,7 @@ export class Engine {
   private resetNpcTracking(f: FightState, npcKey: string, friendly?: Set<string>): void {
     f.perTarget.delete(npcKey);
     f.selfHits.delete(npcKey);
+    f.selfTaken.delete(npcKey);
     // What it dealt *out* is cleared from **friendly victims only**, so a same-named respawn's
     // `taken` on our cards starts at zero. Damage it dealt to another *mob* is pet damage,
     // banked in that mob's still-running encounter, and has to survive — this reset fires on
@@ -1234,6 +1244,16 @@ export class Engine {
     const others = allCards.filter((c) => !c.isSelf).slice(0, 5);
     const cards = (self ? [self, ...others] : others).sort(byShare);
     const { spark, bucketSec } = sparkline(f.selfHits.get(npcKey) ?? [], startMs, spanSec);
+    // The mirror half of the strip, on the same buckets so the two line up bar for bar.
+    const { spark: takenSpark } = sparkline(f.selfTaken.get(npcKey) ?? [], startMs, spanSec);
+    // …and the combo I was in for each bucket, so the strip can be coloured by stance. A
+    // bucket can straddle a stance change; the combo holding the most of it wins, which is
+    // the same rule `dominantComboIn` applies to a whole encounter.
+    const sparkCombos = spark.map((_, i) => {
+      const from = startMs + i * bucketSec * 1000;
+      const { melee, invocation } = this.dominantComboIn(from, Math.min(from + bucketSec * 1000, endMs));
+      return `${melee}|${invocation}`;
+    });
 
     return {
       id,
@@ -1246,6 +1266,8 @@ export class Engine {
       dps: Math.round(total / spanSec),
       npcDamage: rateStat(npcOut, spanSec),
       selfSpark: spark,
+      selfTakenSpark: takenSpark,
+      sparkCombos,
       sparkBucketSec: bucketSec,
       cards,
     };

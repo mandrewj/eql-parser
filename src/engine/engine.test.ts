@@ -804,6 +804,59 @@ test("charm: a pet fighting its own namesake is split off and shown as a partici
   assert.equal(self.damage.total, 200, "my post-charm damage lands on the enemy, not the pet");
 });
 
+test("encounter timeline: both halves share buckets, and each bucket carries its stance combo", () => {
+  let clock = at("01:00:20");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("00:59:59", "You assume an offensive stance."),
+    L("00:59:59", "You begin reciting the spellblade invocation."),
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:01", "An orc hits YOU for 40 points of damage."),
+    // Switch stance half way through — the strip's colour is meant to change here.
+    L("01:00:05", "You assume a defensive stance."),
+    L("01:00:06", "You crush an orc for 60 points of damage."),
+    L("01:00:07", "An orc hits YOU for 20 points of damage."),
+    L("01:00:09", "You crush an orc for 30 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "an orc")!;
+
+  assert.equal(enc.selfTakenSpark.length, enc.selfSpark.length, "the two halves must line up bar for bar");
+  assert.equal(enc.sparkCombos.length, enc.selfSpark.length, "…and every bucket names a combo");
+  assert.ok(
+    enc.selfSpark.some((v) => v > 0) && enc.selfTakenSpark.some((v) => v > 0),
+    "both directions are recorded",
+  );
+  assert.deepEqual(
+    [...new Set(enc.sparkCombos)].sort(),
+    ["defensive|spellblade", "offensive|spellblade"],
+    "the mid-fight stance change shows up as two combos across the buckets",
+  );
+});
+
+test("encounter timeline: damage taken is per-mob, not the whole pull", () => {
+  let clock = at("01:00:20");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    // Two mobs on me at once: each strip must show only its own mob's damage, or a card
+    // would disagree with the `tank` figure on the row directly above it.
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:01", "An orc hits YOU for 40 points of damage."),
+    L("01:00:02", "You crush a rat for 50 points of damage."),
+    L("01:00:03", "A rat hits YOU for 7 points of damage."),
+  ]);
+  const snap = engine.snapshot();
+  const orc = snap.activeEncounters.find((e) => e.name.toLowerCase() === "an orc")!;
+  const rat = snap.activeEncounters.find((e) => e.name.toLowerCase() === "a rat")!;
+  assert.equal(
+    orc.selfTakenSpark.reduce((a, b) => a + b, 0),
+    40,
+  );
+  assert.equal(
+    rat.selfTakenSpark.reduce((a, b) => a + b, 0),
+    7,
+  );
+});
+
 test("charm: the landing message names a class, and /who names the only one who has it", () => {
   let clock = at("01:00:30");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

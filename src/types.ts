@@ -333,6 +333,8 @@ export interface EncounterView {
   dps: number; // that total over the encounter span — the combined rate against the NPC
   npcDamage: MetricStat; // what the NPC dealt back, to everyone, over the same span
   selfSpark: number[]; // my dps per bucket across the span — self only, all zeros if I did nothing
+  selfTakenSpark: number[]; // what this mob dealt me, per second, on the same buckets
+  sparkCombos: string[]; // "melee|invocation" holding the most of each bucket — colours the strip
   sparkBucketSec: number; // seconds each bucket covers (>= 1, the log's own resolution)
   cards: EncounterCard[]; // self + top others, ranked by DPS
 }

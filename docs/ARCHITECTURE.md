@@ -260,6 +260,8 @@ interface EncounterView {             // one per-mob card
   total: number; dps: number;         // whole encounter: damage dealt to the mob, and the combined rate
   npcDamage: MetricStat;              // what the mob dealt back, over the same span
   selfSpark: number[];                // my dps per bucket across the span
+  selfTakenSpark: number[];           // what the mob dealt me, on the same buckets
+  sparkCombos: string[];              // "melee|invocation" holding the most of each bucket
   sparkBucketSec: number;             // seconds each bucket covers (>= 1)
   cards: EncounterCard[];
 }
@@ -316,14 +318,27 @@ interface MetricStat {                // every metric group has this one shape
   mistaken for the same thing; the `title` spells that out. The red figure by the name is what the mob
   is **dealing out** to everyone it fought — the same red the `tank` column uses for damage from mobs.
   It is hidden entirely for a mob that never landed a hit, rather than printing a zero.
-- **A sparkline sits between the header and the table** — my damage across the fight, scaled to its own
-  peak, answering the one thing an average can't: *when* it landed. Its buckets are a **fixed 11px**
-  rather than a share of the row, so the strip's length tracks the fight's duration (a 7-second scrap is
-  a stub, a minute-long one spans the panel) and the baseline rule ends where the fight did. Both
-  alternatives were tried and rejected against real data: stretching to full width turned a 7-bucket
-  fight into a row of wide blocks, and capping bar width inside stretched slots left 9px marks floating
-  in 70px of space, reading as scatter. Hidden entirely below four buckets or when I dealt no damage,
-  rather than drawing an empty axis.
+- **The encounter timeline fills the card, drawn over the table.** Same grammar as the My DPS
+  chart at a different scale: my damage above a baseline, what *this* mob dealt me below it,
+  each half normalised to its own peak because the two routinely differ by an order of
+  magnitude and a shared scale would flatten one. Bars are coloured by the **stance combo I was
+  in for that bucket**, so a mid-fight stance change reads as a change of colour.
+  - **Over the table, not behind it.** Behind was tried first and doesn't work: the rows carry
+    their own backgrounds, so a timeline under them survives only in the gaps between columns
+    and reads as scattered blocks rather than a shape. Over the top it spans the full width, at
+    the cost of crossing the numbers — hence 19% opacity and nothing about it interactive.
+  - **The colour map is shared with the My DPS chart**, or the swatches stop working as a legend
+    for either. It also takes the timelines' own per-bucket combos as a third source: a timeline
+    resolves the combo per *bucket*, so it routinely holds one that is neither any encounter's
+    dominant combo nor a row in the overview — on a real boss fight that left 20 of 74 buckets
+    on the neutral fallback. They are added last, so slots the two charts already agreed on
+    never shift.
+  - Damage taken is one colour throughout: it is the mob's doing, not a stance of mine, so
+    colouring it by combo would imply an authorship it doesn't have. The divergence line is
+    brightened well past `--hair` because the whole layer sits at 19%.
+  - Hidden below four buckets or when I neither dealt nor took anything, rather than drawing an
+    empty axis. Leading empty buckets are still real information — the seconds the mob was up
+    before I engaged, which the row's `time` column reports as a number.
 - **A `time` column ends each encounter row** — the seconds that character was engaged with this mob
   (`EncounterCard.activeSec`, their first contact → the encounter's end). It is precisely the
   denominator of their `dps`/`hps`/`tank` on the same row, which is what makes a 3-second visitor's

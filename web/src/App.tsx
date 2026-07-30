@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppData } from "./useAppData";
-import { CharacterCard, EncounterTable, FightList, FilterBar, StanceOverview } from "./components";
+import {
+  buildComboColors,
+  CharacterCard,
+  EncounterTable,
+  FightList,
+  FilterBar,
+  StanceOverview,
+} from "./components";
 import { metricMeta, rankedCombatants } from "./filters";
 import type { Fight, Filters, FightSummary } from "./types";
 
@@ -80,6 +87,13 @@ export default function App() {
   const { rows, maxima } = rankedCombatants(shownFight, filters);
   const activeEncounters = snapshot?.activeEncounters ?? [];
   const recentEncounters = snapshot?.recentEncounters ?? [];
+  // One combo → colour map for the whole pane: the encounter timelines and the My DPS chart
+  // have to agree, or the stance swatches stop working as a legend for either.
+  const comboColors = buildComboColors(
+    snapshot?.encounterHistory ?? [],
+    snapshot?.stanceOverview.find((w) => w.n === 25)?.rows ?? [],
+    [...activeEncounters, ...recentEncounters].flatMap((e) => e.sparkCombos ?? []),
+  );
   const rankLabel = metricMeta(filters.metric).label;
   const activeLog = logs?.logs.find((l) => l.path === logs.activeLogPath);
 
@@ -189,7 +203,14 @@ export default function App() {
                 <span className="live-dot">⚔</span> Active · {activeEncounters.length}
               </div>
               {activeEncounters.map((e, i) => (
-                <EncounterTable key={e.id} enc={e} expanded={expanded} onToggle={toggle} showHead={i === 0} />
+                <EncounterTable
+                  key={e.id}
+                  enc={e}
+                  expanded={expanded}
+                  onToggle={toggle}
+                  showHead={i === 0}
+                  colors={comboColors}
+                />
               ))}
             </section>
           )}
@@ -197,7 +218,14 @@ export default function App() {
             <section className="block">
               <div className="section-title">Last {recentEncounters.length} encounters</div>
               {recentEncounters.map((e, i) => (
-                <EncounterTable key={e.id} enc={e} expanded={expanded} onToggle={toggle} showHead={i === 0} />
+                <EncounterTable
+                  key={e.id}
+                  enc={e}
+                  expanded={expanded}
+                  onToggle={toggle}
+                  showHead={i === 0}
+                  colors={comboColors}
+                />
               ))}
             </section>
           ) : (

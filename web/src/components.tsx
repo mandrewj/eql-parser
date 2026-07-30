@@ -67,14 +67,26 @@ const comboColor = (key: string, map: Map<string, number>) => {
 };
 
 /** Colour follows the combo, not its rank: slots are handed out in the order combos first
- *  appear in the full history, so switching the 10/25/50 window never repaints a bar. */
-function buildComboColors(history: SelfEncounterPoint[], rows: StanceOverviewRow[]): Map<string, number> {
+ *  appear in the full history, so switching the 10/25/50 window never repaints a bar.
+ *  Exported so the encounter timelines colour by the *same* map as the My DPS chart — a
+ *  combo has to mean one colour everywhere or the swatches stop being a legend. */
+export function buildComboColors(
+  history: SelfEncounterPoint[],
+  rows: StanceOverviewRow[],
+  /** Combos seen bucket-by-bucket inside encounter timelines. A timeline resolves the combo
+   *  per *bucket*, so it routinely contains one that is neither any encounter's dominant
+   *  combo nor a row in the overview — on a real boss fight that left 20 of 74 buckets on
+   *  the neutral fallback, which defeats the point of colouring by stance. Added last so the
+   *  slots the two charts already agreed on never shift. */
+  timelineCombos: readonly string[] = [],
+): Map<string, number> {
   const map = new Map<string, number>();
   for (let i = history.length - 1; i >= 0; i--) {
     const k = comboKey(history[i]!);
     if (!map.has(k)) map.set(k, map.size);
   }
   for (const r of rows) if (!map.has(comboKey(r))) map.set(comboKey(r), map.size);
+  for (const k of timelineCombos) if (k && !map.has(k)) map.set(k, map.size);
   return map;
 }
 
@@ -526,28 +538,60 @@ function EncounterRow({
   );
 }
 
-/** My damage over the course of one encounter, scaled to its own peak. It answers the
- *  question a single average can't — *when* the damage landed — and its empty leading
- *  buckets are the seconds the mob was up before I engaged, so it doubles as a picture of
- *  the `time` column. Hidden when there is nothing to see: no damage of mine, or a fight
- *  too short to have a shape. */
-function Sparkline({ spark, bucketSec }: { spark: number[]; bucketSec: number }) {
-  const peak = Math.max(0, ...spark);
-  if (spark.length < 4 || peak === 0) return null;
+/** The encounter's own timeline, drawn across the whole card and *behind* the table.
+ *
+ *  Same grammar as the My DPS chart, at a different scale: my damage above the baseline,
+ *  what the mob dealt me below it, each half normalised to its own peak so neither flattens
+ *  the other (they routinely differ by an order of magnitude). Colour is the stance combo I
+ *  was in for that bucket, from the same map the My DPS panel uses, so a combo means one
+ *  colour everywhere and a mid-fight stance change reads as a change of colour.
+ *
+ *  Behind the table, so it is context rather than content: it stays low-contrast and the
+ *  rows keep their own background, because a number that has to be read over a bar is worse
+ *  than no bar at all. Hidden when there is nothing to show — a fight too short to have a
+ *  shape, or one where I neither dealt nor took anything. */
+function EncounterTimeline({ enc, colors }: { enc: EncounterView; colors: Map<string, number> }) {
+  const dealt = enc.selfSpark ?? [];
+  const taken = enc.selfTakenSpark ?? [];
+  const combos = enc.sparkCombos ?? [];
+  const n = Math.max(dealt.length, taken.length);
+  const upPeak = Math.max(0, ...dealt);
+  const downPeak = Math.max(0, ...taken);
+  if (n < 4 || (upPeak === 0 && downPeak === 0)) return null;
+
+  const bucketSec = enc.sparkBucketSec;
   return (
     <div
-      className="spark"
+      className="enc-timeline"
+      aria-hidden
       title={
-        `My damage across the encounter — ${fmtDrill(peak)} dps at its peak, ` +
-        `${spark.length} buckets of ${plural(bucketSec, "second")}. ` +
-        `Empty bars at the left are the mob's seconds before I engaged it.`
+        `This encounter, ${plural(bucketSec, "second")} per bar. Above the line my damage ` +
+        `(peak ${fmtDrill(upPeak)} dps), below it what ${enc.name} dealt me ` +
+        `(peak ${fmtDrill(downPeak)}/s). Each half is scaled to its own peak, so heights are ` +
+        `never compared across the line. Colour is the stance combo I was in.`
       }
     >
-      {spark.map((v, i) => (
-        <div key={i} className="sbar-slot">
-          <div className={`sbar ${v === peak ? "peak" : ""}`} style={{ height: `${(v / peak) * 100}%` }} />
-        </div>
-      ))}
+      {Array.from({ length: n }, (_, i) => {
+        const up = dealt[i] ?? 0;
+        const down = taken[i] ?? 0;
+        const color = comboColor(combos[i] ?? "", colors);
+        return (
+          <div key={i} className="tl-col">
+            <div className="tl-half up">
+              <div
+                className="tl-bar"
+                style={{ height: upPeak ? `${(up / upPeak) * 100}%` : 0, background: color }}
+              />
+            </div>
+            <div className="tl-half down">
+              <div
+                className="tl-bar taken"
+                style={{ height: downPeak ? `${(down / downPeak) * 100}%` : 0 }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -557,6 +601,7 @@ export function EncounterTable({
   expanded,
   onToggle,
   showHead = true,
+  colors,
 }: {
   enc: EncounterView;
   expanded: Set<string>;
@@ -564,12 +609,15 @@ export function EncounterTable({
   /** Column labels only earn their row once per section — the grid keeps every
    *  table's columns aligned whether or not this one prints them. */
   showHead?: boolean;
+  /** Combo → colour slot, shared with the My DPS chart so a stance means one colour. */
+  colors: Map<string, number>;
 }) {
   const maxPct = Math.max(1, ...enc.cards.map((c) => c.pct));
   // Both header figures cover the whole encounter, unlike the per-person rows below.
   const out = enc.npcDamage;
   return (
     <section className={`enc-table ${enc.active ? "live" : ""}`}>
+      <EncounterTimeline enc={enc} colors={colors} />
       <div className="enc-th">
         <span className="enc-title">
           {enc.active && <span className="live-dot">⚔</span>} {enc.name}
@@ -589,7 +637,6 @@ export function EncounterTable({
           <span className="enc-scope">encounter</span> {enc.durationSec}s · {fmtK(enc.total)} dmg · {fmtK(enc.dps)} dps
         </span>
       </div>
-      <Sparkline spark={enc.selfSpark} bucketSec={enc.sparkBucketSec} />
       <div className="etable">
         {showHead && (
           <div className="erow ehead">
