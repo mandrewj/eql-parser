@@ -29,9 +29,12 @@ Terminal-only DPS report: `npm run report -- <fightNumber>`.
 
 ## What it does
 
-- Watches the EverQuest Legends log file live (melee, spell nukes, DoT ticks, crits, misses).
+- Watches the EverQuest Legends log file live (melee, spell nukes, DoT ticks, named ability
+  hits, heals, crits, misses).
 - Detects where one fight ends and the next begins.
 - Computes per-fight, per-player DPS with a classic meter breakdown.
+- Counts **pets on your side** — both the one you summon (folded into your row) and any mob
+  you or your group **charm**, which gets a row of its own with its charmer named.
 - Serves a live-updating web UI on `http://localhost:<port>` — no cloud, no account, everything stays on your machine.
 
 ## Why a local web app (and not a browser-only tool)
