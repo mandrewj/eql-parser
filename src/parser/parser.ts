@@ -58,8 +58,14 @@ const YOU_SLAIN_RE = /^You have slain (.+?)!$/;
 // My own death reads "have been", not "has been", so SLAIN_BY_RE never covers it.
 const SELF_SLAIN_RE = /^You have been slain by (.+?)!$/;
 const SLAIN_BY_RE = /^(.+?) has been slain by (.+?)!$/;
-const MISS_YOU_RE = /^You try to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
-const MISS_OTHER_RE = /^(.+?) tries to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
+// `(?: on)?` catches the one phrasal verb in the set — "tries to frenzy on <mob>", 134 lines.
+// Without it `\w+` stops at "frenzy" and the particle is swallowed by the target, which then
+// reads "on orc taskmaster": an entity that exists nowhere else in the log. It never carries
+// damage, so it stays out of the encounter tables, but it does reach the classifier — and a
+// phantom NPC there can flip the mob that swung at it to *friendly* by the "attacked an NPC"
+// rule. The damage form ("frenzies on") was always fine, since its verbs are a fixed list.
+const MISS_YOU_RE = /^You try to (\w+(?: on)?) (.+?), but (.+?)!(?: \([^)]+\))?$/;
+const MISS_OTHER_RE = /^(.+?) tries to (\w+(?: on)?) (.+?), but (.+?)!(?: \([^)]+\))?$/;
 // DoT/nuke crits append " (Critical)" AFTER the sentence terminator, e.g.
 // "… has taken 33 damage from Stinging Swarm by Orson. (Critical)".
 //
@@ -71,7 +77,7 @@ const MISS_OTHER_RE = /^(.+?) tries to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
 //     them my own Chords of Dissonance and Denon's Disruptive Discord. `splitDotSource`
 //     already yields "Unknown" for a source with no " by " inside it, which is the honest
 //     answer here rather than a guess.
-const DOT_RE = /^(.+?) ha(?:s|ve) taken (\d+) damage (?:from|by) (.+?)[.!](?: \([^)]+\))?$/;
+const DOT_RE = /^(.+?) ha(?:s|ve) taken (\d+) damage (?:from|by) (.+?)[.!](?: \(([^)]+)\))?$/;
 
 // Damage to me from a source the line declines to name. Distinct from NONMELEE_RE, which
 // needs "points of non-melee damage" and an owner; this form has neither.
@@ -101,7 +107,7 @@ const MELEE_OTHER_RE = new RegExp(
 // "<Healer> healed <target> [over time] for <eff> (<raw>) hit points [by <Spell>]." — with
 // optional HoT phrase, effective/raw amounts, spell, and a trailing " (Critical)" flag.
 const HEAL_RE =
-  /^(.+?) (?:heals|healed) (.+?)(?: over time)? for (\d+)(?: \((\d+)\))? hit points(?: by (.+?))?[.!](?: \([^)]+\))?$/;
+  /^(.+?) (?:heals|healed) (.+?)(?: over time)? for (\d+)(?: \((\d+)\))? hit points(?: by (.+?))?[.!](?: \(([^)]+)\))?$/;
 
 // --- charm (a mob turned into someone's pet) --------------------------------
 // Charm lines are ~0.07% of a real log, so the whole block sits behind one token
@@ -320,6 +326,7 @@ export function parseLine(raw: string): CombatEvent | null {
       amount: Number(m[3]), // effective
       ...(m[4] ? { attempted: Number(m[4]) } : {}),
       ...(m[5] ? { spell: m[5] } : {}),
+      crit: m[6] ? /critical/i.test(m[6]) : false,
     };
     return ev;
   }
@@ -336,6 +343,7 @@ export function parseLine(raw: string): CombatEvent | null {
       target: normName(m[1]!),
       spell,
       amount: Number(m[2]),
+      crit: m[4] ? /critical/i.test(m[4]) : false,
     };
     return ev;
   }

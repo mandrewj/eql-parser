@@ -65,6 +65,7 @@ export interface DotTickEvent extends BaseEvent {
   target: string;
   spell: string; // real spell name (e.g. "Chords of Dissonance III")
   amount: number;
+  crit?: boolean; // "(Critical)" after the terminator — ticks crit too
 }
 
 export interface MissEvent extends BaseEvent {
@@ -96,6 +97,7 @@ export interface HealEvent extends BaseEvent {
   amount: number; // effective healing
   attempted?: number; // raw amount before overheal, when the "N (M)" form is used
   spell?: string; // when "by <Spell>" is present
+  crit?: boolean; // "(Critical)" after the terminator — heals crit too
 }
 
 export interface PetEvent extends BaseEvent {

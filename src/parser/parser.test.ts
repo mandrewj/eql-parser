@@ -176,6 +176,42 @@ test("pet — NPC dialogue is not mistaken for a pet", () => {
   assert.equal(parseLine(TS + "Sarys told you, 'the orc taskmaster hits hard'"), null);
 });
 
+test("miss — 'frenzy on' keeps its particle out of the target", () => {
+  // `\w+` stopped at "frenzy" and the target became "on orc taskmaster" — an entity that
+  // exists nowhere else in the log, but still reaches the friend/foe classifier.
+  const e = parseLine(TS + "Chompy tries to frenzy on orc taskmaster, but misses!");
+  assert.equal(e?.type, "miss");
+  if (e?.type !== "miss") return;
+  assert.equal(e.attacker, "Chompy");
+  assert.equal(e.verb, "frenzy on");
+  assert.equal(e.target, "orc taskmaster");
+
+  const you = parseLine(TS + "You try to frenzy on a bandit lookout, but miss!");
+  assert.equal(you?.type, "miss");
+  if (you?.type !== "miss") return;
+  assert.equal(you.target, "a bandit lookout");
+  // The single-word verbs must not have grown an "on".
+  const kick = parseLine(TS + "You try to kick orc legionnaire, but miss!");
+  assert.equal(kick?.type === "miss" && kick.target, "orc legionnaire");
+});
+
+test("crits are read on every form that carries the flag", () => {
+  const dot = parseLine(TS + "Orc centurion has taken 33 damage from Stinging Swarm by Orson. (Critical)");
+  assert.equal(dot?.type === "dot" && dot.crit, true);
+
+  const heal = parseLine(TS + "Orson healed you over time for 62 hit points by Sprouting Heal. (Critical)");
+  assert.equal(heal?.type === "heal" && heal.crit, true);
+
+  // …and stay false when the flag is something else, or absent.
+  const riposte = parseLine(TS + "You slash a bandit for 15 points of damage. (Riposte)");
+  assert.equal(riposte?.type === "melee" && riposte.crit, false);
+  const plain = parseLine(TS + "Orc legionnaire has taken 9 damage from your Chords of Dissonance III.");
+  assert.equal(plain?.type === "dot" && plain.crit, false);
+  // "Riposte Critical" is still a crit.
+  const both = parseLine(TS + "You slash a bandit for 15 points of damage. (Riposte Critical)");
+  assert.equal(both?.type === "melee" && both.crit, true);
+});
+
 test("dot — a tick on me reads 'You have taken', not 'has taken'", () => {
   const e = parseLine(TS + "You have taken 50 damage from Burrowing Scarab by a death beetle.");
   assert.equal(e?.type, "dot");

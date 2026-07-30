@@ -311,6 +311,27 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   none at all: on the live fight there was no charm cast within 20 seconds of the landing, so
   the charmer is genuinely absent from the file rather than merely unmatched.
 
+## Post-v1 — A semantic audit: not "did it parse" but "did it parse *right*"  ✅
+- The coverage audit asked whether a line produced an event. This one asked whether the event was
+  correct: every quantified combat line grouped by shape (3,049 of them), with what the parser made
+  of each. Three findings, and one clean bill of health.
+- **`frenzy on` mangled its target.** The miss patterns matched the verb as `\w+`, so
+  `Chompy tries to frenzy on orc taskmaster` yielded a target of `on orc taskmaster` — an entity
+  that exists nowhere else. 134 lines. It carries no damage so it never reached the tables, but it
+  did reach the classifier, where a phantom NPC can flip the mob that swung at it to friendly.
+  Worse than a line failing to parse, because it parsed into something plausible.
+- **Crit flags were tolerated but never read** on DoT and heal lines — every pattern allowed the
+  trailing `(flag)` from the start, but only melee captured it. 289 DoT crits and 202 heal crits
+  were counted as ordinary hits. Totals were always right; crit counts were not.
+  `(Riposte Critical)` is a crit, and is caught, because the test is `/critical/i`.
+- **No double counting.** Checked directly: same second, same attacker→target, same amount, two
+  different event kinds. 176 hits out of ~500k damage events, and every one inspected was two
+  genuinely separate events sharing a small number — a proc landing beside a melee swing, a DoT
+  tick beside a crush. Nothing is counted twice.
+- Also fixed: the twin-key separator was a **NUL**, which quietly made `engine.ts` binary to git
+  and grep — diffs showed `Bin 59778 -> 60341 bytes` and `grep` matched nothing in the file. It is
+  now a non-ASCII marker, which the ASCII log still cannot reach.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the

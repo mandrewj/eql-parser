@@ -135,6 +135,21 @@ damage — e.g. `… has taken 33 damage from Stinging Swarm by Orson. (Critical
 `Orson healed you for 318 hit points by Healing. (Critical)`. DoT, non-melee, and heal patterns
 therefore allow an optional trailing ` (flag)` after the closing `.`/`!`.
 
+Every flag seen in a real log, and what it means for parsing:
+
+| flag | count | handling |
+|---|---|---|
+| `(Critical)` | 6,737 | sets `crit` on melee, typed ability, DoT and heal |
+| `(Riposte)` | 4,422 | a counter-attack; real damage, already melee, **not** a crit |
+| `(Slay Undead)` | 204 | an ability proc; real melee damage |
+| `(Flurry)` | 137 | an extra swing; real melee damage |
+| `(Riposte Critical)` | 35 | **is** a crit — the test is `/critical/i`, not equality |
+| `(Finishing Blow)` | 49 | real melee damage |
+
+**Tolerating a flag is not the same as reading it.** Every pattern allowed the trailing group
+from the start, but only melee ever captured it, so 289 DoT crits and 202 heal crits were
+counted as ordinary hits. Crit *counts* were understated; totals were always right.
+
 Melee verbs are data-driven from the game's skill set (from `tries to <verb>`): includes `reave`
 and `shoot` (archery) beyond the common ones; all normalized to base form for category merging.
 
@@ -164,9 +179,16 @@ and `shoot` (archery) beyond the common ones; all normalized to base form for ca
 [..] You try to crush orc legionnaire, but miss!
 [..] Orc legionnaire tries to cleave Feydie, but misses!
 ```
-Observed avoidance tokens: `but miss` / `but misses`. EQ also emits `parries`, `ripostes`,
-`dodges`, `blocks`, `INVULNERABLE`, and "magical skin absorbs the blow" — include these when we
-add accuracy so swing counts are correct.
+Observed avoidance tokens, by frequency: `misses`/`miss` (154k), `dodges` (5.9k), `blocks`
+(4.4k), `parries` (2.4k), `ripostes` (1.3k), and `<X>'s magical skin absorbs the blow` (304).
+All are captured by the trailing `but (.+?)!` group; only the count is used today.
+
+**The verb is a phrase, not a word.** `frenzy on` is the one multi-word entry
+(`Chompy tries to frenzy on orc taskmaster, but misses!`), so the verb group is
+`(\w+(?: on)?)`. With a bare `\w+` the particle falls into the target instead, inventing an
+entity called `on orc taskmaster` — harmless in the damage tables, which it never reaches, but
+it does reach the friend/foe classifier, where a phantom NPC can flip the mob that swung at it
+to *friendly*. The damage form (`frenzies on`) was never affected: its verbs are a fixed list.
 
 ## Fight boundary markers (deaths)
 ```
