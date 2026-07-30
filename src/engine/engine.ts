@@ -806,7 +806,20 @@ export class Engine {
     if (byOwner.size === 0) return null;
 
     const startMs = f.firstSeen.get(npcKey) ?? f.startMs;
+    // The encounter span is also the mob's own active window: firstSeen is its first
+    // interaction with anyone, so the two whole-encounter rates below share one denominator.
+    const spanSec = Math.max(1, (endMs - startMs) / 1000);
     const total = [...byOwner.values()].reduce((s, a) => s + a.total, 0);
+
+    // What the mob dealt back, summed over every friendly it hit — the other half of the
+    // header. Its outgoing cells are cleared with the rest of its tracking on death, so a
+    // same-named respawn starts from zero here too.
+    const npcOut = newMetric();
+    for (const [victimKey, byAttacker] of f.perTarget) {
+      if (victimKey === npcKey || !friendly.has(victimKey)) continue;
+      const cell = byAttacker.get(npcKey);
+      if (cell) mergeAcc(npcOut, cell, null);
+    }
 
     // Healing in this encounter window, summed per healer once (a healer's heals all fall
     // inside their own activity, so windowing to [start, end] equals the per-person window).
@@ -849,8 +862,10 @@ export class Engine {
       active,
       startMs,
       endMs,
-      durationSec: Math.round(Math.max(1, (endMs - startMs) / 1000)),
+      durationSec: Math.round(spanSec),
       total,
+      dps: Math.round(total / spanSec),
+      npcDamage: this.toStat(npcOut, spanSec),
       cards,
     };
   }

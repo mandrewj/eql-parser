@@ -469,16 +469,30 @@ export function EncounterTable({
    *  table's columns aligned whether or not this one prints them. */
   showHead?: boolean;
 }) {
-  const dps = Math.round(enc.total / Math.max(1, enc.durationSec));
   const maxPct = Math.max(1, ...enc.cards.map((c) => c.pct));
+  // Both header figures cover the whole encounter, unlike the per-person rows below.
+  // Defaults tolerate an older backend (dev: new UI on :5173 against a running :8787).
+  const out = enc.npcDamage;
+  const dps = enc.dps ?? Math.round(enc.total / Math.max(1, enc.durationSec));
   return (
     <section className={`enc-table ${enc.active ? "live" : ""}`}>
       <div className="enc-th">
         <span className="enc-title">
           {enc.active && <span className="live-dot">⚔</span>} {enc.name}
         </span>
-        <span className="muted">
-          {enc.durationSec}s · {fmtK(enc.total)} · {fmtK(dps)} dps
+        {out && out.total > 0 && (
+          <span
+            className="enc-out"
+            title={`${enc.name} dealt ${fmt(out.total)} to everyone it fought — ${fmt(out.perSec)} dps over the ${enc.durationSec}s encounter`}
+          >
+            → {fmtK(out.perSec)} dps
+          </span>
+        )}
+        <span
+          className="enc-tot"
+          title={`Whole encounter: ${fmt(enc.total)} damage dealt to ${enc.name} over ${enc.durationSec}s, ${fmt(dps)} dps from everyone combined. The rows below are per-person, each over their own active window.`}
+        >
+          <span className="enc-scope">encounter</span> {enc.durationSec}s · {fmtK(enc.total)} dmg · {fmtK(dps)} dps
         </span>
       </div>
       <div className="etable">

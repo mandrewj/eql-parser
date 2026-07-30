@@ -215,9 +215,17 @@ body { margin: 0; }
   background: linear-gradient(180deg, #241c1f, var(--panel) 58%);
   box-shadow: 0 0 0 1px #8f444440, 0 2px 12px #00000066;
 }
-.enc-th { display: flex; justify-content: space-between; align-items: baseline; gap: 0.4rem; margin-bottom: 0.4rem; }
-.enc-title { font-weight: 700; font-size: 0.92rem; letter-spacing: 0.01em; }
+/* name (shrinks first) · what the mob hits for · whole-encounter totals, pinned right */
+.enc-th { display: flex; align-items: baseline; gap: 0.4rem; margin-bottom: 0.4rem; }
+.enc-title {
+  font-weight: 700; font-size: 0.92rem; letter-spacing: 0.01em;
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .enc-table.live .enc-title { color: #f2d7d7; }
+/* the mob's own output, in the same red the tank column uses for its damage */
+.enc-out { flex: none; font-size: 0.74rem; font-weight: 600; color: var(--npc); font-variant-numeric: tabular-nums; }
+.enc-tot { flex: none; margin-left: auto; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.enc-scope { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
 .etable { display: flex; flex-direction: column; }
 .erow { display: grid; grid-template-columns: 1fr 2.9rem 2.9rem 2.9rem; align-items: center; gap: 0.3rem; cursor: pointer; padding: 1px 0; }
 .erow.ehead { cursor: default; padding-bottom: 3px; }

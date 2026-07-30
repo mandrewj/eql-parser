@@ -60,6 +60,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 - **Fight segmentation** (configurable): opens on first player→NPC damage after idle; closes when all engaged NPCs are slain, on **zoning** (`You have entered <zone>.` — you leave all mobs behind), **or** after `inactivityTimeout` s (default **90s**, wall-clock — a 3s tick closes abandoned fights with no new log lines). Named NPCs get friendly titles; trash groups by the active NPC set.
 - **Encounter liveness**: a per-NPC pane is *active* only while the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner dies), and it has seen activity within the inactivity window (~90s).
 - **Encounters** (the primary view): each mob is a per-character table (one row per player/pet, a %-of-damage bar + DPS/HPS/tank columns, expandable to abilities). `snapshot()` exposes **`activeEncounters`** (mobs currently being fought — live tables at the top) and **`recentEncounters`** (a rolling last-5, newest first). A mob is finalized on death **or on fight close** (zone / 90s / abandon) for a boss you fled. On death the mob's per-encounter tracking is **reset**, so a same-named respawn (`a clay gargoyle`) is a fresh instance rather than merging into one inflated span; fled/closed mobs cap their end to their last combat activity. **Rates are per-person**: each character's active window starts at *their* first contact with the mob (their attack, or the mob first hitting/casting on them — tracked as per-`attacker>target` first-contact timestamps) and runs to the encounter end, so late-joiners aren't diluted. Per-(target, attacker) damage is kept as full metric accumulators.
+- **Two whole-encounter figures sit alongside those per-person rows**, both over the encounter span (the mob's first interaction → its end, which *is* the mob's own active window, so the same denominator is honest for both): `total`/`dps` — what everyone dealt to the NPC, and `npcDamage` — what it dealt back, summed over every friendly it hit by scanning `perTarget` for the mob's own attacker cells. Those cells are cleared by `resetNpcTracking` along with everything else on death, so a same-named respawn's output starts at zero too. The header prints both; the rows below stay per-person, which is exactly why the header labels itself.
 - **Stance overview rows** carry both sides of a combo: `damage`/`dps` from `selfComboLog` (self **outgoing**, tagged with the combo live at each event) and `taken`/`takenPerSec` from `selfTakenComboLog` (its mirror, recorded when I am the *target* and the attacker isn't me — so self-damage never lands in the taken column). `timeShare` is the combo's share of the window's total combat seconds. Both logs share the same merged-window math and are trimmed together as encounters age out. Rates are whole numbers, so a trickle of incoming damage rounds to `0`/sec while the total still records it — the UI shows `<1` for that case.
 - **Self encounter history**: `snapshot().encounterHistory` is the last **50** finished encounters seen from my side — my DPS, my total damage, damage I took, its start/end and duration, and the **dominant stance combo** (the combo I spent the most seconds in over the encounter's window, via `dominantComboIn` → `comboSecondsIn`). Cached next to `overviewCache` and invalidated on the same event (a new finished encounter). This is what the overview's history chart plots; `recentEncounters` stays at 5 because it carries full per-combatant tables.
 - **Progression** splits by frequency, because the two halves are used differently:
@@ -112,6 +113,13 @@ type ServerEvent =
   | { t: "fightEnded";    fight: FightSummary }
   | { t: "stanceChanged"; stance: string; sinceMs: number };
 
+interface EncounterView {           // one per-mob card
+  name: string; active: boolean; durationSec: number;
+  total: number; dps: number;       // whole encounter: damage dealt to the mob, and the combined rate
+  npcDamage: MetricStat;            // what the mob dealt back, over the same span
+  cards: EncounterCard[];           // per-person rows, each over their own active window
+}
+
 interface CombatantStats {          // one meter row
   name: string; kind: "self"|"player"|"pet"|"npc"|"unknown"; isSelf: boolean;
   total: number; dps: number; pct: number;
@@ -134,12 +142,22 @@ interface CombatantStats {          // one meter row
     lines in a mostly-empty box, and restack once several combos share the row.
   - The `% damage / dps / hps / tank` labels print **once per section** (`showHead`), not once per
     encounter; the shared grid keeps every table's columns aligned regardless.
+  - An encounter header is **three parts on one line**: the mob's name (the only part that shrinks —
+    `min-width: 0` + ellipsis), the red `→ <n> dps` it is dealing out, and the whole-encounter totals
+    pinned right with `margin-left: auto`. The worst realistic case (a long boss title beside
+    five-figure numbers) still fits 540px on one line.
   - The self drill-down shows the **top 4** abilities. Six wrapped to three lines at this width, and
     real spell names (`Denon's Disruptive Discord V`) are long enough that truncating them to fit more
     would cost the rank numeral that distinguishes them.
 - **Log picker** — dropdown of detected logs (from `/api/logs`) to choose which one is parsed live; remembers last choice.
 - **Live pane** — current fight, auto-updating, with **filters**: by combatant kind (players / NPCs / pets), by damage type (melee / spell / DoT), and by stance. A live stance indicator shows the active stance.
 - **History pane** — fight list; select a fight to **drill down**: per-combatant rows → expand to damage-type split, per-ability breakdown, and (for self) the stance split active during that fight.
+- **Encounter header** — `<mob> → <n> dps · ENCOUNTER <dur>s · <total> dmg · <n> dps`. The right-hand
+  figures are the **whole encounter** (everyone's damage to the mob, and the combined rate against it),
+  labelled `encounter` precisely because the rows beneath are per-person and would otherwise be
+  mistaken for the same thing; the `title` spells that out. The red figure by the name is what the mob
+  is **dealing out** to everyone it fought — the same red the `tank` column uses for damage from mobs.
+  It is hidden entirely for a mob that never landed a hit, rather than printing a zero.
 - **Your own row is always expanded** in every encounter table — the damage breakdown line (total, melee/spell/DoT split, crits) and top ability chips render without a click, marked with a blue left rule. Everyone else toggles on click.
 - **Number formatting** (`components.tsx`, one `scaleK(n, at)` helper): k-notation past a per-context threshold, one decimal, dropped to zero decimals past 100k so the narrow columns don't overflow. Thresholds — **10k** for the dps/hps columns, **2k** for the tank column (tanking totals climb fastest), **1k** inside the encounter drill-down lines.
 - **My DPS panel** — stance-combo cards (avg DPS per melee+invocation over the window) plus an **encounter history chart** below them, both driven by the same 10/25/50 window chip.

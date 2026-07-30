@@ -262,6 +262,38 @@ test("recent-encounter cards carry windowed healing + taken-from-mob", () => {
   assert.equal(self.healing.total, 0);
 });
 
+test("encounter header: whole-encounter totals and the mob's own output", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 60 points of damage."),
+    L("01:00:04", "an orc hits You for 15 points of damage."),
+    L("01:00:06", "Feydie kicks an orc for 40 points of damage."), // joins late
+    L("01:00:08", "an orc hits Feydie for 25 points of damage."),
+    L("01:00:10", "You have slain an orc!"),
+  ]);
+  const enc = engine.snapshot().recentEncounters[0]!;
+  assert.equal(enc.durationSec, 10);
+  assert.equal(enc.total, 100, "everyone's damage to the mob, not just the top row");
+  assert.equal(enc.dps, 10, "100 over the full 10s span, not a per-person window");
+  // Feydie's own rate is windowed to her contact onward — the header figure is not.
+  assert.equal(enc.cards.find((c) => c.name === "Feydie")!.damage.perSec, 10); // 40 over 4s
+  assert.equal(enc.npcDamage.total, 40, "what the orc dealt to everyone (15 + 25)");
+  assert.equal(enc.npcDamage.perSec, 4);
+});
+
+test("a same-named respawn's output starts from zero", () => {
+  const engine = feed([
+    L("01:00:00", "You crush a rat for 30 points of damage."),
+    L("01:00:02", "a rat hits You for 20 points of damage."),
+    L("01:00:04", "You have slain a rat!"),
+    L("01:00:06", "You crush a rat for 30 points of damage."), // a fresh rat
+    L("01:00:08", "a rat hits You for 5 points of damage."),
+    L("01:00:10", "You have slain a rat!"),
+  ]);
+  const [newest, older] = engine.snapshot().recentEncounters;
+  assert.equal(older!.npcDamage.total, 20);
+  assert.equal(newest!.npcDamage.total, 5, "the second rat's output excludes the first's");
+});
+
 test("healer's own healing surfaces on their encounter card (windowed)", () => {
   const engine = feed([
     L("01:00:00", "Orson crushes an orc for 20 points of damage."), // Orson also deals dmg

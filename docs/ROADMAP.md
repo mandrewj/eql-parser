@@ -122,6 +122,20 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
   and a `+N`.
 - Order left alone deliberately: the My DPS panel stays pinned above the active fight.
 
+## Post-v1 — Encounter headers say whose numbers they are  ✅
+- The header's totals always covered the **whole encounter**, but nothing said so, and the rows
+  underneath are deliberately per-person — so the two were easy to conflate. The right-hand group is
+  now labelled `encounter` and names its units (`encounter 24s · 4,087 dmg · 170 dps`), with a `title`
+  spelling out that the rows below are per-person.
+- The combined DPS moved from the UI (which divided two already-rounded numbers) into the engine as
+  `EncounterView.dps`, over the unrounded span.
+- New `EncounterView.npcDamage`: what the mob dealt back, summed over every friendly it hit, over the
+  same span — printed in red next to its name (`an imp protector → 29 dps`), hidden for a mob that
+  never landed a hit. Built by scanning `perTarget` for the mob's own attacker cells, which
+  `resetNpcTracking` already clears on death, so a same-named respawn starts from zero.
+- Header is now three parts on one line: name (shrinks, ellipsis), what it hits for, totals pinned
+  right. Verified against a real snapshot in the SSR harness, including a long-boss-name stress case.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.

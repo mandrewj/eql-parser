@@ -272,7 +272,9 @@ export interface EncounterView {
   startMs: number;
   endMs: number;
   durationSec: number;
-  total: number; // total damage dealt to the NPC
+  total: number; // damage dealt to the NPC by everyone, over the whole encounter
+  dps: number; // that total over the encounter span — the combined rate against the NPC
+  npcDamage: MetricStat; // what the NPC dealt back, to everyone, over the same span
   cards: EncounterCard[]; // self + top others, ranked by DPS
 }
 
