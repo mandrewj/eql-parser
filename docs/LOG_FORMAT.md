@@ -369,10 +369,15 @@ share one:
 A single client's log cannot tell them apart, with two consequences:
 - A charmed mob is **never trusted to classify anyone else**, in either direction — its
   swings would otherwise brand whoever its *twin* mauls (a groupmate) as a mob.
-- Same-name blows do prove there are **two** mobs, since nothing attacks itself, so the
-  charmed one is split onto a key of its own from that point. Which side of any individual
-  blow was the pet stays unknowable — both swing and the lines are identical — so the
-  exchange is credited to the pet as an **upper bound** and the UI marks it.
+- Same-name blows do prove there are **two** mobs, since **nothing attacks itself**, so the
+  attacker is split onto a key of its own from that point. That proof stands alone and needs
+  no charm message to back it up — which matters, because by the time such a blow appears the
+  charm has usually been *lost* rather than never seen: our swings at the enemy twin land on
+  the shared key and read as swings at our own pet, breaking the charm before the pair is ever
+  revealed. Where no charmer is known, none is invented; the row simply carries no owner.
+- Which side of any individual blow was the pet stays unknowable — both swing and the lines
+  are identical — so the exchange is credited to the pet as an **upper bound** and the UI
+  marks it.
 
 ## Stances (self only)
 

@@ -804,6 +804,44 @@ test("charm: a pet fighting its own namesake is split off and shown as a partici
   assert.equal(self.damage.total, 200, "my post-charm damage lands on the enemy, not the pet");
 });
 
+test("same-name: a mob fighting its own kind is a participant with no charm message at all", () => {
+  let clock = at("01:01:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    // Not one charm line in this stream. Nothing attacks itself, so the blow is the proof.
+    L("01:00:00", "You crush a fire giant warrior for 100 points of damage."),
+    L("01:00:05", "A fire giant warrior slashes a fire giant warrior for 79 points of damage."),
+    L("01:00:06", "A fire giant warrior cleaves a fire giant warrior for 175 points of damage."),
+    L("01:00:20", "You crush a fire giant warrior for 200 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "a fire giant warrior")!;
+  const pet = enc.cards.find((c) => c.kind === "pet")!;
+  assert.ok(pet, "the attacking namesake earns a row of its own");
+  assert.equal(pet.damage.total, 254);
+  assert.equal(pet.ambiguous, true);
+  assert.equal(pet.ownerName, undefined, "no charmer is named, and none is invented");
+  assert.equal(enc.cards.find((c) => c.isSelf)!.damage.total, 300, "my swings stay on the enemy");
+});
+
+test("same-name: the split still happens after our own swings broke the charm", () => {
+  let clock = at("01:02:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "a fire giant warrior has been charmed."),
+    // We fight the *other* one. Same key, so this reads as hitting our own pet and breaks
+    // the charm — long before any same-name blow can reveal there were two of them.
+    L("01:00:30", "You crush a fire giant warrior for 100 points of damage."),
+    L("01:00:31", "A fire giant warrior hits YOU for 40 points of damage."),
+    L("01:01:00", "A fire giant warrior slashes a fire giant warrior for 79 points of damage."),
+    L("01:01:01", "A fire giant warrior kicks a fire giant warrior for 21 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "a fire giant warrior")!;
+  const pet = enc.cards.find((c) => c.kind === "pet")!;
+  assert.ok(pet, "a lost charm must not cost the pet its row");
+  assert.equal(pet.damage.total, 100);
+  assert.equal(pet.ambiguous, true);
+});
+
 test("charm: a 'Master' line makes a charmed mob its charmer's, without folding it in", () => {
   let clock = at("01:00:30");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

@@ -87,14 +87,20 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     charmer outright — and otherwise by pairing an `on` with the most recent `cast` within
     **3s**. Unpaired charms still get a row, just without a charmer.
   - **Two mobs can wear one name**, and the log keys them the same. A blow between them
-    (`A fire giant warrior slashes a fire giant warrior`) proves they are two, since nothing
-    attacks itself, so the charmed one is moved onto a key of its own at that point and the
-    rest of the engine treats them as the separate entities they are: the pet earns its own
-    encounter row, and our swings at its namesake stop reading as swings at our own pet —
-    which used to break the charm within seconds of it landing. Which side of any one blow
-    was the pet is unknowable, so the exchange is credited to it as an upper bound and the
-    card is flagged `ambiguous`. On the live fight this recovered a 4,613-damage exchange
-    the list had shown nothing of.
+    (`A fire giant warrior slashes a fire giant warrior`) proves they are two, since **nothing
+    attacks itself**, so the attacker is moved onto a key of its own at that point and the rest
+    of the engine treats them as the separate entities they are: the pet earns its own encounter
+    row, and our swings at its namesake stop reading as swings at our own pet.
+  - **That split does not wait for a charm message**, and a charm is *inferred* when none is
+    known — fighting its own kind on our side is the only way this arises. It has to work that
+    way round, because the charm is usually already gone by then: our swings at the enemy twin
+    hit the shared key and break it long before any same-name blow reveals the pair. A real
+    charmed fire giant warrior stayed out of the table for a full minute of fighting its
+    namesake until this stopped depending on the flag surviving.
+  - Which side of any one blow was the pet is unknowable, so the exchange is credited to it as
+    an upper bound and the card is flagged `ambiguous`. Where the log names no charmer — and for
+    another player's charm it usually names none, the cast simply not being in our file — the
+    row carries no owner rather than a guess.
   - **A charmed mob never folds into its owner**, unlike a summoned pet: a charm is
     temporary, breakable, and often not even ours. A `Master` line from one therefore sets
     the *charm's* owner rather than a `petOwners` entry — filing it as a summon would fold

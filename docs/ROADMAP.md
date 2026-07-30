@@ -299,6 +299,18 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   all one-offs and none worth a pattern — they are listed in `LOG_FORMAT.md` so the next audit
   doesn't re-derive them.
 
+## Post-v1 — A mob never attacks itself, so stop requiring a charm to prove it  ✅
+- The same-name split still depended on the charm flag being *set* when the blow arrived, and in
+  a live fight it almost never is: our swings at the enemy twin land on the shared key and read
+  as swings at our own pet, so the charm breaks first. A fire giant warrior charmed by a
+  groupmate fought its namesake for a full minute and contributed **nothing** to the table.
+- Now the blow alone is the proof — nothing attacks itself — and a charm is inferred when none
+  is known. Log-wide this takes charmed-pet rows 265 → **361** and the damage they surface
+  223,526 → **382,109**.
+- Where the log names no charmer, none is invented. For another player's charm it usually names
+  none at all: on the live fight there was no charm cast within 20 seconds of the landing, so
+  the charmer is genuinely absent from the file rather than merely unmatched.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the
