@@ -262,6 +262,60 @@ test("cards report the engaged window their rates divide by", () => {
   for (const c of enc.cards) assert.equal(Math.round(c.damage.perSec * c.activeSec), c.damage.total);
 });
 
+test("sparkline buckets my damage across the encounter, one bucket per second", () => {
+  const engine = feed([
+    L("01:00:00", "an orc hits You for 5 points of damage."), // the mob engages first
+    L("01:00:03", "You crush an orc for 300 points of damage."),
+    L("01:00:04", "You crush an orc for 100 points of damage."),
+    L("01:00:05", "You have slain an orc!"),
+  ]);
+  const enc = engine.snapshot().recentEncounters[0]!;
+  assert.equal(enc.durationSec, 5);
+  assert.equal(enc.sparkBucketSec, 1, "a short fight is drawn a second at a time");
+  // Leading zeros are the seconds the orc was up before I hit it — the same three seconds
+  // that make my engaged window shorter than the encounter.
+  assert.deepEqual(enc.selfSpark, [0, 0, 0, 300, 100]);
+});
+
+test("sparkline widens its buckets rather than growing past its cap", () => {
+  const lines = [L("01:00:00", "You crush a dragon for 10 points of damage.")];
+  for (let s = 0; s < 200; s++) lines.push(L(`01:0${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`, "You crush a dragon for 60 points of damage."));
+  lines.push(L("01:03:20", "You have slain a dragon!"));
+  const enc = feed(lines, "Sanluen", 90).snapshot().recentEncounters[0]!;
+  assert.equal(enc.durationSec, 200);
+  assert.equal(enc.sparkBucketSec, 5, "200s over a 40-bucket cap rounds up to 5s buckets");
+  assert.equal(enc.selfSpark.length, 40);
+  // Each 5s bucket holds five 60-damage hits, reported as a rate: 300 damage / 5s = 60 dps.
+  assert.equal(enc.selfSpark[10], 60);
+});
+
+test("sparkline is all zeros for a mob I never touched", () => {
+  const engine = feed([
+    L("01:00:00", "Feydie kicks an orc for 100 points of damage."),
+    L("01:00:02", "an orc hits You for 20 points of damage."), // it engages me; I never swing back
+    L("01:00:06", "an orc has been slain by Feydie!"),
+  ]);
+  const enc = engine.snapshot().recentEncounters[0]!;
+  assert.equal(enc.selfSpark.length, 6);
+  assert.equal(
+    enc.selfSpark.every((v) => v === 0),
+    true,
+    "the UI hides a flat sparkline rather than drawing an empty axis",
+  );
+});
+
+test("a same-named respawn's sparkline starts empty", () => {
+  const engine = feed([
+    L("01:00:00", "You crush a rat for 100 points of damage."),
+    L("01:00:04", "You have slain a rat!"),
+    L("01:00:06", "You crush a rat for 50 points of damage."), // a fresh rat
+    L("01:00:10", "You have slain a rat!"),
+  ]);
+  const [newest, older] = engine.snapshot().recentEncounters;
+  assert.deepEqual(older!.selfSpark, [100, 0, 0, 0]);
+  assert.deepEqual(newest!.selfSpark, [50, 0, 0, 0], "the first rat's hit is not in the second's");
+});
+
 test("recent-encounter cards carry windowed healing + taken-from-mob", () => {
   const engine = feed([
     L("01:00:00", "You crush an orc for 60 points of damage."),

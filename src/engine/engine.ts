@@ -81,6 +81,7 @@ interface FightState {
   npcSeeds: Set<string>;
   targetIncoming: Map<string, { name: string; total: number }>;
   perTarget: Map<string, Map<string, MetricAcc>>; // targetKey → attackerKey → damage breakdown
+  selfHits: Map<string, Array<{ ts: number; amount: number }>>; // targetKey → my damage, timestamped
   pairFirst: Map<string, number>; // "attackerKey>targetKey" → first contact ms (per-person start)
   firstSeen: Map<string, number>; // entityKey → first event ms (encounter start)
   lastSeen: Map<string, number>; // entityKey → last event ms (for per-NPC staleness)
@@ -122,6 +123,30 @@ function addAbility(m: MetricAcc, name: string, type: DamageType, amount: number
   a.total += amount;
   a.hits++;
   if (crit) a.crits++;
+}
+
+/** Most buckets an encounter sparkline is cut into: 40 fixed 12px slots is the panel's
+ *  ~490px of usable width. Buckets never go under a second — the log's own resolution —
+ *  so a short fight is simply drawn with fewer of them, and a long one widens them. */
+const SPARK_BUCKETS = 40;
+
+/** My damage to one mob, as a rate per bucket across the encounter's span. Leading empties
+ *  are meaningful: they are the seconds the mob was up before I engaged it, which is what
+ *  the row's `time` column reports as a number. */
+function sparkline(
+  hits: ReadonlyArray<{ ts: number; amount: number }>,
+  startMs: number,
+  spanSec: number,
+): { spark: number[]; bucketSec: number } {
+  const bucketSec = Math.max(1, Math.ceil(spanSec / SPARK_BUCKETS));
+  const count = Math.max(1, Math.ceil(spanSec / bucketSec));
+  const spark = new Array<number>(count).fill(0);
+  for (const h of hits) {
+    const i = Math.min(count - 1, Math.max(0, Math.floor((h.ts - startMs) / (bucketSec * 1000))));
+    spark[i]! += h.amount;
+  }
+  // A bucket holds damage; the chart plots rates, so divide by the seconds it covers.
+  return { spark: spark.map((d) => Math.round(d / bucketSec)), bucketSec };
 }
 
 /** First index whose `ts` is >= `from`, by bisection — the timestamped logs are appended in
@@ -587,6 +612,7 @@ export class Engine {
       npcSeeds: new Set(),
       targetIncoming: new Map(),
       perTarget: new Map(),
+      selfHits: new Map(),
       pairFirst: new Map(),
       firstSeen: new Map(),
       lastSeen: new Map(),
@@ -705,6 +731,12 @@ export class Engine {
         c.stanceTotals[dim].set(s, (c.stanceTotals[dim].get(s) ?? 0) + ev.amount);
       }
       this.selfComboLog.push({ combo: this.combo(), amount: ev.amount, ts: ev.tsMs });
+      // Timestamped per *target*, which `selfComboLog` is not: the encounter sparkline has to
+      // be my damage to this mob alone, or it would disagree with the row above it whenever
+      // two mobs are up. Dropped with the mob's other tracking when it dies.
+      const hits = f.selfHits.get(tKey);
+      if (hits) hits.push({ ts: ev.tsMs, amount: ev.amount });
+      else f.selfHits.set(tKey, [{ ts: ev.tsMs, amount: ev.amount }]);
     }
     if (tKey === this.selfKey && aKey !== this.selfKey) {
       this.selfTakenComboLog.push({ combo: this.combo(), amount: ev.amount, ts: ev.tsMs });
@@ -791,6 +823,7 @@ export class Engine {
   /** Clear a mob's per-encounter tracking so the next same-named mob starts fresh. */
   private resetNpcTracking(f: FightState, npcKey: string): void {
     f.perTarget.delete(npcKey);
+    f.selfHits.delete(npcKey);
     for (const m of f.perTarget.values()) m.delete(npcKey);
     f.firstSeen.delete(npcKey);
     f.lastSeen.delete(npcKey);
@@ -902,6 +935,7 @@ export class Engine {
     const self = allCards.find((c) => c.isSelf);
     const others = allCards.filter((c) => !c.isSelf).slice(0, 5);
     const cards = (self ? [self, ...others] : others).sort(byShare);
+    const { spark, bucketSec } = sparkline(f.selfHits.get(npcKey) ?? [], startMs, spanSec);
 
     return {
       id,
@@ -913,6 +947,8 @@ export class Engine {
       total,
       dps: Math.round(total / spanSec),
       npcDamage: rateStat(npcOut, spanSec),
+      selfSpark: spark,
+      sparkBucketSec: bucketSec,
       cards,
     };
   }

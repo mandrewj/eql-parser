@@ -227,6 +227,27 @@ body { margin: 0; }
 .enc-out { flex: none; font-size: 0.74rem; font-weight: 600; color: var(--npc); font-variant-numeric: tabular-nums; }
 .enc-tot { flex: none; margin-left: auto; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .enc-scope { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
+/* per-encounter sparkline: my damage over the fight, scaled to its own peak. Height is in px
+   like the history chart's — shrinking the type must not cost the bars their resolution. */
+.spark {
+  position: relative; display: flex; align-items: flex-end; gap: 1px;
+  height: 22px; margin: 0 0 0.35rem; padding-bottom: 5px;
+  /* hug the bars, so the baseline rule ends where the fight did rather than running on
+     under empty panel — the rule is what makes the leading empty buckets legible */
+  width: fit-content; max-width: 100%;
+  border-bottom: 1px solid var(--hair);
+}
+/* Buckets are a fixed width rather than a share of the row, so the strip's *length* tracks
+   how long the fight was: a 7-second scrap is a stub, a minute-long one spans the panel.
+   Stretching a 7-bucket fight to full width instead made it read as a row of blocks. */
+.sbar-slot { flex: 0 0 11px; height: 100%; display: flex; align-items: flex-end; }
+.sbar {
+  width: 100%; border-radius: 1px 1px 0 0; min-height: 1px;
+  background: linear-gradient(180deg, #6f9ae0, #3f5f9e);
+}
+.sbar.peak { background: linear-gradient(180deg, #9dbcf0, #4f74bd); }
+.enc-table.live .sbar { background: linear-gradient(180deg, #e09a6f, #9e5f3f); }
+.enc-table.live .sbar.peak { background: linear-gradient(180deg, #f0bc9d, #bd744f); }
 .etable { display: flex; flex-direction: column; }
 .erow { display: grid; grid-template-columns: 1fr 2.9rem 2.9rem 2.9rem 2.2rem; align-items: center; gap: 0.3rem; cursor: pointer; padding: 1px 0; }
 .erow.ehead { cursor: default; padding-bottom: 3px; }

@@ -144,6 +144,8 @@ export interface EncounterView {
   total: number; // damage dealt to the NPC by everyone, over the whole encounter
   dps: number; // that total over the encounter span — the combined rate against the NPC
   npcDamage: MetricStat; // what the NPC dealt back, to everyone, over the same span
+  selfSpark: number[]; // my dps per bucket across the span — self only, all zeros if I did nothing
+  sparkBucketSec: number; // seconds each bucket covers (>= 1, the log's own resolution)
   cards: EncounterCard[];
 }
 

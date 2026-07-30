@@ -484,6 +484,32 @@ function EncounterRow({
   );
 }
 
+/** My damage over the course of one encounter, scaled to its own peak. It answers the
+ *  question a single average can't — *when* the damage landed — and its empty leading
+ *  buckets are the seconds the mob was up before I engaged, so it doubles as a picture of
+ *  the `time` column. Hidden when there is nothing to see: no damage of mine, or a fight
+ *  too short to have a shape. */
+function Sparkline({ spark, bucketSec }: { spark: number[]; bucketSec: number }) {
+  const peak = Math.max(0, ...spark);
+  if (spark.length < 4 || peak === 0) return null;
+  return (
+    <div
+      className="spark"
+      title={
+        `My damage across the encounter — ${fmtDrill(peak)} dps at its peak, ` +
+        `${spark.length} buckets of ${plural(bucketSec, "second")}. ` +
+        `Empty bars at the left are the mob's seconds before I engaged it.`
+      }
+    >
+      {spark.map((v, i) => (
+        <div key={i} className="sbar-slot">
+          <div className={`sbar ${v === peak ? "peak" : ""}`} style={{ height: `${(v / peak) * 100}%` }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function EncounterTable({
   enc,
   expanded,
@@ -521,6 +547,7 @@ export function EncounterTable({
           <span className="enc-scope">encounter</span> {enc.durationSec}s · {fmtK(enc.total)} dmg · {fmtK(enc.dps)} dps
         </span>
       </div>
+      <Sparkline spark={enc.selfSpark} bucketSec={enc.sparkBucketSec} />
       <div className="etable">
         {showHead && (
           <div className="erow ehead">

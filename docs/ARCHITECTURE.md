@@ -60,6 +60,13 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 - **Fight segmentation** (configurable): opens on first player→NPC damage after idle; closes when all engaged NPCs are slain, on **zoning** (`You have entered <zone>.` — you leave all mobs behind), **or** after `inactivityTimeout` s (default **90s**, wall-clock — a 3s tick closes abandoned fights with no new log lines). Named NPCs get friendly titles; trash groups by the active NPC set.
 - **Encounter liveness**: a per-NPC pane is *active* only while the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner dies), and it has seen activity within the inactivity window (~90s).
 - **Encounters** (the primary view): each mob is a per-character table (one row per player/pet, a %-of-damage bar + DPS/HPS/tank columns, expandable to abilities). `snapshot()` exposes **`activeEncounters`** (mobs currently being fought — live tables at the top) and **`recentEncounters`** (a rolling last-5, newest first). A mob is finalized on death **or on fight close** (zone / 90s / abandon) for a boss you fled. On death the mob's per-encounter tracking is **reset**, so a same-named respawn (`a clay gargoyle`) is a fresh instance rather than merging into one inflated span; fled/closed mobs cap their end to their last combat activity. **Rates are per-person**: each character's active window starts at *their* first contact with the mob (their attack, or the mob first hitting/casting on them — tracked as per-`attacker>target` first-contact timestamps) and runs to the encounter end, so late-joiners aren't diluted. Per-(target, attacker) damage is kept as full metric accumulators.
+- **Per-encounter sparkline.** `selfHits` keeps my damage to each target timestamped — which
+  `selfComboLog` cannot answer, since it is per-*session*, not per-mob, and would blend two mobs fought
+  at once into one strip that disagreed with the row above it. `encounterView` buckets it into
+  `selfSpark`: a dps per bucket over the encounter's span, buckets never under a second (the log's own
+  resolution) and never more than **40** of them, widening instead. Leading zeros are real information —
+  they are the seconds the mob was up before I engaged, the same gap the row's `time` column reports as
+  a number. Dropped with the mob's other tracking in `resetNpcTracking`, so a respawn starts empty.
 - **Two whole-encounter figures sit alongside those per-person rows**, both over the encounter span (the mob's first interaction → its end, which *is* the mob's own active window, so the same denominator is honest for both): `total`/`dps` — what everyone dealt to the NPC, and `npcDamage` — what it dealt back, summed over every friendly it hit by scanning `perTarget` for the mob's own attacker cells. Those cells are cleared by `resetNpcTracking` along with everything else on death, so a same-named respawn's output starts at zero too. Only the **total** is folded (via `rateStat`, not `toStat`): the header prints a rate, and each victim's card already ships that same damage broken down under `taken`, so merging the mob's abilities again would put ~1.4KB of duplicate detail in every snapshot. The header prints both; the rows below stay per-person, which is exactly why the header labels itself.
 - **The stance overview is the engine's most expensive rebuild**, and it happens on **every kill** — so
   it earns its algorithm. The merged encounter windows are sorted and disjoint and both combo logs are
@@ -181,6 +188,14 @@ interface CombatantStats {          // one meter row
   mistaken for the same thing; the `title` spells that out. The red figure by the name is what the mob
   is **dealing out** to everyone it fought — the same red the `tank` column uses for damage from mobs.
   It is hidden entirely for a mob that never landed a hit, rather than printing a zero.
+- **A sparkline sits between the header and the table** — my damage across the fight, scaled to its own
+  peak, answering the one thing an average can't: *when* it landed. Its buckets are a **fixed 11px**
+  rather than a share of the row, so the strip's length tracks the fight's duration (a 7-second scrap is
+  a stub, a minute-long one spans the panel) and the baseline rule ends where the fight did. Both
+  alternatives were tried and rejected against real data: stretching to full width turned a 7-bucket
+  fight into a row of wide blocks, and capping bar width inside stretched slots left 9px marks floating
+  in 70px of space, reading as scatter. Hidden entirely below four buckets or when I dealt no damage,
+  rather than drawing an empty axis.
 - **A `time` column ends each encounter row** — the seconds that character was engaged with this mob
   (`EncounterCard.activeSec`, their first contact → the encounter's end). It is precisely the
   denominator of their `dps`/`hps`/`tank` on the same row, which is what makes a 3-second visitor's

@@ -195,6 +195,19 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
   inflating every rate divided by them. Intervals are now clamped to a second, matching the clamp
   `durationSec` already applied. No effect on the current log, where every mob trades blows first.
 
+## Post-v1 — A DPS sparkline on every encounter card  ✅
+- The averages now say *how much*; the sparkline says **when**. Each encounter card carries my damage
+  across the fight, bucketed at the log's own one-second resolution (widening past 40 buckets), scaled
+  to its own peak.
+- Needed new engine state: `selfHits`, my damage to each target with timestamps. `selfComboLog` is
+  per-session rather than per-mob, so during a two-mob pull it would have drawn a strip that disagreed
+  with the row directly above it. Cleared in `resetNpcTracking`, so a same-named respawn starts empty.
+- Leading empty buckets are deliberate: they are the seconds the mob was up before I engaged, which is
+  the `time` column drawn as a picture.
+- Bucket slots are a fixed 11px, so the strip's length tracks the fight's duration. Full-width bars
+  turned a 7-bucket fight into blocks; capped bars in stretched slots read as scatter — both were
+  screenshotted against real encounters before settling here.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.
