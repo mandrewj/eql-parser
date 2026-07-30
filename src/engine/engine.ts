@@ -10,8 +10,10 @@
 // seeds: the self only attacks/is attacked by NPCs, "You have slain X" ⇒ X is an
 // NPC, and heals connect same-faction pairs.
 
+import { CHARM_EMOTES, type ClassCode } from "../parser/spells.js";
 import type {
   AbilityBreakdown,
+  CharmEmoteKind,
   CharmEvent,
   CombatEvent,
   CombatantStats,
@@ -260,6 +262,10 @@ export class Engine {
   // The last few seconds of charm casts, purely to put an owner on the next landing —
   // the landing line never names one. Trimmed to CHARM_ATTRIB_MS, so it stays tiny.
   private charmCasts: Array<{ casterKey: string; spell: string; ts: number }> = [];
+  // playerKey → their classes, from `/who`. The log states a class nowhere else, and it is
+  // what turns a charm's landing message into a name: the message identifies the spell, the
+  // spell identifies the class, and a fight with one member of that class has one candidate.
+  private readonly classes = new Map<string, string[]>();
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
   // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
@@ -321,6 +327,14 @@ export class Engine {
       const charmKey = this.charmed.has(pk) ? pk : this.charmed.has(twinKey(pk)) ? twinKey(pk) : null;
       if (charmKey) this.charmed.get(charmKey)!.ownerKey = ownerKey;
       else this.petOwners.set(pk, ownerKey);
+      return;
+    }
+    if (ev.type === "who") {
+      // Not combat: it must not open a fight or extend one. Names are stable, classes are
+      // not — a character gains one on levelling — so the newest line simply wins.
+      const key = this.keyOf(ev.name);
+      this.see(key, ev.name);
+      this.classes.set(key, ev.classes);
       return;
     }
     if (ev.type === "charm") {
@@ -643,7 +657,11 @@ export class Engine {
 
   private applyCharm(ev: CharmEvent): void {
     if (ev.state === "cast") {
-      this.charmCasts.push({ casterKey: this.keyOf(ev.who), spell: ev.spell ?? "", ts: ev.tsMs });
+      const casterKey = this.keyOf(ev.who);
+      // Register the spelling too: a charmer who only ever appears on a cast line would
+      // otherwise be credited under its lowercased key ("phatez") on the pet's row.
+      this.see(casterKey, ev.who);
+      this.charmCasts.push({ casterKey, spell: ev.spell ?? "", ts: ev.tsMs });
       this.trimCharmCasts(ev.tsMs);
       return;
     }
@@ -669,7 +687,7 @@ export class Engine {
       // A bard's song re-lands on every pulse. That is the same pet, not a new one —
       // re-splitting its encounter here would shred the fight into one-tick slivers.
       // A later pulse can still name the owner an earlier one missed.
-      held.ownerKey ??= this.charmOwner(ev.tsMs);
+      held.ownerKey ??= this.charmOwner(ev.tsMs) ?? this.charmOwnerByClass(ev.emote!, this.current);
       return;
     }
 
@@ -690,7 +708,9 @@ export class Engine {
       f.aliveEngaged.delete(key);
     }
     this.charmed.set(key, {
-      ownerKey: this.charmOwner(ev.tsMs),
+      // A matched cast is the stronger evidence and wins; the class inference is the
+      // fallback for the charms nobody's cast line announced.
+      ownerKey: this.charmOwner(ev.tsMs) ?? this.charmOwnerByClass(ev.emote!, f),
       spell: ev.spell ?? null,
       sinceMs: ev.tsMs,
     });
@@ -707,6 +727,27 @@ export class Engine {
     this.trimCharmCasts(tsMs);
     const last = this.charmCasts[this.charmCasts.length - 1];
     return last && tsMs >= last.ts ? last.casterKey : null;
+  }
+
+  /** Who, of the people actually in this fight, could have cast the charm that made this
+   *  emote. The message identifies the spell (`spells.ts`), the spell identifies the class,
+   *  and `/who` gives us classes — so "a mob has been charmed" in a group holding exactly
+   *  one enchanter names that enchanter. Two enchanters and it names nobody: a coin-flip
+   *  attribution on someone's damage is worse than an honest blank.
+   *
+   *  Only ever consulted when no charm *cast* matched, which is the common case for another
+   *  player's charm — their cast line is usually not echoed to our log at all. */
+  private charmOwnerByClass(emote: CharmEmoteKind, f: FightState | null): string | null {
+    const casters = CHARM_EMOTES[emote]?.casters;
+    if (!casters || !f) return null;
+    let found: string | null = null;
+    for (const key of f.combatants.keys()) {
+      const cls = this.classes.get(key);
+      if (!cls || !cls.some((c) => casters.includes(c as ClassCode))) continue;
+      if (found && found !== key) return null; // more than one candidate — say nothing
+      found = key;
+    }
+    return found;
   }
 
   /** End a charm: the mob is an enemy again, so its pet-era tracking is wiped and the

@@ -341,6 +341,21 @@ them by time.
 - A bard's charm is a *song*, so it re-lands on every pulse — the same mob glazes over and
   over. That is one pet, not a new one each tick.
 
+**The landing message identifies the spell, and therefore the caster's *class*.** Each spell
+page on the [EQL wiki](https://eqlwiki.com/Category:Spells) carries a `Cast on Other Message`
+field, with `Someone` standing in for the mob's name:
+
+| message | spells | class |
+|---|---|---|
+| `<mob> has been charmed.` | Charm, Beguile, Cajoling Whispers | Enchanter |
+| `<mob>'s eyes glaze over.` | Solon's Bewitching Bravura | Bard |
+| `<mob> blinks.` | Charm Animals, Beguile Animals | Druid / Shaman |
+| `<mob> moans.` | Dominate Undead, Beguile Undead | Necromancer |
+
+Only the first two are implemented: `blinks` and `moans` occur **zero** times in an 875k-line
+log, and both are generic enough to fire on ordinary ambient emotes, so recognising them would
+risk inventing pets for no observed gain. The table lives in [`spells.ts`](../src/parser/spells.ts).
+
 **Ownership** — from a charm cast shortly before the landing:
 
 ```
@@ -400,6 +415,40 @@ A single client's log cannot tell them apart, with two consequences:
 - Which side of any individual blow was the pet stays unknowable — both swing and the lines
   are identical — so the exchange is credited to the pet as an **upper bound** and the UI
   marks it.
+
+## `/who` results — the only place a class is stated
+
+```
+[42 PAL/MNK/BRD] Sanluen (Wood Elf) <Afterlife> ZONE: Nagafen's Lair (soldungb)
+[32 PAL/MNK/ENC] Mirad (Iksar)  ZONE: Nagafen's Lair (soldungb)
+[1 RNG/SHM] Dunalin (Barbarian)  ZONE: EverQuest Legends Tutorial (tutorial)
+```
+```
+^\[(?<level>\d+) (?<classes>[A-Z]{3}(?:\/[A-Z]{3})*)\] (?<name>\S+) \(
+```
+- Characters hold **up to three classes**; the guild tag is optional and the zone always present.
+- `ZONE: ` gates these in the keyword prefilter and is near-exact — **468 of the 469** lines
+  carrying that token in an 875k-line log are `/who` results.
+- This is the **only** line that ever states anyone's class, which is what makes the charm
+  emote table above actionable: `has been charmed` means an Enchanter cast it, and a fight with
+  exactly one Enchanter in it therefore has exactly one candidate charmer. Two, and the pet is
+  left unowned rather than attributed on a coin flip.
+- A `/who` never opens, extends or closes a fight — it is not combat.
+
+## Damage shields, and why no message table is needed
+
+An 875k-line log contains exactly **three** damage-shield messages, which is the whole of the
+"map a damage message to a real spell" problem the non-melee form poses:
+
+| message | hits | spell | element |
+|---|---|---|---|
+| `thorns` | 27,931 | thorns-line damage shield | magic |
+| `flames` | 2,921 | Shield of Flame (Magician 19) | fire |
+| `frost` | 159 | cold-line damage shield | cold |
+
+Every *other* damage line already states its element inline (`for 151 points of **magic**
+damage by Smiting Strike`), so classification needs no lookup table — a point worth recording,
+because the obvious next step is to scrape all 1,965 spell pages and it would buy nothing.
 
 ## Stances (self only)
 

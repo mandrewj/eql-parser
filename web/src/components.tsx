@@ -498,17 +498,29 @@ function EncounterRow({
         </span>
       </div>
       {open && (
-        <div className={`erow-drill ${card.isSelf ? "is-self" : ""}`}>
-          <span className="drill-meta">
-            {fmtDrill(d.total)} dmg · m {fmtDrill(d.byType.melee)} / s {fmtDrill(d.byType.spell)} / d {fmtDrill(d.byType.dot)} · {d.crits} crit
-          </span>
-          {d.entries.slice(0, 4).map((e) => (
-            <span key={e.name} className="drill-cat">
-              {e.damageType !== "unknown" && <span className={`typedot ${e.damageType}`} />}
-              {e.name} {fmtDrill(e.total)}
-            </span>
-          ))}
-        </div>
+        <>
+          {/* Two rows, because they answer different questions and used to compete for one
+              line: what *kind* of damage this was, then which abilities delivered it. The
+              broad row is the one that stays comparable between rows and between fights. */}
+          <div className={`erow-drill totals ${card.isSelf ? "is-self" : ""}`}>
+            <span className="dtot">{fmtDrill(d.total)} dmg</span>
+            {(["melee", "spell", "dot"] as const).map((t) => (
+              <span key={t} className={`dcat ${d.byType[t] ? "" : "nil"}`}>
+                <span className={`typedot ${t}`} />
+                {t === "dot" ? "dot" : t} {fmtDrill(d.byType[t])}
+              </span>
+            ))}
+            {d.crits > 0 && <span className="dcrit">{d.crits} crit</span>}
+          </div>
+          <div className={`erow-drill abilities ${card.isSelf ? "is-self" : ""}`}>
+            {d.entries.slice(0, 4).map((e) => (
+              <span key={e.name} className="drill-cat">
+                {e.damageType !== "unknown" && <span className={`typedot ${e.damageType}`} />}
+                {e.name} {fmtDrill(e.total)}
+              </span>
+            ))}
+          </div>
+        </>
       )}
     </>
   );

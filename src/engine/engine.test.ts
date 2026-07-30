@@ -804,6 +804,72 @@ test("charm: a pet fighting its own namesake is split off and shown as a partici
   assert.equal(self.damage.total, 200, "my post-charm damage lands on the enemy, not the pet");
 });
 
+test("charm: the landing message names a class, and /who names the only one who has it", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    // Nobody's charm *cast* reaches our log — the usual case for another player's charm.
+    L("00:59:00", "[32 PAL/MNK/ENC] Mirad (Iksar) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+    L("00:59:01", "[32 CLR/DRU/SHM] Orson (High Elf) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+    L("01:00:00", "You crush a death beetle for 100 points of damage."),
+    L("01:00:01", "Mirad crushes a death beetle for 50 points of damage."),
+    L("01:00:02", "Orson crushes a death beetle for 10 points of damage."),
+    // "has been charmed" is the Enchanter message, and Mirad is the only enchanter here.
+    L("01:00:05", "a lava beetle has been charmed."),
+    L("01:00:11", "A lava beetle pierces a death beetle for 40 points of damage."),
+  ]);
+  const pet = engine
+    .snapshot()
+    .activeEncounters[0]!.cards.find((c) => c.name.toLowerCase() === "a lava beetle")!;
+  assert.equal(pet.ownerName, "Mirad", "the only enchanter in the fight");
+});
+
+test("charm: two of the casting class in the fight means no owner rather than a coin flip", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("00:59:00", "[32 PAL/MNK/ENC] Mirad (Iksar) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+    L("00:59:01", "[23 DRU/BRD/ENC] Prisms (Human) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+    L("01:00:00", "You crush a death beetle for 100 points of damage."),
+    L("01:00:01", "Mirad crushes a death beetle for 50 points of damage."),
+    L("01:00:02", "Prisms crushes a death beetle for 10 points of damage."),
+    L("01:00:05", "a lava beetle has been charmed."),
+    L("01:00:11", "A lava beetle pierces a death beetle for 40 points of damage."),
+  ]);
+  const pet = engine
+    .snapshot()
+    .activeEncounters[0]!.cards.find((c) => c.name.toLowerCase() === "a lava beetle")!;
+  assert.equal(pet.kind, "pet", "still a pet — only the charmer is in doubt");
+  assert.equal(pet.ownerName, undefined);
+});
+
+test("charm: an actual cast beats the class inference", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("00:59:00", "[32 PAL/MNK/ENC] Mirad (Iksar) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+    L("01:00:00", "You crush a death beetle for 100 points of damage."),
+    L("01:00:01", "Mirad crushes a death beetle for 50 points of damage."),
+    L("01:00:03", "Phatez begins casting Charm III."), // Phatez is here and casting
+    L("01:00:05", "a lava beetle has been charmed."),
+    L("01:00:11", "A lava beetle pierces a death beetle for 40 points of damage."),
+  ]);
+  const pet = engine
+    .snapshot()
+    .activeEncounters[0]!.cards.find((c) => c.name.toLowerCase() === "a lava beetle")!;
+  assert.equal(pet.ownerName, "Phatez", "the cast is the stronger evidence");
+});
+
+test("who lines never open or extend a fight", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 40 points of damage."),
+    L("01:00:02", "You have slain an orc!"),
+    L("01:05:00", "[32 PAL/MNK/ENC] Mirad (Iksar) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+  ]);
+  assert.equal(engine.hasCurrent, false);
+  assert.equal(engine.fights().length, 1);
+});
+
 test("charm: a pet's damage to a boss survives its charm flickering off", () => {
   let clock = at("01:01:10");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

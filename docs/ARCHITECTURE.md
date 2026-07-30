@@ -54,7 +54,10 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   carrying the real ability name. It went unparsed until now — ~15% of the self's damage — and
   `parse:check` reported the log clean throughout, because its own relevance regex shared the
   blind spot; that regex now allows the adjective, which is what makes the check honest.
-- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, **`Charm`**, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
+- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, **`Charm`**, **`Who`**, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
+- **`Who`** carries a player's level and classes from a `/who` result. It is not combat and
+  never touches a fight; it exists solely because that line is the only place the log states
+  anyone's class, which is what makes a charm attributable (below).
 - **`Charm`** carries one of three states — `cast` (someone began a charm spell; names the
   caster, not the target), `on` (a mob became charmed; names the target, never the caster)
   and `off` (a charm broke). The two halves never share a subject, so pairing them is the
@@ -83,9 +86,15 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   the next blow opens a fresh encounter. A charmed mob is dropped from `npcSeeds` and
   `aliveEngaged` so it can't hold a fight open past its kill, and a charm is cleared on the
   pet's death (or a name-shared respawn would inherit it) and on zoning.
-  - **Ownership** comes from a pet's own `Master` line when it has one — that names the
-    charmer outright — and otherwise by pairing an `on` with the most recent `cast` within
-    **3s**. Unpaired charms still get a row, just without a charmer.
+  - **Ownership** is settled by three sources, strongest first: a pet's own `Master` line
+    (which names the charmer outright), then a `cast` paired within **3s**, then the **class
+    inference** — the landing *message* identifies the spell, the spell identifies the caster's
+    class ([`spells.ts`](../src/parser/spells.ts), from the wiki's `Cast on Other Message`
+    field), and `/who` gives us everyone's classes. `<mob> has been charmed` means an Enchanter
+    cast it, so a fight holding exactly one Enchanter has exactly one candidate. Two, and the
+    pet stays unowned: a coin-flip attribution of someone's damage is worse than an honest
+    blank. This is what finally names another player's charm, whose cast line is usually not
+    echoed to our log at all — it took `Mirad` from absent to 18 rows and 33,875 damage.
   - **Two mobs can wear one name**, and the log keys them the same. A blow between them
     (`A fire giant warrior slashes a fire giant warrior`) proves they are two, since **nothing
     attacks itself**, so the attacker is moved onto a key of its own at that point and the rest
@@ -336,7 +345,15 @@ interface MetricStat {                // every metric group has this one shape
   - `.erow.pet`'s fill moved from a teal a step from `--player`'s green to a clearly cooler
     cyan. It had been unreachable while every pet folded into its owner; now a charmed pet
     and a groupmate share a table, so the two must not read alike. Colour is never the only
-    signal — the row also carries the glyph and its charmer's name. — the damage breakdown line (total, melee/spell/DoT split, crits) and top ability chips render without a click, marked with a blue left rule. Everyone else toggles on click.
+    signal — the row also carries the glyph and its charmer's name.
+- **Your own row is always expanded** in every encounter table, marked with a blue left rule;
+  everyone else toggles on click.
+- **The drill-down is two rows**, because they answer different questions and used to share one
+  line. The top row is the **broad shape** — total damage, then the melee / spell / DoT split,
+  with crits pinned right — and it is the part that stays comparable between rows and between
+  fights, so an empty category dims rather than vanishing and the row keeps its shape. The
+  second row is the per-ability detail (top 4). Since your own row is always open, this pair is
+  what sits permanently on screen under your name.
 - **Number formatting** (`components.tsx`, one `scaleK(n, at)` helper): k-notation past a per-context threshold, one decimal, dropped to zero decimals past 100k so the narrow columns don't overflow. Thresholds — **10k** for the dps/hps columns, **2k** for the tank column (tanking totals climb fastest), **1k** inside the encounter drill-down lines.
 - **My DPS panel** — stance-combo cards (avg DPS per melee+invocation over the window) plus an **encounter history chart** below them, both driven by the same 10/25/50 window chip.
   - Each card carries the combo's **defensive cost and usage** under its DPS — `🛡 <taken>/s · ⏱ <share>%` — so a combo that out-damages the rest on 5% of your time reads as the thin sample it is. The full sentence (including the raw seconds behind the share) is in the card's `title`.

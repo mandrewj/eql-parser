@@ -353,6 +353,29 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   fall on both sides of zero, which is what rules out double counting — it would be uniformly
   positive. Charmed-pet rows 361 → **453**, damage they surface 382k → **544k**.
 
+## Post-v1 — Wiki spell data, and naming the charms nobody's cast line announced  ✅
+- **The drill-down splits into two rows.** Broad shape on top — total, then melee / spell / DoT,
+  crits pinned right — and per-ability detail beneath. They were sharing one line and competing;
+  the top row is the half that stays comparable between rows and between fights. An empty
+  category dims rather than vanishing so the row keeps its shape.
+- **Charm ownership, from the wiki.** Every spell page on [eqlwiki](https://eqlwiki.com/Category:Spells)
+  carries a `Cast on Other Message`, which is the landing emote. That maps emote → spell →
+  **class**: `has been charmed` is Enchanter (Charm/Beguile/Cajoling Whispers), `eyes glaze over`
+  is Bard (Solon's Bewitching Bravura).
+- **`/who` lines supply the other half** — 468 of them, and the only place the log ever states a
+  class (`[32 PAL/MNK/ENC] Mirad (Iksar)`). So an Enchanter emote in a fight holding exactly one
+  Enchanter names that Enchanter. Two, and it stays unowned: a coin flip on someone's damage is
+  worse than an honest blank.
+- Result: `Mirad` went from **absent** to 18 rows and 33,875 damage — the attribution the user
+  could see in-game and the parser could not. Charmed-pet rows now 571 carrying 622k damage.
+- **Only two of the four charm emotes are implemented.** `blinks` (Druid/Shaman) and `moans`
+  (Necromancer) occur **zero** times in 875k lines and are generic enough to fire on ambient
+  emotes, so recognising them would risk inventing pets for no observed gain.
+- **The damage-type half of this turned out to be already solved, and that is worth recording:**
+  every typed line states its element inline, and the only messages that *don't* name their
+  source are three damage shields (thorns/flames/frost, now identified). Scraping all 1,965 spell
+  pages would have bought nothing.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the

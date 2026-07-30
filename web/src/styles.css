@@ -287,6 +287,16 @@ body { margin: 0; }
 .enum.time.part { color: var(--partial); opacity: 1; }
 .erow-drill { display: flex; flex-wrap: wrap; gap: 0.45rem; padding: 0.2rem 0.4rem 0.35rem; font-size: 0.7rem; color: var(--muted); }
 .erow-drill.is-self { border-left: 2px solid var(--self); padding-left: 0.35rem; margin-left: 0.05rem; color: #9fb0cc; }
+/* The two drill rows are one block split in half: the totals row loses its bottom padding
+   and the abilities row its top, so they read as a pair rather than two stacked things. */
+.erow-drill.totals { padding-bottom: 0; gap: 0.55rem; }
+.erow-drill.abilities { padding-top: 0.15rem; }
+.erow-drill.abilities:empty { display: none; }
+/* Total first and brightest — it is the number the % bar above is a share of. */
+.dtot { font-weight: 700; color: var(--text); white-space: nowrap; }
+.dcat { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dcat.nil { opacity: 0.45; }        /* a category with nothing in it stays legible but recedes */
+.dcrit { white-space: nowrap; margin-left: auto; }   /* pinned right, away from the categories */
 .drill-cat { white-space: nowrap; }
 
 /* log settings toggle */

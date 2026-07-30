@@ -3,6 +3,7 @@
 // Fast path: only lines containing one of these tokens can be combat-relevant,
 // so we prefilter before running the (heavier) regexes.
 
+import { CHARM_SPELL_RE } from "./spells.js";
 import type {
   CharmEvent,
   CombatEvent,
@@ -15,6 +16,7 @@ import type {
   ProgressEvent,
   SpellDamageEvent,
   StanceEvent,
+  WhoEvent,
   ZoneEvent,
 } from "../types.js";
 
@@ -22,7 +24,14 @@ const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
 const RELEVANT_RE =
-  /damage|slain|but |assume |heal|Master|invocation|entered|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching/;
+  /damage|slain|but |assume |heal|Master|invocation|entered|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: /;
+
+// A `/who` result line — the only place the log states anyone's class:
+//   [42 PAL/MNK/BRD] Sanluen (Wood Elf) <Guild Name> ZONE: Nagafen's Lair (soldungb)
+// `ZONE: ` gates it in the prefilter above and is near-exact: 468 of the 469 lines carrying
+// that token in a 785k-line log are who-lines. Characters here hold up to three classes, and
+// a charm emote can only have come from one of them — which is the whole point of reading it.
+const WHO_RE = /^\[(\d+) ([A-Z]{3}(?:\/[A-Z]{3})*)\] (\S+) \(/;
 
 // Zoning is a hard fight boundary: "You have entered The Greater Faydark."
 // (guard against the non-zone "You have entered an area where …" warning).
@@ -123,29 +132,32 @@ const CHARM_WORE_OFF_RE = /^Your (.+?) spell has worn off of (.+?)\.$/;
 // A bard holds charm with a song, so the charm dies when the song does. This line
 // names the song and no mob at all — it breaks every charm that song is holding.
 const CHARM_FIZZLE_RE = /^You miss a note, bringing your (.+?) to a close!$/;
-// Spell names that identify a charm. Verified against a real 742k-line log: Charm
-// and Charm III, Beguile I–IV (enchanter), and Solon's Bewitching Bravura (bard).
-// The rest are the classic-EQ charm family, listed so another class's charm isn't
-// silently missed — an unlisted one still parses as a charm, it just lands without
-// an owner, because only the *cast* line is matched against this.
-const CHARM_SPELL_RE = /\b(?:charm|beguile|bewitching bravura|allure|cajoling|dominate)\b/i;
+// Charm spell names live in `spells.ts`, transcribed from the wiki's class pages, because
+// the same table has to agree with the landing-message table next to it.
 
 /** Charm lines, tried last and only when a charm token is present. */
 function parseCharm(tsMs: number, body: string): CharmEvent | null {
-  const ev = (state: CharmEvent["state"], who: string, spell?: string): CharmEvent => ({
+  const ev = (
+    state: CharmEvent["state"],
+    who: string,
+    spell?: string,
+    emote?: CharmEvent["emote"],
+  ): CharmEvent => ({
     type: "charm",
     tsMs,
     raw: body,
     state,
     who: normName(who),
     ...(spell ? { spell } : {}),
+    ...(emote ? { emote } : {}),
   });
 
+  // Which message it is matters: it names the spell, and the spell names the caster's class.
   let m = CHARM_GLAZE_RE.exec(body);
-  if (m) return ev("on", m[1]!);
+  if (m) return ev("on", m[1]!, undefined, "glaze");
 
   m = CHARM_ON_RE.exec(body);
-  if (m) return ev("on", m[1]!);
+  if (m) return ev("on", m[1]!, undefined, "charmed");
 
   // Only charm-named spells matter here; "You begin casting Healing." is not one.
   m = CHARM_CAST_RE.exec(body);
@@ -229,6 +241,21 @@ export function parseLine(raw: string): CombatEvent | null {
   m = INVOKE_RE.exec(body);
   if (m) {
     const ev: StanceEvent = { type: "stance", tsMs, raw: body, dim: "invocation", stance: m[1]! };
+    return ev;
+  }
+
+  // A `/who` line. Cheap and early: it can't be confused with anything else, and it is the
+  // only line that ever tells us a player's class.
+  m = WHO_RE.exec(body);
+  if (m) {
+    const ev: WhoEvent = {
+      type: "who",
+      tsMs,
+      raw: body,
+      name: m[3]!,
+      level: Number(m[1]),
+      classes: m[2]!.split("/"),
+    };
     return ev;
   }
 

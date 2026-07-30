@@ -116,6 +116,23 @@ export interface CharmEvent extends BaseEvent {
    *  names only the spell (a bard's song ending), meaning every mob that spell holds. */
   who: string;
   spell?: string; // the charm spell, when the line names one
+  /** Which landing message it was ("on" only). The message identifies the spell and the
+   *  spell identifies the caster's class, which is the only handle the log gives on who
+   *  owns a charm nobody's cast line announced. See `spells.ts`. */
+  emote?: CharmEmoteKind;
+}
+
+/** The charm landing messages the parser recognises, keyed as in `spells.ts`. */
+export type CharmEmoteKind = "charmed" | "glaze";
+
+/** A `/who` line: `[42 PAL/MNK/BRD] Sanluen (Wood Elf) <Guild> ZONE: Nagafen's Lair`.
+ *  The only place the log states anyone's class, which is what lets a charm emote be
+ *  traced back to a specific groupmate. */
+export interface WhoEvent extends BaseEvent {
+  type: "who";
+  name: string;
+  level: number;
+  classes: string[]; // e.g. ["PAL", "MNK", "BRD"]
 }
 
 export interface ZoneEvent extends BaseEvent {
@@ -151,6 +168,7 @@ export type CombatEvent =
   | HealEvent
   | PetEvent
   | CharmEvent
+  | WhoEvent
   | ZoneEvent
   | ProgressEvent;
 
