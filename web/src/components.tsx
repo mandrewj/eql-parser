@@ -132,35 +132,42 @@ function clusterByKind(items: Milestone[]): Array<{ mark: Milestone; count: numb
   });
 }
 
-/** Diverging bars: my DPS above the baseline, damage taken below. The two halves are
- *  separate panels sharing an encounter axis — each is scaled to its own peak (labelled
- *  in the header), so heights are never compared across the baseline. Between them runs
- *  a milestone rail: levels, ability points, AAs, deaths and zone changes, placed at the
- *  encounter boundary they happened on. */
+/** Diverging bars: my DPS above the baseline, damage taken below. Both halves are rates
+ *  over each encounter's own length, so a long fight doesn't tower over a short one just
+ *  for lasting. They stay separate panels sharing an encounter axis — each scaled to its
+ *  own peak (labelled in the header), so heights are never compared across the baseline.
+ *  Between them runs a milestone rail: levels, ability points, AAs, deaths and zone
+ *  changes, placed at the encounter boundary they happened on. */
 function EncounterHistory({
   points,
   colors,
   selected,
   onSelect,
   milestones,
-  avgDps,
 }: {
   points: SelfEncounterPoint[];
   colors: Map<string, number>;
   selected: string | null;
   onSelect: (key: string | null) => void;
   milestones: Milestone[];
-  avgDps: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const [hoverMs, setHoverMs] = useState<Milestone | null>(null);
   if (points.length === 0) return null;
 
   const maxDps = Math.max(1, ...points.map((p) => p.dps));
-  const maxTaken = Math.max(1, ...points.map((p) => p.taken));
+  const maxTaken = Math.max(1, ...points.map((p) => p.takenPerSec));
   const hp = hover === null ? null : points[hover] ?? null;
   const from = points[0]!.startMs;
   const elapsed = points[points.length - 1]!.endMs - from;
+
+  // The average is computed here, from the very array being drawn: total damage over total
+  // encounter seconds. That makes it the duration-weighted mean of these bars — a long
+  // encounter pulls on it harder than a short one — rather than a mean of their rates,
+  // which would let a 4-second mob count as much as a 5-minute boss.
+  const totalDmg = points.reduce((s, p) => s + p.damage, 0);
+  const totalSec = points.reduce((s, p) => s + p.durationSec, 0);
+  const avgDps = Math.round(totalDmg / Math.max(1, totalSec));
 
   // Resolve each point's combo identity once — both halves of the chart draw from this.
   const marks = points.map((p) => ({ p, key: comboKey(p), color: comboColor(comboKey(p), colors) }));
@@ -189,7 +196,10 @@ function EncounterHistory({
           className={`hcell ${selected !== null && selected !== key ? "dim" : ""} ${hover === i ? "hov" : ""}`}
           onMouseEnter={() => setHover(i)}
           onClick={() => onSelect(selected === key ? null : key)}
-          title={`${p.name} · ${fmtDrill(p.dps)} dps · ${fmtDrill(p.taken)} taken`}
+          title={
+            `${p.name} · ${p.durationSec}s — ${fmtDrill(p.dps)} dps (${fmt(p.damage)} damage), ` +
+            `${fmtDrill(p.takenPerSec)}/s taken (${fmt(p.taken)}); both over the encounter's own length`
+          }
         >
           <div
             className={`hbar ${cls === "down" ? "tank" : ""} ${value(p) === max ? "peak" : ""}`}
@@ -221,12 +231,12 @@ function EncounterHistory({
         ) : hp ? (
           <span className="hist-readout">
             <span className="hswatch" style={{ background: comboColor(comboKey(hp), colors) }} />
-            {hp.name} · {hp.durationSec}s · <b>{fmtDrill(hp.dps)}</b> dps · <b>{fmtDrill(hp.taken)}</b> taken · ⚔{" "}
+            {hp.name} · {hp.durationSec}s · <b>{fmtDrill(hp.dps)}</b> dps · <b>{fmtDrill(hp.takenPerSec)}</b>/s taken · ⚔{" "}
             {stanceLabel(hp.melee)} · ✦ {stanceLabel(hp.invocation)}
           </span>
         ) : (
           <span className="hist-scale">
-            ▲ peak {fmtDrill(maxDps)} dps · ▼ peak {fmtDrill(maxTaken)} taken
+            ▲ peak {fmtDrill(maxDps)} dps · ▼ peak {fmtDrill(maxTaken)}/s taken
           </span>
         )}
       </div>
@@ -242,9 +252,17 @@ function EncounterHistory({
         </div>
         <div className="hist-up">
           {half("up", (p) => p.dps, maxDps)}
-          {/* The window's average, matching the figure in the panel header. */}
+          {/* Where these bars actually average out, weighted by how long each fight lasted. */}
           {avgDps > 0 && (
-            <div className="hist-avg" style={{ bottom: `${Math.min(100, (avgDps / maxDps) * 100)}%` }}>
+            <div
+              className="hist-avg"
+              style={{ bottom: `${Math.min(100, (avgDps / maxDps) * 100)}%` }}
+              title={
+                `${fmt(avgDps)} dps: ${fmt(totalDmg)} damage over ${fmt(totalSec)}s of encounters, ` +
+                `weighted by each one's length. Runs below the panel's overall figure when mobs overlap — ` +
+                `seconds shared by two fights count once on the clock but in both encounters.`
+              }
+            >
               <span className="hist-avg-tag">avg {fmtDrill(avgDps)}</span>
             </div>
           )}
@@ -267,7 +285,7 @@ function EncounterHistory({
             </span>
           ))}
         </div>
-        {half("down", (p) => p.taken, maxTaken)}
+        {half("down", (p) => p.takenPerSec, maxTaken)}
       </div>
     </div>
   );
@@ -325,10 +343,11 @@ export function StanceOverview({
 }) {
   const [n, setN] = useState(25);
   const [selected, setSelected] = useState<string | null>(null);
-  const rows = windows.find((w) => w.n === n)?.rows ?? [];
-  const totalDmg = rows.reduce((s, r) => s + r.damage, 0);
-  const totalSec = rows.reduce((s, r) => s + r.seconds, 0);
-  const overall = Math.round(totalDmg / Math.max(1, totalSec));
+  const win = windows.find((w) => w.n === n);
+  const rows = win?.rows ?? [];
+  // Damage per second of combat: the window's own totals, not a mean of the tiles' rates
+  // and not a re-sum of `rows` (which omits combos I spent time in without dealing damage).
+  const overall = Math.round((win?.damage ?? 0) / Math.max(1, win?.seconds ?? 0));
   const colors = buildComboColors(history, rows);
   const points = history.slice(0, n).reverse(); // history is newest-first; the chart reads left→right
   const isCurrent = (r: { melee: string; invocation: string }) =>
@@ -359,7 +378,14 @@ export function StanceOverview({
               current combo <b>−{Math.abs(gap)}%</b> vs best ({fmtK(best!.dps)} dps)
             </span>
           ))}
-        <span className="ov-overall">
+        <span
+          className="ov-overall"
+          title={
+            `${fmt(overall)} dps — ${fmt(win?.damage ?? 0)} damage over ${fmt(win?.seconds ?? 0)}s of combat ` +
+            `across the last ${n} encounters. Wall-clock seconds, counted once even when two mobs are up, ` +
+            `so this sits above the chart's per-encounter average whenever fights overlap.`
+          }
+        >
           {fmtK(overall)} <span className="munit">avg dps</span>
         </span>
       </div>
@@ -401,7 +427,6 @@ export function StanceOverview({
         selected={selected}
         onSelect={setSelected}
         milestones={milestones}
-        avgDps={overall}
       />
       <ProgressStrip w={progressWindows.find((p) => p.n === n)} now={progress} />
     </section>

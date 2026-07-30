@@ -344,6 +344,66 @@ test("stance overview: self DPS split by stance+invocation combination", () => {
   assert.equal(off.timeShare + def.timeShare, 100, "time shares cover the window");
 });
 
+test("history points are normalized by encounter length, not by my window in it", () => {
+  const engine = feed([
+    // A 20s fight someone else opened; I land one 900-damage hit in its last 2 seconds.
+    L("01:00:00", "Feydie kicks an orc for 100 points of damage."),
+    L("01:00:18", "You crush an orc for 900 points of damage."),
+    L("01:00:20", "You have slain an orc!"),
+  ]);
+  const p = engine.snapshot().encounterHistory[0]!;
+  assert.equal(p.durationSec, 20);
+  assert.equal(p.damage, 900);
+  assert.equal(p.dps, 45, "900 over the encounter's 20s — not 450 over my 2s window");
+  // The encounter table still reports my per-person rate; the two answer different questions.
+  const card = engine.snapshot().recentEncounters[0]!.cards.find((c) => c.isSelf)!;
+  assert.equal(card.damage.perSec, 450);
+});
+
+test("window average is duration-weighted, not a mean of per-encounter rates", () => {
+  // 100 damage in 2s (50 dps), then 900 damage in 30s (30 dps). The 90s timeout keeps the
+  // 58s lull from closing the fight, which would cap the bear at its last activity instead.
+  const engine = feed(
+    [
+      L("01:00:00", "You crush a rat for 100 points of damage."),
+      L("01:00:02", "You have slain a rat!"),
+      L("01:01:00", "You crush a bear for 900 points of damage."),
+      L("01:01:30", "You have slain a bear!"),
+    ],
+    "Sanluen",
+    90,
+  );
+  const pts = engine.snapshot().encounterHistory;
+  assert.deepEqual(pts.map((p) => p.dps).sort((a, b) => a - b), [30, 50]);
+  const dmg = pts.reduce((s, p) => s + p.damage, 0);
+  const sec = pts.reduce((s, p) => s + p.durationSec, 0);
+  // What the chart's average line draws: 1000 / 32s = 31, right next to the long fight it
+  // spent its seconds in. A mean of the two rates would say 40 — the 2-second rat counting
+  // as much as a mob fifteen times its length.
+  assert.equal(Math.round(dmg / sec), 31);
+  assert.equal(Math.round((30 + 50) / 2), 40);
+});
+
+test("stance overview: the window's headline rate keeps zero-damage combo seconds", () => {
+  let clock = at("01:02:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You assume an offensive stance."),
+    L("01:00:02", "You crush an orc for 400 points of damage."),
+    L("01:00:10", "You assume a defensive stance."), // 10s of combat, no damage dealt
+    L("01:00:20", "You have slain an orc!"),
+  ]);
+  const w = engine.snapshot().stanceOverview.find((x) => x.n === 10)!;
+  assert.equal(w.rows.length, 1, "the silent defensive combo earns no tile");
+  assert.equal(w.damage, 400);
+  // The window is the encounter's span (my first hit at :02 → the kill at :20): 8s offensive
+  // then 10s defensive. Both count, so the headline rate is 400/18, not 400/8.
+  assert.equal(w.seconds, 18, "the silent combo's seconds still count against the window rate");
+  assert.equal(Math.round(w.damage / w.seconds), 22);
+  assert.equal(w.rows[0]!.dps, 50, "the tile's own rate covers only its own 8 seconds");
+  assert.equal(w.rows[0]!.timeShare, 44, "shares fall short of 100% by the silent combo's time");
+});
+
 test("stance overview: damage taken and time share are split by combo too", () => {
   let clock = at("01:02:00");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

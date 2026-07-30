@@ -29,6 +29,7 @@ import type {
   StanceBreakdown,
   StanceDim,
   StanceOverviewRow,
+  StanceOverviewWindow,
   StanceSegment,
   StanceState,
 } from "../types.js";
@@ -192,7 +193,7 @@ export class Engine {
   private finished: FightState[] = [];
   private finishedSummaries: FightSummary[] = []; // cached; a closed fight never changes
   private finishedEncounters: EncounterView[] = []; // newest first, rolling
-  private overviewCache: Array<{ n: number; rows: StanceOverviewRow[] }> | null = null;
+  private overviewCache: StanceOverviewWindow[] | null = null;
   private historyCache: SelfEncounterPoint[] | null = null;
   private progressCache: ProgressWindow[] | null = null;
   private fightSeq = 0;
@@ -283,7 +284,7 @@ export class Engine {
     activeEncounters: EncounterView[];
     recentEncounters: EncounterView[];
     stance: StanceState;
-    stanceOverview: Array<{ n: number; rows: StanceOverviewRow[] }>;
+    stanceOverview: StanceOverviewWindow[];
     encounterHistory: SelfEncounterPoint[];
     milestones: Milestone[];
     progressWindows: ProgressWindow[];
@@ -390,15 +391,24 @@ export class Engine {
     return this.finishedEncounters.slice(0, 50).map((e) => {
       const self = e.cards.find((c) => c.isSelf);
       const { melee, invocation } = this.dominantComboIn(e.startMs, e.endMs);
+      const damage = self?.damage.total ?? 0;
+      const taken = self?.taken.total ?? 0;
+      // Both rates divide by the encounter's own length, deliberately *not* by my active
+      // window inside it (`card.damage.perSec`, which the encounter table shows): joining
+      // a fight for its last 6 seconds would otherwise plot as my best encounter ever.
+      // Dividing by the same durationSec the client receives also makes the chart's average
+      // line exactly the duration-weighted mean of the bars it crosses.
+      const secs = Math.max(1, e.durationSec);
       return {
         id: e.id,
         name: e.name,
         startMs: e.startMs,
         endMs: e.endMs,
         durationSec: e.durationSec,
-        dps: self?.damage.perSec ?? 0,
-        damage: self?.damage.total ?? 0,
-        taken: self?.taken.total ?? 0,
+        damage,
+        dps: Math.round(damage / secs),
+        taken,
+        takenPerSec: Math.round(taken / secs),
         melee,
         invocation,
       };
@@ -432,14 +442,14 @@ export class Engine {
     return out;
   }
 
-  private buildStanceOverviews(): Array<{ n: number; rows: StanceOverviewRow[] }> {
-    return [10, 25, 50].map((n) => ({ n, rows: this.overviewForWindow(n) }));
+  private buildStanceOverviews(): StanceOverviewWindow[] {
+    return [10, 25, 50].map((n) => this.overviewForWindow(n));
   }
 
   /** Average self DPS per stance+invocation combo over the last N finished encounters. */
-  private overviewForWindow(n: number): StanceOverviewRow[] {
+  private overviewForWindow(n: number): StanceOverviewWindow {
     const encs = this.finishedEncounters.slice(0, n);
-    if (encs.length === 0) return [];
+    if (encs.length === 0) return { n, rows: [], damage: 0, seconds: 0 };
 
     // Merge the encounters' time windows so simultaneous mobs aren't double-counted.
     const merged: Array<[number, number]> = [];
@@ -471,8 +481,12 @@ export class Engine {
       }
     }
 
+    // Window totals come from `agg` *before* the zero-damage rows are dropped below: a combo
+    // I stood in without swinging still spent real seconds, and leaving them out would inflate
+    // the headline rate. These merged seconds count wall-clock once even when two mobs overlap.
     const windowSec = [...agg.values()].reduce((s, v) => s + v.seconds, 0);
-    return [...agg.entries()]
+    const windowDmg = [...agg.values()].reduce((s, v) => s + v.damage, 0);
+    const rows = [...agg.entries()]
       .map(([combo, v]) => {
         const [melee = "none", invocation = "none"] = combo.split("|");
         const seconds = Math.max(1, v.seconds);
@@ -489,6 +503,7 @@ export class Engine {
       })
       .filter((r) => r.damage > 0)
       .sort((a, b) => b.dps - a.dps);
+    return { n, rows, damage: windowDmg, seconds: Math.round(windowSec) };
   }
 
   // --- stances ------------------------------------------------------------

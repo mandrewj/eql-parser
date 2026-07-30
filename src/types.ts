@@ -192,6 +192,17 @@ export interface StanceOverviewRow {
   timeShare: number; // percent of the window's combat time spent in this combo
 }
 
+/** The last `n` finished encounters, split by stance combo. The window totals are taken
+ *  before zero-damage combos are dropped from `rows`, so the headline rate is divided by
+ *  every combat second — including ones I stood through without swinging. Those seconds
+ *  are *merged* wall-clock: two mobs fought at once cost one second, not two. */
+export interface StanceOverviewWindow {
+  n: number;
+  rows: StanceOverviewRow[]; // combos I dealt damage in, best DPS first
+  damage: number; // my damage over the window…
+  seconds: number; // …and the combat seconds behind it
+}
+
 /** A dated, one-off event worth a mark on the encounter timeline. Deliberately rare
  *  kinds only — skill-ups and xp ticks are counted in `ProgressWindow`, not marked. */
 export type MilestoneKind = "level" | "ap" | "ability" | "death" | "zone";
@@ -222,16 +233,20 @@ export interface ProgressState {
   abilityPoints: number | null; // unspent AP
 }
 
-/** One finished encounter, from my point of view — the history chart's data point. */
+/** One finished encounter, from my point of view — the history chart's data point.
+ *  Both rates are normalised by the *encounter's* length, not by my own active window
+ *  inside it (which is what the encounter table's rows use), so two bars are the same
+ *  kind of number and their duration-weighted mean is a real per-second average. */
 export interface SelfEncounterPoint {
   id: string;
   name: string;
   startMs: number;
   endMs: number;
   durationSec: number;
-  dps: number; // my damage per second in this encounter
   damage: number; // my total damage
+  dps: number; // damage ÷ durationSec
   taken: number; // total damage I took
+  takenPerSec: number; // taken ÷ durationSec
   melee: string; // stance combo I spent the most time in during this encounter
   invocation: string;
 }

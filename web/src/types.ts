@@ -51,9 +51,14 @@ export interface StanceOverviewRow {
   timeShare: number; // percent of the window's combat time spent in this combo
 }
 
+/** The last `n` finished encounters, split by stance combo. Window totals are taken before
+ *  zero-damage combos are dropped from `rows`, so the headline rate is divided by every
+ *  combat second. Those seconds are *merged* wall-clock: two mobs at once cost one second. */
 export interface StanceOverviewWindow {
   n: number; // number of most-recent encounters averaged
-  rows: StanceOverviewRow[];
+  rows: StanceOverviewRow[]; // combos I dealt damage in, best DPS first
+  damage: number; // my damage over the window…
+  seconds: number; // …and the combat seconds behind it
 }
 
 /** A dated, one-off event marked on the encounter timeline. */
@@ -84,16 +89,19 @@ export interface ProgressState {
   abilityPoints: number | null;
 }
 
-/** One finished encounter, from my point of view — the history chart's data point. */
+/** One finished encounter, from my point of view — the history chart's data point.
+ *  Both rates are normalised by the encounter's length, not by my active window inside
+ *  it, so bars are comparable and their duration-weighted mean is a real average. */
 export interface SelfEncounterPoint {
   id: string;
   name: string;
   startMs: number;
   endMs: number;
   durationSec: number;
-  dps: number; // my damage per second in this encounter
   damage: number; // my total damage
+  dps: number; // damage ÷ durationSec
   taken: number; // total damage I took
+  takenPerSec: number; // taken ÷ durationSec
   melee: string; // stance combo I spent the most time in during this encounter
   invocation: string;
 }

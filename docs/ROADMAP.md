@@ -136,6 +136,24 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 - Header is now three parts on one line: name (shrinks, ellipsis), what it hits for, totals pinned
   right. Verified against a real snapshot in the SSR harness, including a long-boss-name stress case.
 
+## Post-v1 — Average-DPS audit: what each rate divides by  ✅
+- **Chart bars are normalized by encounter length.** They used my *personal* active window inside each
+  encounter, so joining a fight for its last 6 seconds plotted as my best encounter ever — and, being
+  the peak, rescaled every other bar. On the real log the peak fell 154 → 119 dps and now belongs to a
+  28-second fight. The encounter *table* still shows per-person rates; that's the right answer to a
+  different question ("how fast was each of us going while engaged"), and both are documented.
+- **The average line is now the duration-weighted mean of the bars it crosses** (Σ damage ÷ Σ encounter
+  seconds), computed inside the chart from the array being drawn rather than passed in from a different
+  calculation. Never a mean of per-encounter rates.
+- **Damage taken is a rate too** (`takenPerSec`), so both halves of the diverging chart are the same
+  kind of number instead of a rate over a total.
+- **Fixed an inflated headline rate**: the panel header re-summed the tile rows, which the engine had
+  already filtered to combos with damage > 0 — so seconds spent in a combo without swinging vanished
+  from the denominator. `StanceOverviewWindow` now ships the window's own pre-filter `damage`/`seconds`.
+- The header (merged wall-clock seconds) and the chart line (summed encounter seconds) legitimately
+  differ when mobs overlap — 75 vs 70 on a real window. Both are time-weighted; each tooltip names its
+  denominator, and ARCHITECTURE explains which to quote.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.
