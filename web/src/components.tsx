@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type {
   CombatantStats,
+  DeathReport,
   EncounterCard as EncounterCardData,
   EncounterView,
   Filters,
@@ -429,6 +430,78 @@ export function StanceOverview({
         milestones={milestones}
       />
       <ProgressStrip w={progressWindows.find((p) => p.n === n)} now={progress} />
+    </section>
+  );
+}
+
+// --- what killed me -------------------------------------------------------
+
+/** A death, read backwards. The question is never "how much did I take" — it is *what* was
+ *  hitting me and whether anyone was healing, so the two breakdown lines (by ability, by
+ *  attacker) carry the answer and the totals are context.
+ *
+ *  Dying to one thing and dying to six look nothing alike here, which is the point: on a real
+ *  death the attacker line read "a festering hag 749 · a skeletal monk 162 · a greater dark
+ *  bone 150 · a barbed bone skeleton 106 · a dusty werebat 63" — that is an add problem, not a
+ *  tanking one, and no single number says so. */
+function DeathRow({ d }: { d: DeathReport }) {
+  const last = d.blows[d.blows.length - 1];
+  return (
+    <div className="death">
+      <div className="death-th">
+        <span className="death-x">✕</span>
+        <span className="death-killer">{d.killer}</span>
+        {last && (
+          <span className="death-blow" title={`The last hit to land before the death line`}>
+            → {last.ability} {fmtDrill(last.amount)}
+          </span>
+        )}
+        <span
+          className="death-tot"
+          title={
+            `${fmt(d.totalTaken)} damage taken in the ${d.windowSec}s before dying, and ` +
+            `${fmt(d.healed)} healing received in the same window. The window is fixed because ` +
+            `the log never states hit points, so there is no way to know when the trouble began.`
+          }
+        >
+          {fmtK(d.totalTaken)} in {d.windowSec}s
+          {d.healed > 0 ? <span className="death-heal"> · +{fmtK(d.healed)} healed</span> : <span className="death-noheal"> · no heals</span>}
+        </span>
+      </div>
+      <div className="death-line">
+        {d.byAbility.slice(0, 4).map((a) => (
+          <span key={a.name} className="drill-cat">
+            {a.damageType !== "unknown" && <span className={`typedot ${a.damageType}`} />}
+            {a.name} {fmtDrill(a.total)}
+          </span>
+        ))}
+      </div>
+      <div className="death-line who">
+        {d.byAttacker.slice(0, 4).map((a) => (
+          <span key={a.name} className="drill-cat">
+            {a.name} {fmtDrill(a.total)}
+          </span>
+        ))}
+        {d.byAttacker.length > 4 && <span className="drill-cat more">+{d.byAttacker.length - 4} more</span>}
+        <span className="death-stance" title={`The stance combo I was in when I died`}>
+          ✕ {stanceLabel(d.melee)} · ✦ {stanceLabel(d.invocation)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function DeathPanel({ deaths }: { deaths: DeathReport[] }) {
+  if (deaths.length === 0) return null;
+  return (
+    <section className="overview deaths">
+      <div className="ov-head">
+        <span className="ov-title">What killed me</span>
+        <span className="muted small">last {plural(deaths.length, "death")}</span>
+      </div>
+      {deaths.map((d) => (
+        <DeathRow key={d.id} d={d} />
+      ))}
     </section>
   );
 }

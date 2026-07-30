@@ -804,6 +804,48 @@ test("charm: a pet fighting its own namesake is split off and shown as a partici
   assert.equal(self.damage.total, 200, "my post-charm damage lands on the enemy, not the pet");
 });
 
+test("what killed me: the run-up is kept, broken down, and the last blow identified", () => {
+  const engine = feed([
+    L("01:00:00", "You assume a mage hunter stance."),
+    L("01:00:00", "You begin reciting the spellblade invocation."),
+    L("01:00:01", "You slash Najena for 42 points of damage."),
+    // Four attackers in the last few seconds — the shape a single number can't show.
+    L("01:00:45", "Najena pet hits YOU for 10 points of damage."),
+    L("01:00:46", "You have taken 29 damage from Searing Arrow by a magician pet."),
+    L("01:00:46", "Orson healed you for 75 hit points."),
+    L("01:00:47", "A magician punches YOU for 20 points of damage."),
+    L("01:00:47", "Najena hit you for 209 points of fire damage by Blaze."),
+    L("01:00:47", "You have been slain by Najena!"),
+  ]);
+  const d = engine.snapshot().deaths[0]!;
+  assert.equal(d.killer, "Najena");
+  assert.equal(d.totalTaken, 268, "10 + 29 + 20 + 209");
+  assert.equal(d.healed, 75, "healing received in the same window");
+  assert.deepEqual(d.blows[d.blows.length - 1]!.ability, "Blaze", "the last hit to land");
+  assert.equal(d.blows[d.blows.length - 1]!.amount, 209);
+  assert.deepEqual(
+    d.byAttacker.map((a) => a.name),
+    ["Najena", "a magician pet", "A magician", "Najena pet"],
+    "ranked by how much each dealt",
+  );
+  assert.equal(d.byAbility[0]!.name, "Blaze");
+  assert.equal(d.melee, "mage hunter", "the stance I died in");
+  assert.equal(d.invocation, "spellblade");
+});
+
+test("what killed me: damage older than the window is not counted", () => {
+  const engine = feed([
+    L("01:00:00", "You slash a rat for 10 points of damage."),
+    // A minute earlier — real damage, but nothing to do with the death.
+    L("01:00:01", "A rat hits YOU for 500 points of damage."),
+    L("01:01:30", "A rat hits YOU for 40 points of damage."),
+    L("01:01:30", "You have been slain by a rat!"),
+  ], "Sanluen", 300);
+  const d = engine.snapshot().deaths[0]!;
+  assert.equal(d.totalTaken, 40, "only the blows inside the window");
+  assert.equal(d.blows.length, 1);
+});
+
 test("encounter timeline: both halves share buckets, and each bucket carries its stance combo", () => {
   let clock = at("01:00:20");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

@@ -203,6 +203,17 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     invalidated on the same events. `progress` carries the latest level + unspent AP.
   - A `Progress` event never opens, extends, or closes a fight; it only annotates the timeline.
     A level-up fires immediately after a kill, so it lands on the boundary *between* two encounters.
+- **"What killed me" needs no new parsing** — every field was already in the event stream, just
+  never kept together. A rolling window of incoming hits (`selfBlows`) carries the attacker and
+  ability that `selfTakenComboLog` and `selfTaken` both drop, alongside the heals that landed on
+  me; on my death it is folded into a `DeathReport`. Trimmed to the window on every write, so it
+  stays a few dozen entries rather than a session-length history.
+  - **The window is fixed at 10s, and that is a limitation, not a choice.** "Since I was last at
+    full" is the question worth asking and the log makes it unanswerable: hit points are never
+    stated. Ten seconds covers the burst that actually kills — on a real death, four attackers, a
+    209-damage nuke, a DoT tick and a damage shield all landed in the last three.
+  - Verified against the raw log: the Najena death reports 723 damage taken, and a grep of every
+    incoming-damage form over the same ten seconds also sums to 723.
 - **A friendly death ends nothing.** Only an NPC's death finalizes an encounter and resets its
   tracking; doing that for a player would erase the corpse's damage from every mob still being
   fought — which is precisely the run you want to keep looking at.
@@ -249,6 +260,16 @@ type ServerEvent =
   | ({ t: "snapshot" } & Snapshot)
   | { t: "activeLogChanged"; path: string | null; mode?: "live" | "backfill" };
 
+interface DeathReport {               // "what killed me", built at the moment of death
+  killer: string; tsMs: number;
+  windowSec: number;                  // fixed: the log never states hit points
+  totalTaken: number; healed: number; // damage in, healing in, over that window
+  blows: DeathBlow[];                 // chronological; the last is the killing blow
+  byAttacker: { name: string; total: number }[];
+  byAbility: { name: string; total: number; damageType: DamageType }[];
+  melee: string; invocation: string;  // the stance combo I died in
+}
+
 interface Snapshot {                  // everything the UI draws
   current: Fight | null;              // the fight in progress, full per-combatant detail
   recent: FightSummary[];             // last 20 closed fights — the History pane's list
@@ -260,6 +281,7 @@ interface Snapshot {                  // everything the UI draws
   milestones: Milestone[];            // the rail's marks
   progressWindows: ProgressWindow[];
   progress: { level: number | null; abilityPoints: number | null };
+  deaths: DeathReport[];              // last 5, newest first
 }
 
 interface EncounterView {             // one per-mob card
@@ -410,6 +432,15 @@ interface MetricStat {                // every metric group has this one shape
   - **Milestone rail.** The baseline between the halves is the timeline: level-ups (▲), ability points (◆), AAs and skill unlocks (★), my deaths (✕) and zone changes (»). Each mark sits on the **left edge of the encounter it belongs to** — the first encounter that ended at or after it — so a level-up earned on a kill lands exactly on the boundary between the two bars. Several in one gap (ding → ability point → new AA) cluster, **one mark per kind carrying a count** — four zone changes in the same gap are one `»⁴`, not four glyphs fighting over ~14px of rail; hovering the cluster names all of them. Levels and deaths also draw a full-height guide, because those two are what explain a step change in the bars.
   - Marks are identified by **shape**, not colour — the rail is far too small for colour to carry identity — and hovering any of them replaces the header readout with its full sentence and clock time.
   - Below the chart, a **progression strip** shows current level and unspent AP, then what the window bought: levels, AP, abilities, deaths (in the rail's own glyphs, so the strip doubles as its legend), and — deliberately glyph-less, since they are counted but never marked — skill-ups and summed xp percent.
+- **The "what killed me" panel** sits under My DPS and renders only when there are deaths. Each
+  one is three lines: the killer and the **last blow to land**, then the damage by ability, then
+  by attacker with the stance I died in. The two breakdown lines are the point — dying to one
+  thing and dying to six look nothing alike, and no single total says which happened (one real
+  death read `a festering hag 749 · a skeletal monk 162 · a greater dark bone 150 · a barbed bone
+  skeleton 106 · a dusty werebat 63`, which is an add problem, not a tanking one).
+  - **"no heals" is printed, not omitted.** Whether anyone was healing is half of why a death
+    happened, and on every death in the real log the answer was nobody — an absence worth
+    stating in the `--partial` amber rather than leaving as blank space.
 - **Visual hierarchy** — panels sit on a raised surface above a darker page (`--panel` vs `--bg`, plus a drop shadow). **Active encounters are deliberately loud**: warm gradient, heavier frame, a `--live` accent stripe down the left edge, an accented section header, and a pulsing `⚔` dot (suppressed under `prefers-reduced-motion`). Finished encounters stay neutral so a long recent list doesn't turn into competing accents.
 - Reconnects to SSE automatically; renders from the last snapshot on load.
 

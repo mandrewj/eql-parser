@@ -106,6 +106,33 @@ export interface SelfEncounterPoint {
   invocation: string;
 }
 
+/** One incoming hit in the run-up to a death. */
+export interface DeathBlow {
+  tsMs: number;
+  attacker: string;
+  ability: string;
+  amount: number;
+  damageType: DamageType;
+  crit: boolean;
+}
+
+/** What killed me — assembled at the moment of death from a rolling window of incoming hits.
+ *  The window is fixed because the log never states hit points, so "since I was last at full"
+ *  is unknowable. */
+export interface DeathReport {
+  id: string;
+  tsMs: number;
+  killer: string;
+  windowSec: number;
+  totalTaken: number;
+  healed: number;
+  blows: DeathBlow[]; // chronological; the last is the killing blow
+  byAttacker: Array<{ name: string; total: number }>;
+  byAbility: Array<{ name: string; total: number; damageType: DamageType }>;
+  melee: string;
+  invocation: string;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -188,6 +215,7 @@ export interface Snapshot {
   milestones: Milestone[]; // chronological, covering the retained encounter span
   progressWindows: ProgressWindow[]; // one per chart window (10/25/50)
   progress: ProgressState;
+  deaths: DeathReport[]; // newest first, last 5
 }
 
 export interface LogInfo {

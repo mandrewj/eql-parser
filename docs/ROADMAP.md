@@ -415,6 +415,25 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   old one claimed it ran "once per encounter" when the timeline had made it run 40 times.
   Verified byte-identical against the naive version over the whole log before landing.
 
+## Post-v1 — "What killed me"  ✅
+- The backlog's own top pick, and it held up: **no new parsing**. Every field was already in the
+  event stream, just never kept together — a rolling 10s window of incoming hits carrying the
+  attacker and ability that the existing self-logs both drop, plus the heals that landed on me,
+  folded into a `DeathReport` at the moment of death.
+- Each death reports the **killing blow**, damage **by ability** and **by attacker**, healing
+  received, and the stance combo I died in. The two breakdowns are the feature: dying to one
+  thing and dying to six look nothing alike, and no total distinguishes them. A real death read
+  `a festering hag 749 · a skeletal monk 162 · a greater dark bone 150 · a barbed bone skeleton
+  106 · a dusty werebat 63` — an add problem, not a tanking one.
+- **The window is fixed at 10s because the log makes the better question unanswerable**: hit
+  points are never stated, so "since I was last at full" cannot be computed. Worth writing down
+  so it isn't re-attempted.
+- **"no heals" is printed rather than omitted** — on all 12 deaths in the log, nobody was healing.
+  That is a finding, not an absence.
+- Verified against the raw log: the Najena death reports 723 damage taken in its window, and an
+  independent grep of every incoming-damage form over the same ten seconds also sums to 723, with
+  the same killing blow (`Blaze` 209).
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now
@@ -437,8 +456,6 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 
 ### Weighed on 2026-07-29 and not taken (yet)
 Kept here so the reasoning isn't re-derived. Ranked by value-per-effort as judged then:
-- **"What killed me"** — deaths are already milestones and the last hits before one are in `perTarget`;
-  a survivability drill-down needs no new parsing. The strongest of these.
 - **Ability-level efficiency over the window** — crit and miss rates per ability across the last N
   encounters rather than one fight, turning the drill-down into "your crush crits 12%, your smite 4%".
 - **Prescriptive stance cards** — the tiles report each combo's DPS and defensive cost but never say

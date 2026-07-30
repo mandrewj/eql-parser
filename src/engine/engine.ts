@@ -13,6 +13,8 @@
 import { CHARM_EMOTES, type ClassCode } from "../parser/spells.js";
 import type {
   AbilityBreakdown,
+  DeathBlow,
+  DeathReport,
   CharmEmoteKind,
   CharmEvent,
   CombatEvent,
@@ -49,6 +51,12 @@ const CHARM_ATTRIB_MS = 3000;
  *  be read as the charm breaking. (Real case: a wan ghoul knight glazed at 03:35:56
  *  and struck Hugh at 03:35:57, then spent the rest of the fight on our side.) */
 const CHARM_GRACE_MS = 3000;
+
+/** How far back a death report looks. The log never states hit points, so "since I was last
+ *  at full" is unknowable and a fixed window is the honest substitute. Ten seconds covers the
+ *  burst that actually kills — on a real death: four attackers, a 209-damage nuke, a DoT tick
+ *  and a damage shield, all inside the last three. */
+const DEATH_WINDOW_SEC = 10;
 
 /** The key a charmed mob takes when it turns out to share its name with a mob we are
  *  fighting. Entities are keyed by name, so until then the two are one entity; a blow
@@ -281,6 +289,13 @@ export class Engine {
   // from — so without this the pet reverts to "owner unknown" the moment its charm flickers,
   // discarding an attribution we had already earned.
   private readonly lastCharmOwner = new Map<string, { ownerKey: string | null; guess: boolean }>();
+  // Incoming hits and heals, with the attacker and ability the other self-logs drop. Kept only
+  // as long as a death report could still reach back for them, so this stays a few dozen
+  // entries rather than a session-length history.
+  private readonly selfBlows: DeathBlow[] = [];
+  private readonly selfHealsIn: Array<{ tsMs: number; amount: number }> = [];
+  private readonly deaths: DeathReport[] = []; // newest first, last 5
+  private deathSeq = 0;
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
   // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
@@ -417,6 +432,7 @@ export class Engine {
     milestones: Milestone[];
     progressWindows: ProgressWindow[];
     progress: ProgressState;
+    deaths: DeathReport[];
   } {
     return {
       current: this.current ? this.buildFight(this.current) : null,
@@ -429,6 +445,7 @@ export class Engine {
       milestones: [...this.milestones],
       progressWindows: (this.progressCache ??= this.buildProgressWindows()),
       progress: { ...this.progress },
+      deaths: [...this.deaths],
     };
   }
 
@@ -1096,7 +1113,67 @@ export class Engine {
       const taken = f.selfTaken.get(aKey);
       if (taken) taken.push({ ts: ev.tsMs, amount: ev.amount });
       else f.selfTaken.set(aKey, [{ ts: ev.tsMs, amount: ev.amount }]);
+      // …and once more with the attacker and ability, which the two logs above both drop.
+      // Only a death reads this, and only the last few seconds of it.
+      this.selfBlows.push({
+        tsMs: ev.tsMs,
+        attacker: this.nameOf(aKey),
+        ability: abilityName,
+        amount: ev.amount,
+        damageType: ev.type,
+        crit,
+      });
+      this.trimDeathWindow(ev.tsMs);
     }
+  }
+
+  /** Drop blows and heals that no future death report could reach back for. */
+  private trimDeathWindow(nowMs: number): void {
+    const cutoff = nowMs - DEATH_WINDOW_SEC * 1000;
+    let drop = 0;
+    while (drop < this.selfBlows.length && this.selfBlows[drop]!.tsMs < cutoff) drop++;
+    if (drop > 0) this.selfBlows.splice(0, drop);
+    drop = 0;
+    while (drop < this.selfHealsIn.length && this.selfHealsIn[drop]!.tsMs < cutoff) drop++;
+    if (drop > 0) this.selfHealsIn.splice(0, drop);
+  }
+
+  /** Assemble "what killed me" from the rolling window. Everything here was already in the
+   *  event stream; the only thing this adds is keeping it together long enough to read. */
+  private recordDeathReport(tsMs: number, killer: string): void {
+    const from = tsMs - DEATH_WINDOW_SEC * 1000;
+    // A blow landing on the same second as the death still counts — the log's resolution is
+    // one second, so the killing blow usually shares its timestamp with the death line.
+    const blows = this.selfBlows.filter((b) => b.tsMs >= from && b.tsMs <= tsMs);
+    const sum = (m: Map<string, number>, k: string, n: number) => m.set(k, (m.get(k) ?? 0) + n);
+    const byAttacker = new Map<string, number>();
+    const byAbility = new Map<string, number>();
+    const abilityType = new Map<string, DamageType>();
+    for (const b of blows) {
+      sum(byAttacker, b.attacker, b.amount);
+      sum(byAbility, b.ability, b.amount);
+      abilityType.set(b.ability, b.damageType);
+    }
+    const rank = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1]);
+    const { melee, invocation } = this.currentStances;
+    this.deaths.unshift({
+      id: `death-${++this.deathSeq}`,
+      tsMs,
+      killer,
+      windowSec: DEATH_WINDOW_SEC,
+      totalTaken: blows.reduce((n, b) => n + b.amount, 0),
+      healed: this.selfHealsIn.filter((h) => h.tsMs >= from && h.tsMs <= tsMs).reduce((n, h) => n + h.amount, 0),
+      blows,
+      byAttacker: rank(byAttacker).map(([name, total]) => ({ name, total })),
+      byAbility: rank(byAbility).map(([name, total]) => ({
+        name,
+        total,
+        damageType: abilityType.get(name) ?? "unknown",
+      })),
+      melee,
+      invocation,
+    });
+    if (this.deaths.length > 5) this.deaths.length = 5;
   }
 
   private recordMiss(attacker: string, target: string, tsMs: number): void {
@@ -1124,6 +1201,12 @@ export class Engine {
     this.see(tKey, target);
     f.healPairs.push([hKey, tKey]);
     f.healLog.push({ healer: hKey, amount, spell: spell ?? "Heal", tsMs });
+    // Healing *on me*, for the death report: "was anyone trying" is half of why a death
+    // happened, and `healLog` doesn't record the target.
+    if (tKey === this.selfKey) {
+      this.selfHealsIn.push({ tsMs, amount });
+      this.trimDeathWindow(tsMs);
+    }
     addAbility(this.combatant(f, hKey).heal, spell ?? "Heal", "unknown", amount, crit);
   }
 
@@ -1140,10 +1223,12 @@ export class Engine {
     // A charm dies with its holder. Leaving it set would hand the charm to the next
     // mob of the same name — "a lava beetle" is not a unique creature.
     this.charmed.delete(vKey);
-    // My own death is the single biggest explanation for a collapsed DPS bar — mark it.
+    // My own death is the single biggest explanation for a collapsed DPS bar — mark it, and
+    // keep the run-up to it while it is still in the window.
     if (vKey === this.selfKey) {
       const by = kKey ? this.nameOf(kKey) : "something";
       this.pushMilestone(tsMs, "death", "Died", `Slain by ${by}`);
+      this.recordDeathReport(tsMs, by);
     }
     // A slain NPC completes its encounter → add it to the rolling recent list.
     this.finalizeEncounter(f, vKey, tsMs);

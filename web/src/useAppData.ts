@@ -45,6 +45,7 @@ export function useAppData(): AppData {
           milestones: msg.milestones ?? [],
           progressWindows: msg.progressWindows ?? [],
           progress: msg.progress ?? { level: null, abilityPoints: null },
+          deaths: msg.deaths ?? [],
         });
       } else if (msg.t === "activeLogChanged") {
         void refreshLogs();

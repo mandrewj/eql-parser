@@ -287,6 +287,34 @@ export interface SelfEncounterPoint {
   invocation: string;
 }
 
+/** One incoming hit in the run-up to a death. */
+export interface DeathBlow {
+  tsMs: number;
+  attacker: string;
+  ability: string; // melee verb, spell name, or damage-shield effect
+  amount: number;
+  damageType: DamageType;
+  crit: boolean;
+}
+
+/** What killed me. Assembled at the moment of death from a rolling log of incoming hits, so
+ *  it needs no new parsing — every field here was already in the stream, just never kept
+ *  together. The window is fixed rather than "since I was last at full": the log never states
+ *  hit points, so there is no way to know when the trouble started. */
+export interface DeathReport {
+  id: string;
+  tsMs: number;
+  killer: string;
+  windowSec: number; // how far back `blows` reaches
+  totalTaken: number; // damage taken inside that window
+  healed: number; // healing received inside it — was anyone trying?
+  blows: DeathBlow[]; // chronological; the last is the killing blow
+  byAttacker: Array<{ name: string; total: number }>; // biggest first
+  byAbility: Array<{ name: string; total: number; damageType: DamageType }>;
+  melee: string; // the stance combo I died in
+  invocation: string;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;

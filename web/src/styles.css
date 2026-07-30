@@ -452,3 +452,23 @@ body { margin: 0; }
 .pstat.ability .pglyph { color: var(--ms-ability); }
 .pstat.death .pglyph { color: var(--ms-death); }
 .pstat.zone .pglyph { color: var(--ms-zone); }
+
+/* ---- what killed me ---- */
+/* Deaths are rare and the panel only renders when there are some, so it can afford to be
+   loud: the same red the tank column and the milestone rail's ✕ already use. */
+.overview.deaths { border-color: #7a3d3d; }
+.death { padding: 0.3rem 0 0.35rem; border-top: 1px solid var(--hair); }
+.death:first-of-type { border-top: 0; }
+.death-th { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.78rem; }
+.death-x { color: var(--npc); font-weight: 700; }
+.death-killer { font-weight: 700; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the last hit to land — the one thing people look for first */
+.death-blow { flex: none; color: var(--npc); font-weight: 600; font-variant-numeric: tabular-nums; }
+.death-tot { flex: none; margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.death-heal { color: var(--player); }
+/* "nobody healed me" is a finding, not an absence — on every death in a real log it was true */
+.death-noheal { color: var(--partial); }
+.death-line { display: flex; flex-wrap: wrap; gap: 0.45rem; font-size: 0.7rem; color: var(--muted); padding-top: 0.15rem; }
+.death-line.who .drill-cat { color: #b98f8f; }
+.drill-cat.more { opacity: 0.7; font-style: italic; }
+.death-stance { margin-left: auto; opacity: 0.8; white-space: nowrap; }
