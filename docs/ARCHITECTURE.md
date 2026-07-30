@@ -21,7 +21,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
                                                      ▼
                                              Browser SPA
                                              ├─ Log picker      (choose which log to parse)
-                                             ├─ Live pane       (current fight + filters)
+                                             ├─ Live pane       (my DPS + per-NPC encounters)
                                              └─ History pane    (past fights + drill-down)
 ```
 
@@ -155,7 +155,13 @@ interface CombatantStats {          // one meter row
     real spell names (`Denon's Disruptive Discord V`) are long enough that truncating them to fit more
     would cost the rank numeral that distinguishes them.
 - **Log picker** — dropdown of detected logs (from `/api/logs`) to choose which one is parsed live; remembers last choice.
-- **Live pane** — current fight, auto-updating, with **filters**: by combatant kind (players / NPCs / pets), by damage type (melee / spell / DoT), and by stance. A live stance indicator shows the active stance.
+- **Live pane** — the My DPS panel, then the active encounters, then the last five, all auto-updating.
+  Deliberately **unfiltered**: the per-NPC encounter tables replaced the single filtered fight meter this
+  pane originally held, and a 540px column has no room for chips that only ever hid rows. The
+  combatant-kind filter survives in the **History pane**, where a fight's full roster is the point; the
+  by-damage-type and by-stance filters of the original M4 design were never rebuilt after the encounter
+  redesign, and the drill-downs (type split, per-ability, stance split) answer those questions instead.
+  A live stance indicator in the topbar shows the active melee stance and invocation.
 - **History pane** — fight list; select a fight to **drill down**: per-combatant rows → expand to damage-type split, per-ability breakdown, and (for self) the stance split active during that fight.
 - **Encounter header** — `<mob> → <n> dps · ENCOUNTER <dur>s · <total> dmg · <n> dps`. The right-hand
   figures are the **whole encounter** (everyone's damage to the mob, and the combined rate against it),

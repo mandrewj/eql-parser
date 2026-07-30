@@ -196,12 +196,10 @@ export interface LogsResponse {
   logs: LogInfo[];
 }
 
-// ---- client-side filter state ----
+// ---- client-side filter state (History pane only — the Live pane is unfiltered) ----
 
 export interface Filters {
   metric: MetricKind; // "rank by" — sorts character cards & drives the emphasized stat
   showPlayers: boolean;
   showNpcs: boolean;
 }
-
-export const ALL_TYPES: Array<Exclude<DamageType, "unknown">> = ["melee", "spell", "dot"];
