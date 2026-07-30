@@ -474,7 +474,12 @@ body { margin: 0; }
 /* ---- long-term stat rows ---- */
 .lt-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; padding: 0.28rem 0; font-size: 0.78rem; }
 .lt-row + .lt-row { border-top: 1px solid var(--hair); }
-.lt-since { flex: 0 0 8.2rem; color: var(--muted); font-size: 0.72rem; }
+.lt-since { flex: 0 0 9.4rem; color: var(--muted); font-size: 0.72rem; }
+/* the open stretch is the one you're in — it leads, so it reads first */
+.lt-row.open .lt-since { color: var(--text); font-weight: 600; }
+.lt-row.open { border-bottom: 1px solid var(--border); }
+/* ability-point labels are all "+2 AP"; the clock is what tells them apart */
+.lt-when { opacity: 0.6; }
 .lt-fig { font-weight: 700; font-variant-numeric: tabular-nums; }
 .lt-unit { font-weight: 400; font-size: 0.7rem; color: var(--muted); margin-left: 0.15rem; }
 .lt-row.stances { align-items: baseline; }

@@ -14,7 +14,7 @@ import { CHARM_EMOTES, type ClassCode } from "../parser/spells.js";
 import type {
   AbilityBreakdown,
   LongTermStats,
-  SinceMilestone,
+  MilestoneSpan,
   ZoneStance,
   DeathBlow,
   DeathReport,
@@ -69,6 +69,20 @@ const DEATH_WINDOW_SEC = 10;
  *  (It was a NUL until that quietly turned this file binary to git and grep.) */
 const twinKey = (key: string): string => `${key}§charmed`;
 const isTwinKey = (key: string): boolean => key.endsWith("§charmed");
+
+/** A milestone with the running counters as they stood when it landed. */
+interface Anchor {
+  label: string;
+  tsMs: number;
+  kills: number;
+  zones: number;
+  combatMs: number;
+}
+
+/** How many completed stretches each box shows. A level is slow enough that two is a
+ *  comparison; ability points come fast enough that four is. */
+const LEVEL_SPANS = 2;
+const AP_SPANS = 4;
 
 /** Who holds a charm, and since when. */
 interface CharmHold {
@@ -305,8 +319,10 @@ export class Engine {
   // `milestones` being trimmed as encounters age out — the anchor would otherwise vanish
   // exactly when the stretch it measures got interesting.
   private totals = { kills: 0, zones: 0, combatMs: 0 };
-  private atLastLevel: { label: string; tsMs: number; kills: number; zones: number; combatMs: number } | null = null;
-  private atLastAp: { label: string; tsMs: number; kills: number; zones: number; combatMs: number } | null = null;
+  // Newest first. One more anchor than the number of completed spans shown, because a span is
+  // the gap *between* two of them: 2 levels needs 3, 4 ability points needs 5.
+  private readonly levelAnchors: Anchor[] = [];
+  private readonly apAnchors: Anchor[] = [];
   private zone: { name: string; sinceMs: number } | null = null;
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
@@ -471,16 +487,12 @@ export class Engine {
     switch (ev.kind) {
       case "level":
         this.progress.level = ev.value ?? this.progress.level;
-        this.atLastLevel = { label: `level ${ev.value}`, tsMs: ev.tsMs, ...this.snapCounters() };
+        this.pushAnchor(this.levelAnchors, `level ${ev.value}`, ev.tsMs, LEVEL_SPANS);
         this.pushMilestone(ev.tsMs, "level", `Lv ${ev.value}`, `Gained a level — now level ${ev.value}`, ev.value);
         break;
       case "ap":
         this.progress.abilityPoints = ev.total ?? this.progress.abilityPoints;
-        this.atLastAp = {
-          label: `+${ev.value} AP`,
-          tsMs: ev.tsMs,
-          ...this.snapCounters(),
-        };
+        this.pushAnchor(this.apAnchors, `+${ev.value} AP`, ev.tsMs, AP_SPANS);
         this.pushMilestone(
           ev.tsMs,
           "ap",
@@ -522,20 +534,35 @@ export class Engine {
     return f ? Math.max(0, f.lastActivityMs - f.startMs) : 0;
   }
 
-  /** What has happened since a milestone, as a subtraction of two counter snapshots. */
-  private since(at: { label: string; tsMs: number; kills: number; zones: number; combatMs: number } | null): SinceMilestone {
+  private pushAnchor(into: Anchor[], label: string, tsMs: number, spans: number): void {
+    into.unshift({ label, tsMs, ...this.snapCounters() });
+    // One more than the spans shown: the oldest anchor is the *start* of the oldest span.
+    if (into.length > spans + 1) into.length = spans + 1;
+  }
+
+  /** The stretches between consecutive anchors, newest first, with the still-running one at
+   *  the head. A completed row is labelled by the milestone that *ended* it, so it reads as
+   *  "this is what that level cost" rather than "everything since it". */
+  private spans(anchors: Anchor[], shown: number): MilestoneSpan[] {
     const now = this.snapCounters();
-    if (!at) {
-      // Nothing of this kind has landed yet this session, so "since" is the whole session.
-      return { label: "—", tsMs: null, kills: now.kills, zones: now.zones, combatSec: Math.round(now.combatMs / 1000) };
+    const between = (to: { kills: number; zones: number; combatMs: number }, from: Anchor | undefined) => ({
+      kills: to.kills - (from?.kills ?? 0),
+      zones: to.zones - (from?.zones ?? 0),
+      combatSec: Math.round((to.combatMs - (from?.combatMs ?? 0)) / 1000),
+    });
+    const head = anchors[0];
+    // With no anchor at all, the open stretch is simply the whole session so far.
+    const out: MilestoneSpan[] = [
+      { label: head ? `since ${head.label}` : "this session", tsMs: null, open: true, ...between(now, head) },
+    ];
+    for (let i = 0; i < Math.min(shown, anchors.length); i++) {
+      const a = anchors[i]!;
+      // The oldest retained anchor has nothing before it, so its span would be a total rather
+      // than a delta — drop it instead of printing a number that means something else.
+      if (i + 1 >= anchors.length) break;
+      out.push({ label: a.label, tsMs: a.tsMs, ...between(a, anchors[i + 1]) });
     }
-    return {
-      label: at.label,
-      tsMs: at.tsMs,
-      kills: now.kills - at.kills,
-      zones: now.zones - at.zones,
-      combatSec: Math.round((now.combatMs - at.combatMs) / 1000),
-    };
+    return out;
   }
 
   /** Seconds in each stance of each dimension since I last entered the zone I am in now. */
@@ -562,7 +589,11 @@ export class Engine {
   }
 
   private buildStats(): LongTermStats {
-    return { sinceLevel: this.since(this.atLastLevel), sinceAp: this.since(this.atLastAp), zoneStance: this.zoneStance() };
+    return {
+      levels: this.spans(this.levelAnchors, LEVEL_SPANS),
+      aa: this.spans(this.apAnchors, AP_SPANS),
+      zoneStance: this.zoneStance(),
+    };
   }
 
   private pushMilestone(

@@ -315,15 +315,20 @@ export interface DeathReport {
   invocation: string;
 }
 
-/** Progress since a milestone, for the long-term boxes. Counters are kept as running session
- *  totals and snapshotted when the milestone fires, so "since" is a subtraction rather than a
- *  scan — and it survives the milestone list being trimmed as encounters age out. */
-export interface SinceMilestone {
-  label: string; // "level 44", "3 AP", or "—" when none has happened this session
-  tsMs: number | null;
-  kills: number; // NPCs slain since
-  zones: number; // zone changes since
-  combatSec: number; // seconds spent in fights since
+/** One stretch of play between two milestones — or the open one since the newest.
+ *
+ *  `label` names what *ended* the stretch ("level 44"), so a completed row reads as "this is
+ *  what that level cost". The open row is what has happened since, and is marked. Counters are
+ *  kept as running session totals and snapshotted at each milestone, so every span here is a
+ *  subtraction of two snapshots rather than a scan — and it survives `milestones` being
+ *  trimmed as encounters age out. */
+export interface MilestoneSpan {
+  label: string;
+  tsMs: number | null; // when the stretch ended; null for the open one
+  kills: number;
+  zones: number;
+  combatSec: number;
+  open?: boolean; // the still-running stretch since the newest milestone
 }
 
 /** Time in each stance since I last entered the zone I am in now. Scoped to the zone because
@@ -336,10 +341,13 @@ export interface ZoneStance {
 }
 
 export interface LongTermStats {
-  sinceLevel: SinceMilestone;
-  sinceAp: SinceMilestone;
+  /** Newest first: the open stretch, then the last 2 levels earned. */
+  levels: MilestoneSpan[];
+  /** Newest first: the open stretch, then the last 4 ability points earned. */
+  aa: MilestoneSpan[];
   zoneStance: ZoneStance;
 }
+
 
 export interface CombatantStats {
   name: string;

@@ -804,30 +804,54 @@ test("charm: a pet fighting its own namesake is split off and shown as a partici
   assert.equal(self.damage.total, 200, "my post-charm damage lands on the enemy, not the pet");
 });
 
-test("long-term: kills, zones and combat time are counted from each milestone", () => {
+test("long-term: each level reports what it cost, plus the stretch still in progress", () => {
   const engine = feed(
     [
       L("01:00:00", "You crush an orc for 40 points of damage."),
       L("01:00:10", "You have slain an orc!"),
-      L("01:00:11", "You have gained a level! Welcome to level 44!"),
-      // Everything below is "since level 44".
+      L("01:00:11", "You have gained a level! Welcome to level 43!"),
+      // --- level 44's stretch: two kills and a zone ---
       L("01:02:00", "You crush a rat for 40 points of damage."),
       L("01:02:20", "You have slain a rat!"),
-      L("01:02:21", "You have gained 2 ability point(s)!  You now have 5 ability point(s)."),
-      L("01:05:00", "You have entered The Permafrost Caverns."),
-      L("01:06:00", "You crush a bat for 40 points of damage."),
-      L("01:06:30", "You have slain a bat!"),
+      L("01:03:00", "You have entered The Permafrost Caverns."),
+      L("01:04:00", "You crush a bat for 40 points of damage."),
+      L("01:04:20", "You have slain a bat!"),
+      L("01:04:21", "You have gained a level! Welcome to level 44!"),
+      // --- since 44: one kill ---
+      L("01:06:00", "You crush a toad for 40 points of damage."),
+      L("01:06:20", "You have slain a toad!"),
     ],
     "Sanluen",
     30,
   );
-  const { sinceLevel, sinceAp } = engine.snapshot().stats;
-  assert.equal(sinceLevel.label, "level 44");
-  assert.equal(sinceLevel.kills, 2, "the rat and the bat, not the orc that earned the level");
-  assert.equal(sinceLevel.zones, 1);
-  assert.equal(sinceAp.label, "+2 AP");
-  assert.equal(sinceAp.kills, 1, "only the bat — the AP landed after the rat");
-  assert.ok(sinceAp.combatSec < sinceLevel.combatSec, "a later anchor covers less combat");
+  const { levels } = engine.snapshot().stats;
+  assert.equal(levels[0]!.open, true);
+  assert.equal(levels[0]!.label, "since level 44");
+  assert.equal(levels[0]!.kills, 1, "the toad");
+  assert.equal(levels[1]!.label, "level 44", "labelled by the milestone that ended the stretch");
+  assert.equal(levels[1]!.kills, 2, "the rat and the bat — what that level cost");
+  assert.equal(levels[1]!.zones, 1);
+  assert.equal(
+    levels.length,
+    2,
+    "level 43 has no anchor before it, so its span would be a total rather than a delta",
+  );
+});
+
+test("long-term: ability-point spans keep the last four", () => {
+  const lines = [L("01:00:00", "You crush an orc for 40 points of damage.")];
+  // Six ability points, each with one kill between them.
+  for (let i = 1; i <= 6; i++) {
+    lines.push(L(`01:${String(i * 2).padStart(2, "0")}:00`, "You crush an orc for 40 points of damage."));
+    lines.push(L(`01:${String(i * 2).padStart(2, "0")}:10`, "You have slain an orc!"));
+    lines.push(
+      L(`01:${String(i * 2).padStart(2, "0")}:11`, `You have gained 1 ability point(s)!  You now have ${i} ability point(s).`),
+    );
+  }
+  const { aa } = feed(lines, "Sanluen", 30).snapshot().stats;
+  assert.equal(aa[0]!.open, true);
+  assert.equal(aa.length, 5, "the open stretch plus four completed ones");
+  for (const span of aa.slice(1)) assert.equal(span.kills, 1, "one kill bought each point");
 });
 
 test("long-term: zone stances count the open segment, and reset on zoning", () => {

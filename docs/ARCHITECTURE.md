@@ -205,9 +205,16 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     A level-up fires immediately after a kill, so it lands on the boundary *between* two encounters.
 - **Long-term counters are snapshots, not scans.** `kills`, `zones` and `combatMs` run as
   monotonic session totals; when a level or an ability point lands, the engine records the
-  totals *at that moment*. "Since last level" is then a subtraction — O(1), and immune to
-  `milestones` being trimmed as encounters age out, which would otherwise delete the anchor
-  exactly when the stretch it measures got long enough to be interesting.
+  totals *at that moment* as an **anchor**. Every figure the stats boxes show is then a
+  subtraction of two anchors — O(1), and immune to `milestones` being trimmed as encounters age
+  out, which would otherwise delete the anchor exactly when the stretch it measures got long
+  enough to be interesting.
+  - **A span is the gap between consecutive anchors**, labelled by the milestone that *ended*
+    it, so a row reads as "level 44 cost 175 kills and 1h 29m" rather than "everything since
+    level 44". The head of each list is the still-open stretch. Keeping N spans therefore needs
+    **N+1 anchors** — the oldest exists only to be the start of the oldest span, and the span
+    that would have no predecessor is dropped rather than printed as a total wearing a delta's
+    label. Shown: **2 levels**, **4 ability points**.
   - Combat time sums **fight** spans, not encounter spans: fights never overlap, so their
     seconds are real clock time, where two mobs at once would have counted a second twice.
   - **Zone stance split** clips the stance segments to "since I last entered this zone", with
@@ -444,10 +451,12 @@ interface MetricStat {                // every metric group has this one shape
   - **Milestone rail.** The baseline between the halves is the timeline: level-ups (▲), ability points (◆), AAs and skill unlocks (★), my deaths (✕) and zone changes (»). Each mark sits on the **left edge of the encounter it belongs to** — the first encounter that ended at or after it — so a level-up earned on a kill lands exactly on the boundary between the two bars. Several in one gap (ding → ability point → new AA) cluster, **one mark per kind carrying a count** — four zone changes in the same gap are one `»⁴`, not four glyphs fighting over ~14px of rail; hovering the cluster names all of them. Levels and deaths also draw a full-height guide, because those two are what explain a step change in the bars.
   - Marks are identified by **shape**, not colour — the rail is far too small for colour to carry identity — and hovering any of them replaces the header readout with its full sentence and clock time.
   - Below the chart, a **progression strip** shows current level and unspent AP, then what the window bought: levels, AP, abilities, deaths (in the rail's own glyphs, so the strip doubles as its legend), and — deliberately glyph-less, since they are counted but never marked — skill-ups and summed xp percent.
-- **Collapsible boxes sit between My DPS and the encounters**, all default-collapsed. The
-  collapsed header is what is on screen almost always, so it carries a **summary** and has to
-  read as a complete line on its own — a box that states only its own name is just a button.
-  One click anywhere on the header toggles it.
+- **Collapsible boxes sit between My DPS and the encounters** — Levels, Ability points, Stances
+  this zone, What killed me — all default-collapsed. The collapsed header is what is on screen
+  almost always, so it carries a **summary** and has to read as a complete line on its own: a
+  box that states only its own name is just a button. One click anywhere on the header toggles.
+  - Completed ability-point rows all read `+2 AP`, so each carries the **clock time** it landed;
+    without it four identical labels stack up with no way to tell them apart.
 - **The "what killed me" panel** is one of those boxes, and renders only when there are deaths. Each
   one is three lines: the killer and the **last blow to land**, then the damage by ability, then
   by attacker with the stance I died in. The two breakdown lines are the point — dying to one

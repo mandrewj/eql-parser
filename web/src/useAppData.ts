@@ -47,8 +47,8 @@ export function useAppData(): AppData {
           progress: msg.progress ?? { level: null, abilityPoints: null },
           deaths: msg.deaths ?? [],
           stats: msg.stats ?? {
-            sinceLevel: { label: "—", tsMs: null, kills: 0, zones: 0, combatSec: 0 },
-            sinceAp: { label: "—", tsMs: null, kills: 0, zones: 0, combatSec: 0 },
+            levels: [],
+            aa: [],
             zoneStance: { zone: null, sinceMs: null, melee: [], invocation: [] },
           },
         });

@@ -439,11 +439,19 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   click anywhere in its header. The collapsed header is what is on screen almost always, so it
   carries a **summary** (`101 kills · 1h 36m since level 44`) — a box stating only its own name
   would be a button, not a panel.
-- **Since last level / AA** — kills, zones and time in combat since each landed. The counters are
-  monotonic session totals snapshotted at the milestone, so "since" is a subtraction: O(1), and
-  immune to `milestones` being trimmed as encounters age out, which would delete the anchor
-  exactly when the stretch got long enough to matter. Combat time sums *fight* spans, since
-  fights never overlap and encounters do.
+- **Levels** and **Ability points** — a *history*, not a single figure: the stretch still running,
+  then what each of the last **2 levels** and last **4 ability points** cost in kills, zones and
+  combat time. Labelling a completed row by the milestone that ended it is what makes it readable
+  as "level 44 cost 175 kills and 1h 29m"; on the real log level 43 took 2h 33m and level 44 took
+  1h 29m, which is the comparison the box exists for.
+  - Counters are monotonic session totals snapshotted at each milestone, so every figure is a
+    subtraction of two anchors: O(1), and immune to `milestones` being trimmed as encounters age
+    out — which would delete the anchor exactly when the stretch got long enough to matter.
+    Keeping N spans needs N+1 anchors, and the span with no predecessor is dropped rather than
+    shown as a running total wearing a delta's label.
+  - Combat time sums *fight* spans, since fights never overlap and encounters do.
+  - Ability-point rows all read `+2 AP`, so each carries the clock time it landed — otherwise
+    four identical labels stack up with nothing to tell them apart.
 - **Stances this zone** — seconds in each melee stance and invocation since last entering the
   current zone. Ends at wall-clock, not the last blow: standing in a stance between pulls is
   still time in it, and that is when you'd be reading the box. The still-open stance segment is

@@ -3,6 +3,7 @@ import type {
   CombatantStats,
   DeathReport,
   LongTermStats,
+  MilestoneSpan,
   EncounterCard as EncounterCardData,
   EncounterView,
   Filters,
@@ -466,24 +467,40 @@ function Box({
   );
 }
 
+/** How many completed ability-point stretches the engine sends. */
+const AP_SHOWN = 4;
+
 const hhmm = (sec: number) => {
   if (sec < 60) return `${sec}s`;
   const m = Math.round(sec / 60);
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
 };
 
-/** Two long-term boxes: what a stretch of play bought, and where the time in this zone went.
- *  Both answer questions the per-fight panels structurally cannot — they reset every pull. */
+/** Two long-term boxes: what recent stretches of play cost, and where the time in this zone
+ *  went. Both answer questions the per-fight panels structurally cannot — those reset every
+ *  pull. Completed rows are labelled by the milestone that ended them, so the box reads as
+ *  "level 44 cost 175 kills and 1h 29m" rather than as a running total. */
 export function LongTermPanels({ stats }: { stats: LongTermStats }) {
-  const { sinceLevel, sinceAp, zoneStance } = stats;
-  const row = (r: typeof sinceLevel) => (
-    <div className="lt-row">
-      <span className="lt-since">since {r.label}</span>
-      <span className="lt-fig">{fmt(r.kills)} <span className="lt-unit">kills</span></span>
-      <span className="lt-fig">{fmt(r.zones)} <span className="lt-unit">zones</span></span>
-      <span className="lt-fig">{hhmm(r.combatSec)} <span className="lt-unit">in combat</span></span>
+  const { levels, aa, zoneStance } = stats;
+  const spanRow = (r: MilestoneSpan, i: number) => (
+    <div key={`${r.label}-${r.tsMs ?? i}`} className={`lt-row ${r.open ? "open" : ""}`}>
+      <span className="lt-since">
+        {r.label}
+        {/* Ability-point labels are all "+2 AP" and only the clock tells them apart. */}
+        {r.tsMs !== null && <span className="lt-when"> {time(r.tsMs)}</span>}
+      </span>
+      <span className="lt-fig">
+        {fmt(r.kills)} <span className="lt-unit">kills</span>
+      </span>
+      <span className="lt-fig">
+        {fmt(r.zones)} <span className="lt-unit">zones</span>
+      </span>
+      <span className="lt-fig">
+        {hhmm(r.combatSec)} <span className="lt-unit">in combat</span>
+      </span>
     </div>
   );
+  const head = (rows: MilestoneSpan[]) => rows[0];
   const stanceList = (rows: Array<{ stance: string; seconds: number }>, total: number) =>
     rows.length === 0 ? (
       <span className="muted small">nothing recorded yet</span>
@@ -497,23 +514,44 @@ export function LongTermPanels({ stats }: { stats: LongTermStats }) {
     );
   const meleeTotal = zoneStance.melee.reduce((n, r) => n + r.seconds, 0);
   const invTotal = zoneStance.invocation.reduce((n, r) => n + r.seconds, 0);
+  const openLevel = head(levels);
+  const openAa = head(aa);
 
   return (
     <>
       <Box
-        title="Since last level / AA"
+        title="Levels"
         summary={
-          <>
-            {fmt(sinceLevel.kills)} kills · {hhmm(sinceLevel.combatSec)} since {sinceLevel.label}
-          </>
+          openLevel ? (
+            <>
+              {fmt(openLevel.kills)} kills · {hhmm(openLevel.combatSec)} {openLevel.label}
+            </>
+          ) : (
+            <span className="muted">no levels yet</span>
+          )
         }
       >
-        {row(sinceLevel)}
-        {row(sinceAp)}
+        {levels.map(spanRow)}
         <div className="lt-note muted small">
-          Counted from the moment each landed, so the two stretches overlap whenever an ability
-          point arrived after the level.
+          The top row is still running; each one below is what that level cost, from the level
+          before it.
         </div>
+      </Box>
+
+      <Box
+        title="Ability points"
+        summary={
+          openAa ? (
+            <>
+              {fmt(openAa.kills)} kills · {hhmm(openAa.combatSec)} {openAa.label}
+            </>
+          ) : (
+            <span className="muted">no ability points yet</span>
+          )
+        }
+      >
+        {aa.map(spanRow)}
+        <div className="lt-note muted small">The last {AP_SHOWN} earned, newest first.</div>
       </Box>
 
       <Box

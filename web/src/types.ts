@@ -133,12 +133,15 @@ export interface DeathReport {
   invocation: string;
 }
 
-export interface SinceMilestone {
-  label: string; // "level 44", "+3 AP", or "—" if none has happened this session
+/** One stretch between two milestones — or the open one since the newest. `label` names what
+ *  *ended* the stretch, so a completed row reads as "this is what that level cost". */
+export interface MilestoneSpan {
+  label: string;
   tsMs: number | null;
   kills: number;
   zones: number;
   combatSec: number;
+  open?: boolean;
 }
 
 export interface ZoneStance {
@@ -149,10 +152,11 @@ export interface ZoneStance {
 }
 
 export interface LongTermStats {
-  sinceLevel: SinceMilestone;
-  sinceAp: SinceMilestone;
+  levels: MilestoneSpan[]; // newest first: the open stretch, then the last 2 levels
+  aa: MilestoneSpan[]; // newest first: the open stretch, then the last 4 ability points
   zoneStance: ZoneStance;
 }
+
 
 export interface CombatantStats {
   name: string;
