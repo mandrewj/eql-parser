@@ -471,6 +471,21 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 - Completed rows also name the **zone** the milestone landed in (`level 43 · Nagafen's Lair 3`),
   taken from the anchor rather than searched for. The open row has no milestone, so no zone.
 
+## Post-v1 — Encounters end after 60s of quiet  ✅
+- An encounter used to run from a mob's *first* contact to its last, however long the gap
+  between. A boss that hit you once, was abandoned for fourteen minutes and then fought properly
+  reported one encounter across the whole span, with every rate divided by the idle time. Real
+  Lady Vox: **669s at 79 dps** before, **391s at 136 dps** after.
+- A mob untouched for **60 seconds** now ends its encounter; the next blow starts a new one. The
+  abandoned stretch is **discarded**, not banked — it is not a fight, and keeping it would put a
+  fragment in the recent list and in every average. Dropping it also keeps its damage out of the
+  stance overview for free, since that sums `selfComboLog` inside *encounter* windows.
+- Separate from the fight timeout and shorter: a pull stays open while one mob is left alone.
+  Encounter liveness in the UI now uses the same 60s, so a mob can't show as "active" after its
+  tracking has already been reset.
+- Log-wide: 3,748 → 4,157 encounters, mean duration 58s → 45s, and the engine's total self damage
+  fell by 26,026 — exactly the abandoned stretches, and the right direction.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now
@@ -480,6 +495,14 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   app: today the log file *is* the store and backfill re-derives everything in ~25s, so this only earns
   its keep across log rotations.
 - Optional true always-on-top overlay (revisit Tauri/Electron only if the browser window proves insufficient).
+
+### Known bug — a groupmate accumulating an encounter
+- **An encounter named `Ranshi` (a groupmate) spans 12,597s and credits me 19,424 damage I never
+  dealt them** — the log shows 48. Pre-existing and unchanged by the encounter-timeout work
+  (verified identical before and after). It never goes idle because Ranshi is constantly fighting
+  something, so it accumulates for the whole session. Two things to look at: why a groupmate is
+  classified as an NPC at all, and where `perTarget[ranshi][self]` gets 19k from. Worth fixing —
+  it is the largest single misattribution left in the log.
 
 ### Charm/pet work that is still open
 - **The two unimplemented charm emotes** — `<mob> blinks.` (Druid/Shaman) and `<mob> moans.`

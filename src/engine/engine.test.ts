@@ -186,18 +186,38 @@ test("a same-named respawn shows as active (not hidden by the earlier death)", (
   assert.ok(active.includes("a bat"), "the bat is still active");
 });
 
-test("an encounter goes inactive after 90s of no activity on that NPC", () => {
+test("an encounter goes inactive after 60s of no activity on that NPC", () => {
   let clock = at("01:00:00");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
   feedInto(engine, [
     L("01:00:00", "You crush orc A for 10 points of damage."),
     L("01:00:00", "You crush orc B for 10 points of damage."),
-    L("01:00:05", "You crush orc A for 10 points of damage."), // A stays fresh
+    L("01:00:20", "You crush orc A for 10 points of damage."), // A stays fresh
   ]);
-  clock = at("01:01:32"); // 92s after start: A idle 87s, B idle 92s
+  clock = at("01:01:10"); // A idle 50s, B idle 70s
   const active = engine.snapshot().activeEncounters.map((e) => e.name.toLowerCase());
-  assert.equal(active.includes("orc a"), true, "A active (87s idle ≤ 90)");
-  assert.equal(active.includes("orc b"), false, "B stale (92s idle > 90)");
+  assert.equal(active.includes("orc a"), true, "A active (50s idle ≤ 60)");
+  assert.equal(active.includes("orc b"), false, "B stale (70s idle > 60)");
+});
+
+test("re-engaging a mob after a lull starts a new encounter, not a longer one", () => {
+  let clock = at("01:05:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 300, now: () => clock });
+  feedInto(engine, [
+    // It hits me once, I disengage — this stretch is abandoned, not a fight.
+    L("01:00:00", "Lady Vox tries to pierce YOU, but misses!"),
+    L("01:00:01", "Lady Vox bites YOU for 200 points of damage."),
+    // …four minutes of nothing, then the real engagement.
+    L("01:05:00", "You crush Lady Vox for 500 points of damage."),
+    L("01:05:10", "You crush Lady Vox for 500 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name === "Lady Vox")!;
+  assert.ok(enc, "the re-engagement is a live encounter");
+  assert.ok(enc.durationSec <= 31, `spans the new engagement only, not the lull (got ${enc.durationSec}s)`);
+  const self = enc.cards.find((c) => c.isSelf)!;
+  assert.equal(self.damage.total, 1000, "only the damage since re-engaging");
+  assert.equal(self.taken.total, 0, "the bite from before the lull went with the abandoned stretch");
+  assert.ok(self.damage.perSec > 30, `rate divides by the real fight, not the gap (got ${self.damage.perSec})`);
 });
 
 test("same-named mobs are separate encounters with correct durations (no merge)", () => {

@@ -61,6 +61,13 @@ const CHARM_GRACE_MS = 3000;
  *  and a damage shield, all inside the last three. */
 const DEATH_WINDOW_SEC = 10;
 
+/** How long a mob can go untouched before its encounter is over. Separate from the *fight*
+ *  timeout: a pull can stay open while one particular mob is left alone. Without it a boss
+ *  that hit you once, was abandoned for fourteen minutes and then fought properly reports a
+ *  single encounter spanning the whole gap, and every rate divides by the idle time — a real
+ *  Lady Vox read 669s at 79 dps when the actual fight was a fraction of that. */
+const ENCOUNTER_IDLE_SEC = 60;
+
 /** The key a charmed mob takes when it turns out to share its name with a mob we are
  *  fighting. Entities are keyed by name, so until then the two are one entity; a blow
  *  between them ("A fire giant warrior slashes a fire giant warrior") is the proof that
@@ -1145,6 +1152,18 @@ export class Engine {
     const tKey = this.keyOf(target);
     this.see(aKey, attacker);
     this.see(tKey, target);
+    // A mob left alone for a minute is a finished engagement; whatever comes next is a new
+    // one, not a continuation. Reset it before `lastSeen` is updated below, so the stale
+    // stretch is dropped rather than stretched over the gap. Only mobs qualify — resetting a
+    // groupmate would discard the damage they had taken — and `resolveKinds` is affordable
+    // because this fires only on the rare re-engagement, not on every blow.
+    for (const key of aKey === tKey ? [aKey] : [aKey, tKey]) {
+      if (key === this.selfKey || !f.npcSeeds.has(key)) continue;
+      const last = f.lastSeen.get(key);
+      if (last !== undefined && tsMs - last > ENCOUNTER_IDLE_SEC * 1000) {
+        this.resetNpcTracking(f, key, this.resolveKinds(f).friendly);
+      }
+    }
     // Nothing attacks itself, so one name on both sides of a blow means two mobs wearing it.
     // Split the attacker off here and the rest of the engine treats them as the two entities
     // they are: the pet earns its own encounter row, and our swings at its namesake stop
@@ -1415,7 +1434,8 @@ export class Engine {
     const { friendly, npc } = this.resolveKinds(f);
     const slain = new Set(f.deaths.filter((d) => npc.has(d.victim)).map((d) => d.victim));
     const now = this.now();
-    const idleMs = this.opts.inactivityTimeoutSec * 1000;
+    // The same window the reset above uses: a mob idle past it has no live encounter.
+    const idleMs = ENCOUNTER_IDLE_SEC * 1000;
     const out: EncounterView[] = [];
     for (const tKey of f.perTarget.keys()) {
       // A mob in perTarget is always a live instance (dead ones are reset out on death),

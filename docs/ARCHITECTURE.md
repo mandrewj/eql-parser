@@ -164,7 +164,17 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     which I dealt no damage.
 - **Stance timeline** — updated on every `Stance` event; each self damage event is tagged with the stance active at its timestamp (self only; other players' stances aren't in the log).
 - **Fight segmentation** (configurable): opens on first player→NPC damage after idle; closes when all engaged NPCs are slain, on **zoning** (`You have entered <zone>.` — you leave all mobs behind), **or** after `inactivityTimeout` s (default **90s**, wall-clock — a 3s tick closes abandoned fights with no new log lines). Named NPCs get friendly titles; trash groups by the active NPC set.
-- **Encounter liveness**: a per-NPC pane is *active* only while the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner dies), and it has seen activity within the inactivity window (~90s).
+- **Encounter liveness and the 60s encounter timeout**: a per-NPC pane is *active* only while
+  the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner
+  dies), and it has traded blows within **60s**. That window is separate from the *fight*
+  timeout, and shorter: a pull can stay open while one particular mob is left alone.
+  - **Re-engaging a mob after that window starts a new encounter**, and the abandoned stretch is
+    **discarded** rather than banked — it is not a fight, and keeping it would put a fragment in
+    the recent list and in every average. Dropping the encounter also keeps its damage out of the
+    stance overview for free, since that sums `selfComboLog` inside *encounter* windows.
+  - Without this, a boss that hit you once, was left for fourteen minutes and then fought
+    properly reported **one** encounter spanning the whole gap, with every rate divided by the
+    idle time: a real Lady Vox read 669s at 79 dps where the actual engagement was 391s at 136.
 - **Encounters** (the primary view): each mob is a per-character table (one row per player/pet, a %-of-damage bar + DPS/HPS/tank columns, expandable to abilities). `snapshot()` exposes **`activeEncounters`** (mobs currently being fought — live tables at the top) and **`recentEncounters`** (a rolling last-5, newest first). A mob is finalized on death **or on fight close** (zone / 90s / abandon) for a boss you fled. On death the mob's per-encounter tracking is **reset**, so a same-named respawn (`a clay gargoyle`) is a fresh instance rather than merging into one inflated span; fled/closed mobs cap their end to their last combat activity. **Rates are per-person**: each character's active window starts at *their* first contact with the mob (their attack, or the mob first hitting/casting on them — tracked as per-`attacker>target` first-contact timestamps) and runs to the encounter end, so late-joiners aren't diluted. Per-(target, attacker) damage is kept as full metric accumulators.
 - **Per-encounter sparkline.** `selfHits` keeps my damage to each target timestamped — which
   `selfComboLog` cannot answer, since it is per-*session*, not per-mob, and would blend two mobs fought
