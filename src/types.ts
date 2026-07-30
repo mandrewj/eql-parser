@@ -52,8 +52,11 @@ export interface SpellDamageEvent extends BaseEvent {
   type: "spell";
   owner: string; // caster/owner: self name, another name, or "Unknown"
   target: string;
-  effect: string; // "flames", "poison", ... (damage message, not the real spell name)
+  /** For "non-melee" lines a damage *message* ("flames", "poison"); for typed ability
+   *  damage the real ability name, which that form states outright ("Smiting Strike"). */
+  effect: string;
   amount: number;
+  crit?: boolean; // typed ability damage carries "(Critical)"; the non-melee form never does
 }
 
 export interface DotTickEvent extends BaseEvent {

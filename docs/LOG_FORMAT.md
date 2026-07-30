@@ -64,6 +64,26 @@ Owner forms seen: `YOUR` (→ you), `<Name>'s` (→ that player/pet), and **owne
 The `effect` word ("flames", "poison"…) is a *damage message*, not the literal spell name; mapping
 to real spell names later needs a spell-message table (EQLogParser ships one).
 
+### 3b. Typed ability damage (a named attack that resolves as an element)
+```
+[..] You hit a bandit lookout for 4 points of fire damage by Burst of Flame.
+[..] Ranshi`s warder hit a dark sacrificer for 8 points of disease damage by Sicken.
+[..] Futor hit a Teir`Dal priestess for 52 points of fire damage by Fingers of Fire. (Critical)
+```
+```
+^(?<attacker>.+?) hit (?<target>.+?) for (?<amount>\d+) points? of (?<type>magic|fire|cold|poison|disease|unresistable) damage by (?<spell>.+?)\.(?: \((?<flag>[^)]+)\))?$
+```
+- **The type adjective sits exactly where the melee patterns require `points of damage` with
+  nothing in between**, so these lines matched nothing at all until the pattern above existed
+  — 26,864 of them in a real log, 564,644 points of the self's own damage (~15% of the total).
+- The verb is always the literal **`hit`** (past tense, for every attacker including `You`) and
+  the spell is **always named**, across all 26,864. Anchoring on ` hit ` is what splits a
+  multi-word attacker correctly (`Ranshi\`s warder hit …`).
+- `(Critical)` is the only trailing flag observed.
+- Like the DoT form, this **names the real ability**, so it needs no damage-message table.
+  Recorded as `spell` damage: the type adjective says it is not a plain swing, and a single
+  client's log gives no way to tell a melee-triggered ability from a cast one.
+
 ### 4. Damage-over-time ticks
 ```
 [..] Orc legionnaire has taken 9 damage from your Chords of Dissonance III.

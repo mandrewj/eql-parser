@@ -6,8 +6,11 @@ import { resolveLogDir, defaultLog } from "../config.js";
 import { parseLine } from "../parser/parser.js";
 import type { CombatEvent } from "../types.js";
 
+// `points? of \w+ damage` deliberately allows the type adjective. Spelling it as
+// `(?:non-melee )?damage` is what let 26,864 typed ability lines ("… for 151 points of magic
+// damage by Smiting Strike.") go unparsed while this check still reported a clean log.
 const RELEVANT =
-  /for \d+ points? of (?:non-melee )?damage|has taken \d+ damage from|(?:heals|healed) .+ for \d+(?: \(\d+\))? hit points|have slain |has been slain by |, but miss(?:es)?!|You assume an? .+ stance\./;
+  /for \d+ points? of (?:\w+[- ])?damage|has taken \d+ damage from|(?:heals|healed) .+ for \d+(?: \(\d+\))? hit points|have slain |has been slain by |, but miss(?:es)?!|You assume an? .+ stance\./;
 
 function main(): void {
   const dir = resolveLogDir();

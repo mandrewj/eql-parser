@@ -65,6 +65,15 @@ const MISS_OTHER_RE = /^(.+?) tries to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
 const DOT_RE = /^(.+?) has taken (\d+) damage from (.+?)[.!](?: \([^)]+\))?$/;
 const NONMELEE_RE =
   /^(.+?) (?:is|are|was|were) .+? by (.+?) for (\d+) points? of non-melee damage[.!](?: \([^)]+\))?$/;
+// A named ability resolving as typed damage — magic/fire/cold/poison/disease/unresistable —
+// rather than a plain swing. That adjective sits exactly where the melee patterns require
+// "points of damage" with nothing in between, which is why these went unparsed: 26,864 lines
+// in a real log, 564,644 points of them the self's own. Anchoring on the literal " hit " is
+// what splits a multi-word attacker correctly ("Ranshi`s warder hit …"); across the whole log
+// the verb is always "hit", the spell is always named, and "(Critical)" is the only flag.
+const TYPED_DAMAGE_RE =
+  /^(.+?) hit (.+?) for (\d+) points? of (?:magic|fire|cold|poison|disease|unresistable) damage by (.+?)\.(?: \(([^)]+)\))?$/;
+
 const MELEE_YOU_RE =
   /^You ([a-z]+) (.+?) for (\d+) points? of damage\.(?: \(([^)]+)\))?$/;
 const MELEE_OTHER_RE = new RegExp(
@@ -342,6 +351,26 @@ export function parseLine(raw: string): CombatEvent | null {
       amount: Number(m[4]),
       crit: m[5] ? /critical/i.test(m[5]) : false,
       ...(m[5] ? { modifier: m[5] } : {}),
+    };
+    return ev;
+  }
+
+  // Typed ability damage sits after the melee patterns deliberately: melee is the biggest
+  // group in the log by far (186k lines vs 27k), so it must not pay an extra regex to get
+  // here. These lines can't be confused with a melee swing anyway — the type adjective is
+  // precisely what the melee patterns refuse.
+  m = TYPED_DAMAGE_RE.exec(body);
+  if (m) {
+    const ev: SpellDamageEvent = {
+      type: "spell",
+      tsMs,
+      raw: body,
+      owner: normName(m[1]!),
+      target: normName(m[2]!),
+      // The line names the real ability, so it needs no damage-message table to be readable.
+      effect: m[4]!,
+      amount: Number(m[3]),
+      crit: m[5] ? /critical/i.test(m[5]) : false,
     };
     return ev;
   }

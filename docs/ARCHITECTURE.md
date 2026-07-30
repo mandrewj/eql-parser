@@ -47,6 +47,13 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 ### Parser
 - Pure function `parseLine(raw) → CombatEvent | null`.
 - **Keyword prefilter** before regex (skip lines lacking `damage`/`slain`/`but miss`/`assume`/…).
+- **Typed ability damage** (`You hit X for 151 points of magic damage by Smiting Strike.`) is
+  its own pattern, tried *after* the melee ones: melee is the biggest group in the log by far
+  (186k lines against 27k), so it must not pay an extra regex, and the type adjective the
+  melee patterns refuse is exactly what makes the two unconfusable. Recorded as `spell` damage
+  carrying the real ability name. It went unparsed until now — ~15% of the self's damage — and
+  `parse:check` reported the log clean throughout, because its own relevance regex shared the
+  blind spot; that regex now allows the adjective, which is what makes the check honest.
 - Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, **`Charm`**, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
 - **`Charm`** carries one of three states — `cast` (someone began a charm spell; names the
   caster, not the target), `on` (a mob became charmed; names the target, never the caster)

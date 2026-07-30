@@ -176,6 +176,50 @@ test("pet — NPC dialogue is not mistaken for a pet", () => {
   assert.equal(parseLine(TS + "Sarys told you, 'the orc taskmaster hits hard'"), null);
 });
 
+test("typed ability damage — the type adjective no longer hides the line", () => {
+  const e = parseLine(TS + "You hit a bandit lookout for 4 points of fire damage by Burst of Flame.");
+  assert.equal(e?.type, "spell");
+  if (e?.type !== "spell") return;
+  assert.equal(e.owner, "You");
+  assert.equal(e.target, "a bandit lookout");
+  assert.equal(e.amount, 4);
+  assert.equal(e.effect, "Burst of Flame", "the line names the real ability");
+  assert.equal(e.crit, false);
+});
+
+test("typed ability damage — every damage type, and a multi-word attacker", () => {
+  for (const [line, owner, target, amount] of [
+    ["Ranshi`s warder hit a dark sacrificer for 8 points of disease damage by Sicken.", "Ranshi`s warder", "a dark sacrificer", 8],
+    ["an imp protector hit you for 51 points of fire damage by Dry Bone Fire Burst.", "an imp protector", "You", 51],
+    ["a Rosch Mas Gnoll hit you for 172 points of magic damage by Lightning Bolt.", "a Rosch Mas Gnoll", "You", 172],
+    ["Jonantik hit a bandit lookout for 6 points of cold damage by Water Elemental Attack.", "Jonantik", "a bandit lookout", 6],
+    ["Mnxy hit a zol ghoul knight for 20 points of poison damage by Venom.", "Mnxy", "a zol ghoul knight", 20],
+    ["Orson hit a ghoul for 9 points of unresistable damage by Wrath.", "Orson", "a ghoul", 9],
+  ] as const) {
+    const e = parseLine(TS + line);
+    assert.equal(e?.type, "spell", line);
+    if (e?.type !== "spell") continue;
+    assert.equal(e.owner, owner);
+    assert.equal(e.target, target);
+    assert.equal(e.amount, amount);
+  }
+});
+
+test("typed ability damage — the trailing crit flag is read", () => {
+  const e = parseLine(
+    TS + "Futor hit a Teir`Dal priestess for 52 points of fire damage by Fingers of Fire. (Critical)",
+  );
+  assert.equal(e?.type, "spell");
+  if (e?.type !== "spell") return;
+  assert.equal(e.crit, true);
+  assert.equal(e.effect, "Fingers of Fire");
+});
+
+test("typed ability damage — a plain melee swing is still melee", () => {
+  const e = parseLine(TS + "You strike orc legionnaire for 50 points of damage.");
+  assert.equal(e?.type, "melee", "no type adjective, so this stays a swing");
+});
+
 test("charm — both landing messages name the mob and no caster", () => {
   for (const [line, mob] of [
     ["a lava beetle's eyes glaze over.", "a lava beetle"],

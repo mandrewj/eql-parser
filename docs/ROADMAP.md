@@ -263,15 +263,23 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   wiping on every charm/break cycle. Spot-checked against raw grep on one fight: engine
   5,332 vs 3,858 melee + 1,186 DoT + 288 proc = exact.
 
+## Post-v1 — Typed ability damage, which was never parsed at all  ✅
+- `You hit a fire giant warrior for 151 points of **magic** damage by Smiting Strike.` The damage
+  patterns require `points of damage` with nothing in between, so every line carrying a type
+  adjective matched nothing: **26,864 lines, 564,644 points of my own damage — ~15% of my total**,
+  absent from every figure the app has ever shown. Found while ground-truthing the charm work.
+- **`parse:check` reported the log clean the whole time**, because its own relevance regex had the
+  same blind spot. Fixed in the same pass, which is what makes the "0 unparsed" line mean something.
+- The form names the real ability, like DoT ticks do, so the per-ability breakdown gets `Smiting
+  Strike` rather than a damage message. Recorded as `spell`: the adjective says it is not a plain
+  swing, and one client's log can't separate a melee-triggered ability from a cast one.
+- Also picks up the `(Critical)` flag these lines carry, which `SpellDamageEvent` had no field for —
+  spell crits had been silently counted as zero.
+- Log-wide: `spell` events 39,723 → 67,217, total damage 9.3M → 11.7M, my own 3.53M → 4.15M.
+  Spot-checked against raw grep on one fight: engine 5,936 vs 3,858 melee + 1,186 DoT + 288 proc
+  + 604 typed = exact.
+
 ## Backlog (engine already supports the shape)
-- **Typed damage lines are not parsed at all** — `You hit a fire giant warrior for 151 points of
-  **magic** damage by Smiting Strike.` The damage patterns require `points of damage` or `points of
-  non-melee damage`, so an adjective between them misses. Found while ground-truthing the charm work:
-  **26,642 such lines in the log, 5,845 of them mine, worth 564,644 damage** — roughly 15% of my
-  total, absent from every DPS figure the app shows. `parse:check` reports it as clean because its
-  own relevance regex has the same blind spot, so fix that in the same pass. The highest-value item
-  here by some distance; the shape is one alternation in `MELEE_YOU_RE`/`MELEE_OTHER_RE` plus a
-  decision on whether the named ability (`by Smiting Strike`) becomes the per-ability label.
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the
   app: today the log file *is* the store and backfill re-derives everything in ~25s, so this only earns
