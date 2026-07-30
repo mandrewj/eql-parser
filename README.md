@@ -46,7 +46,7 @@ The log lives deep in the Wine bottle:
 That path is a perfectly normal macOS file, so a **native process can tail it live**
 with no trouble. A sandboxed browser *cannot* watch an arbitrary filesystem path in
 real time — which is exactly why the architecture is a small native tailer/parser
-process that feeds a browser UI over WebSocket. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+process that feeds a browser UI over Server-Sent Events. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Build & distribute
 
@@ -65,7 +65,7 @@ npm run package:sea    # optional: native single-file executable (dist/eql-parse
 
 ## Documentation
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — components, data flow, tailer, WebSocket protocol, packaging.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — components, data flow, tailer, SSE protocol, packaging.
 - [`docs/LOG_FORMAT.md`](docs/LOG_FORMAT.md) — the log line grammar, with real examples and parsing rules.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — milestones from first parse to packaged binary.
 

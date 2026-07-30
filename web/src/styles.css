@@ -17,6 +17,7 @@ html { font-size: 13px; }
   --player: #3f9d6f;
   --npc: #c65b5b;
   --live: #d96a6a;        /* active-encounter accent */
+  --partial: #b9a06a;      /* a row engaged for only part of the encounter */
   --melee: #c9a45b;
   --spell: #7b6fd6;
   --dot: #5bb0c9;
@@ -247,7 +248,9 @@ body { margin: 0; }
 /* the window the other three divide by — metadata, so it stays quiet; quieter still
    when it's the whole encounter, which is the unremarkable case */
 .enum.time { color: var(--muted); font-weight: 500; opacity: 0.75; }
-.enum.time.part { color: #b9a06a; opacity: 1; } /* joined late — reads the rate differently */
+/* joined late — reads the rate differently. Warm, and so a near-neighbour of --melee; they
+   never share a row (that gold is a dot in the drill-down line, this is right-aligned text). */
+.enum.time.part { color: var(--partial); opacity: 1; }
 .erow-drill { display: flex; flex-wrap: wrap; gap: 0.45rem; padding: 0.2rem 0.4rem 0.35rem; font-size: 0.7rem; color: var(--muted); }
 .erow-drill.is-self { border-left: 2px solid var(--self); padding-left: 0.35rem; margin-left: 0.05rem; color: #9fb0cc; }
 .drill-cat { white-space: nowrap; }

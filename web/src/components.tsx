@@ -74,6 +74,9 @@ const comboKey = (r: { melee: string; invocation: string }) => `${r.melee}|${r.i
 
 // Six validated categorical slots (see styles.css); anything past six shares the neutral.
 const SLOTS = 6;
+/** Below this share of an encounter, a row's engaged window is worth flagging. Anything
+ *  stricter lights up nearly every row — almost nobody engages on the mob's first second. */
+const PARTIAL_WINDOW = 0.7;
 const comboColor = (key: string, map: Map<string, number>) => {
   const i = map.get(key);
   return i === undefined || i >= SLOTS ? "var(--s-other)" : `var(--s${i + 1})`;
@@ -169,8 +172,16 @@ function EncounterHistory({
   const totalSec = points.reduce((s, p) => s + p.durationSec, 0);
   const avgDps = Math.round(totalDmg / Math.max(1, totalSec));
 
-  // Resolve each point's combo identity once — both halves of the chart draw from this.
-  const marks = points.map((p) => ({ p, key: comboKey(p), color: comboColor(comboKey(p), colors) }));
+  // Resolve each point's combo identity and readout once — both halves of the chart draw
+  // from this, so neither is built twice per render.
+  const marks = points.map((p) => ({
+    p,
+    key: comboKey(p),
+    color: comboColor(comboKey(p), colors),
+    title:
+      `${p.name} · ${p.durationSec}s — ${fmtDrill(p.dps)} dps (${fmt(p.damage)} damage), ` +
+      `${fmtDrill(p.takenPerSec)}/s taken (${fmt(p.taken)}); both over the encounter's own length`,
+  }));
 
   // Milestones inside the plotted span, bucketed onto the boundary they fall on so
   // several in the same gap (ding → ability point → new AA) render as one cluster.
@@ -190,16 +201,13 @@ function EncounterHistory({
   /** One half of the diverging pair, scaled to its own peak. */
   const half = (cls: "up" | "down", value: (p: SelfEncounterPoint) => number, max: number) => (
     <div className={`hrow ${cls}`}>
-      {marks.map(({ p, key, color }, i) => (
+      {marks.map(({ p, key, color, title }, i) => (
         <div
           key={p.id}
           className={`hcell ${selected !== null && selected !== key ? "dim" : ""} ${hover === i ? "hov" : ""}`}
           onMouseEnter={() => setHover(i)}
           onClick={() => onSelect(selected === key ? null : key)}
-          title={
-            `${p.name} · ${p.durationSec}s — ${fmtDrill(p.dps)} dps (${fmt(p.damage)} damage), ` +
-            `${fmtDrill(p.takenPerSec)}/s taken (${fmt(p.taken)}); both over the encounter's own length`
-          }
+          title={title}
         >
           <div
             className={`hbar ${cls === "down" ? "tank" : ""} ${value(p) === max ? "peak" : ""}`}
@@ -343,11 +351,10 @@ export function StanceOverview({
 }) {
   const [n, setN] = useState(25);
   const [selected, setSelected] = useState<string | null>(null);
-  const win = windows.find((w) => w.n === n);
-  const rows = win?.rows ?? [];
+  const { rows = [], damage = 0, seconds = 0 } = windows.find((w) => w.n === n) ?? {};
   // Damage per second of combat: the window's own totals, not a mean of the tiles' rates
   // and not a re-sum of `rows` (which omits combos I spent time in without dealing damage).
-  const overall = Math.round((win?.damage ?? 0) / Math.max(1, win?.seconds ?? 0));
+  const overall = Math.round(damage / Math.max(1, seconds));
   const colors = buildComboColors(history, rows);
   const points = history.slice(0, n).reverse(); // history is newest-first; the chart reads left→right
   const isCurrent = (r: { melee: string; invocation: string }) =>
@@ -381,7 +388,7 @@ export function StanceOverview({
         <span
           className="ov-overall"
           title={
-            `${fmt(overall)} dps — ${fmt(win?.damage ?? 0)} damage over ${fmt(win?.seconds ?? 0)}s of combat ` +
+            `${fmt(overall)} dps — ${fmt(damage)} damage over ${fmt(seconds)}s of combat ` +
             `across the last ${n} encounters. Wall-clock seconds, counted once even when two mobs are up, ` +
             `so this sits above the chart's per-encounter average whenever fights overlap.`
           }
@@ -451,9 +458,7 @@ function EncounterRow({
 }) {
   const d = card.damage;
   const late = encSec - card.activeSec;
-  // Nearly everyone starts a second or two after the mob is first seen, so only a real
-  // shortfall earns the accent — otherwise every row lights up and the flag means nothing.
-  const partial = card.activeSec < encSec * 0.7;
+  const partial = card.activeSec < encSec * PARTIAL_WINDOW;
   return (
     <>
       <div className={`erow ${card.kind} ${card.isSelf ? "is-self" : ""}`} onClick={onToggle}>
@@ -513,16 +518,14 @@ export function EncounterTable({
 }) {
   const maxPct = Math.max(1, ...enc.cards.map((c) => c.pct));
   // Both header figures cover the whole encounter, unlike the per-person rows below.
-  // Defaults tolerate an older backend (dev: new UI on :5173 against a running :8787).
   const out = enc.npcDamage;
-  const dps = enc.dps ?? Math.round(enc.total / Math.max(1, enc.durationSec));
   return (
     <section className={`enc-table ${enc.active ? "live" : ""}`}>
       <div className="enc-th">
         <span className="enc-title">
           {enc.active && <span className="live-dot">⚔</span>} {enc.name}
         </span>
-        {out && out.total > 0 && (
+        {out.total > 0 && (
           <span
             className="enc-out"
             title={`${enc.name} dealt ${fmt(out.total)} to everyone it fought — ${fmt(out.perSec)} dps over the ${enc.durationSec}s encounter`}
@@ -532,9 +535,9 @@ export function EncounterTable({
         )}
         <span
           className="enc-tot"
-          title={`Whole encounter: ${fmt(enc.total)} damage dealt to ${enc.name} over ${enc.durationSec}s, ${fmt(dps)} dps from everyone combined. The rows below are per-person, each over their own active window.`}
+          title={`Whole encounter: ${fmt(enc.total)} damage dealt to ${enc.name} over ${enc.durationSec}s, ${fmt(enc.dps)} dps from everyone combined. The rows below are per-person, each over their own active window.`}
         >
-          <span className="enc-scope">encounter</span> {enc.durationSec}s · {fmtK(enc.total)} dmg · {fmtK(dps)} dps
+          <span className="enc-scope">encounter</span> {enc.durationSec}s · {fmtK(enc.total)} dmg · {fmtK(enc.dps)} dps
         </span>
       </div>
       <div className="etable">

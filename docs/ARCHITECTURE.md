@@ -60,7 +60,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 - **Fight segmentation** (configurable): opens on first player→NPC damage after idle; closes when all engaged NPCs are slain, on **zoning** (`You have entered <zone>.` — you leave all mobs behind), **or** after `inactivityTimeout` s (default **90s**, wall-clock — a 3s tick closes abandoned fights with no new log lines). Named NPCs get friendly titles; trash groups by the active NPC set.
 - **Encounter liveness**: a per-NPC pane is *active* only while the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner dies), and it has seen activity within the inactivity window (~90s).
 - **Encounters** (the primary view): each mob is a per-character table (one row per player/pet, a %-of-damage bar + DPS/HPS/tank columns, expandable to abilities). `snapshot()` exposes **`activeEncounters`** (mobs currently being fought — live tables at the top) and **`recentEncounters`** (a rolling last-5, newest first). A mob is finalized on death **or on fight close** (zone / 90s / abandon) for a boss you fled. On death the mob's per-encounter tracking is **reset**, so a same-named respawn (`a clay gargoyle`) is a fresh instance rather than merging into one inflated span; fled/closed mobs cap their end to their last combat activity. **Rates are per-person**: each character's active window starts at *their* first contact with the mob (their attack, or the mob first hitting/casting on them — tracked as per-`attacker>target` first-contact timestamps) and runs to the encounter end, so late-joiners aren't diluted. Per-(target, attacker) damage is kept as full metric accumulators.
-- **Two whole-encounter figures sit alongside those per-person rows**, both over the encounter span (the mob's first interaction → its end, which *is* the mob's own active window, so the same denominator is honest for both): `total`/`dps` — what everyone dealt to the NPC, and `npcDamage` — what it dealt back, summed over every friendly it hit by scanning `perTarget` for the mob's own attacker cells. Those cells are cleared by `resetNpcTracking` along with everything else on death, so a same-named respawn's output starts at zero too. The header prints both; the rows below stay per-person, which is exactly why the header labels itself.
+- **Two whole-encounter figures sit alongside those per-person rows**, both over the encounter span (the mob's first interaction → its end, which *is* the mob's own active window, so the same denominator is honest for both): `total`/`dps` — what everyone dealt to the NPC, and `npcDamage` — what it dealt back, summed over every friendly it hit by scanning `perTarget` for the mob's own attacker cells. Those cells are cleared by `resetNpcTracking` along with everything else on death, so a same-named respawn's output starts at zero too. Only the **total** is folded (via `rateStat`, not `toStat`): the header prints a rate, and each victim's card already ships that same damage broken down under `taken`, so merging the mob's abilities again would put ~1.4KB of duplicate detail in every snapshot. The header prints both; the rows below stay per-person, which is exactly why the header labels itself.
 - **Stance overview windows** carry the window's own `damage`/`seconds` totals alongside the rows, taken
   from the aggregate **before** zero-damage combos are filtered out of `rows`: a combo I stood in without
   swinging earns no tile but its seconds are still real, and dropping them would inflate the headline
@@ -182,15 +182,21 @@ interface CombatantStats {          // one meter row
     points being drawn** — computed inside the chart component, so it is by construction the
     duration-weighted mean of its own bars. Never a mean of the per-encounter rates: that would let a
     4-second mob pull on the average as hard as a five-minute boss.
-  - **Two honest averages, and why they differ.** The panel header's `avg dps` divides the same damage
-    by **merged** combat seconds — wall-clock, counted once even when two mobs are up — which is what
-    the stance tiles use, so header and tiles always agree. The chart's line divides by the **sum of
-    encounter lengths**, which counts a shared second in both encounters. So the line sits *below* the
-    header exactly when fights overlap (on a real 25-encounter window: 70 vs 75, from 808s of encounter
-    time over 762s of clock). Both are time-weighted, neither is a mean of means; each `title` names its
-    denominator. Per-encounter rates are unavoidably diluted during multi-mob pulls — your damage splits
-    between two bars while the clock does not — which is the same reason the header figure is the one to
-    quote for "what do I actually do per second".
+  - **Two honest averages, and why they differ.** The panel header's `avg dps` divides by **merged**
+    combat seconds — wall-clock, counted once even when two mobs are up — which is what the stance
+    tiles use, so header and tiles always agree. The chart's line divides by the **sum of encounter
+    lengths**, which counts a shared second in both encounters. So the line sits *below* the header
+    exactly when fights overlap (on a real 25-encounter window: 70 vs 75, from 808s of encounter time
+    over 762s of clock). Both are time-weighted and neither is a mean of means; each `title` names its
+    denominator.
+    The **numerators differ slightly too**, and it is worth being exact about it: the header sums
+    `selfComboLog` entries falling inside the merged spans — every point of self damage in that
+    wall-clock, including damage to a mob still alive or not yet finalized — while the chart sums the
+    self card of each *finished* encounter. On the same window that was 62,416 vs 60,969 (~2%). Both
+    are defensible over "the last N encounters"; they are not the same set.
+    Per-encounter rates are unavoidably diluted during multi-mob pulls — your damage splits between two
+    bars while the clock does not — which, with the wider numerator, is why the header figure is the one
+    to quote for "what do I actually do per second".
   - **Milestone rail.** The baseline between the halves is the timeline: level-ups (▲), ability points (◆), AAs and skill unlocks (★), my deaths (✕) and zone changes (»). Each mark sits on the **left edge of the encounter it belongs to** — the first encounter that ended at or after it — so a level-up earned on a kill lands exactly on the boundary between the two bars. Several in one gap (ding → ability point → new AA) cluster, **one mark per kind carrying a count** — four zone changes in the same gap are one `»⁴`, not four glyphs fighting over ~14px of rail; hovering the cluster names all of them. Levels and deaths also draw a full-height guide, because those two are what explain a step change in the bars.
   - Marks are identified by **shape**, not colour — the rail is far too small for colour to carry identity — and hovering any of them replaces the header readout with its full sentence and clock time.
   - Below the chart, a **progression strip** shows current level and unspent AP, then what the window bought: levels, AP, abilities, deaths (in the rail's own glyphs, so the strip doubles as its legend), and — deliberately glyph-less, since they are counted but never marked — skill-ups and summed xp percent.

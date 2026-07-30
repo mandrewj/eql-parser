@@ -397,8 +397,9 @@ export class Engine {
       // window inside it (`card.damage.perSec`, which the encounter table shows): joining
       // a fight for its last 6 seconds would otherwise plot as my best encounter ever.
       // Dividing by the same durationSec the client receives also makes the chart's average
-      // line exactly the duration-weighted mean of the bars it crosses.
-      const secs = Math.max(1, e.durationSec);
+      // line exactly the duration-weighted mean of the bars it crosses. (It is always ≥ 1:
+      // `encounterView` rounds a span that is itself clamped to a second.)
+      const secs = e.durationSec;
       return {
         id: e.id,
         name: e.name,
@@ -484,8 +485,12 @@ export class Engine {
     // Window totals come from `agg` *before* the zero-damage rows are dropped below: a combo
     // I stood in without swinging still spent real seconds, and leaving them out would inflate
     // the headline rate. These merged seconds count wall-clock once even when two mobs overlap.
-    const windowSec = [...agg.values()].reduce((s, v) => s + v.seconds, 0);
-    const windowDmg = [...agg.values()].reduce((s, v) => s + v.damage, 0);
+    let windowSec = 0;
+    let windowDmg = 0;
+    for (const v of agg.values()) {
+      windowSec += v.seconds;
+      windowDmg += v.damage;
+    }
     const rows = [...agg.entries()]
       .map(([combo, v]) => {
         const [melee = "none", invocation = "none"] = combo.split("|");
@@ -828,12 +833,13 @@ export class Engine {
 
     // What the mob dealt back, summed over every friendly it hit — the other half of the
     // header. Its outgoing cells are cleared with the rest of its tracking on death, so a
-    // same-named respawn starts from zero here too.
-    const npcOut = newMetric();
+    // same-named respawn starts from zero here too. Only the total is wanted: the header
+    // prints a rate, and each victim's own card already carries the same damage broken
+    // down under `taken`, so merging its abilities here would ship that twice.
+    let npcOut = 0;
     for (const [victimKey, byAttacker] of f.perTarget) {
       if (victimKey === npcKey || !friendly.has(victimKey)) continue;
-      const cell = byAttacker.get(npcKey);
-      if (cell) mergeAcc(npcOut, cell, null);
+      npcOut += byAttacker.get(npcKey)?.total ?? 0;
     }
 
     // Healing in this encounter window, summed per healer once (a healer's heals all fall
@@ -881,7 +887,7 @@ export class Engine {
       durationSec: Math.round(spanSec),
       total,
       dps: Math.round(total / spanSec),
-      npcDamage: this.toStat(npcOut, spanSec),
+      npcDamage: rateStat(npcOut, spanSec),
       cards,
     };
   }

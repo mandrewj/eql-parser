@@ -163,6 +163,22 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 - The accent for a partial window fires only below **70%** of the encounter. Flagging any shortfall at
   all lit up nearly every row — almost nobody engages on the exact second the mob is first seen.
 
+## Post-v1 — Cleanup pass over the three encounter changes  ✅
+- Dropped the "tolerate an older backend" fallback in `EncounterTable`: the mirrored types declare
+  `dps`/`npcDamage` required, so the guards were unreachable — and the fallback was a *second* copy of
+  the header rate that divided by rounded seconds, disagreeing with the engine on any fractional span.
+  Defensive normalization belongs at the `useAppData` ingest boundary, which is where the existing
+  `?? []` defaults live.
+- `npcDamage` now folds the **total only** (`rateStat`), not a full ability breakdown — measured at
+  1.4KB of every 59.3KB snapshot, duplicating what each victim's `taken` already carries.
+- Single-pass window totals in `overviewForWindow` (was two spreads + two reduces over one map), the
+  unreachable `Math.max(1, durationSec)` clamp dropped, `win?.x ?? 0` destructured once, and the chart's
+  per-point `title` moved into the `marks` array it already builds — it was being composed twice per
+  render, once for each half of the diverging chart.
+- `PARTIAL_WINDOW` and `--partial` replace an inline `0.7` and a hardcoded hex.
+- Documented what was imprecise: the header and chart averages differ in **numerator** as well as
+  denominator (62,416 vs 60,969 on a real window), and README still said WebSocket in two places.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.

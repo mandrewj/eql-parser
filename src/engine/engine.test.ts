@@ -396,10 +396,12 @@ test("window average is duration-weighted, not a mean of per-encounter rates", (
   const dmg = pts.reduce((s, p) => s + p.damage, 0);
   const sec = pts.reduce((s, p) => s + p.durationSec, 0);
   // What the chart's average line draws: 1000 / 32s = 31, right next to the long fight it
-  // spent its seconds in. A mean of the two rates would say 40 — the 2-second rat counting
-  // as much as a mob fifteen times its length.
+  // spent its seconds in. (A mean of the two rates would say 40 — the 2-second rat counting
+  // for as much as a mob fifteen times its length. The chart's own weighting lives in
+  // `EncounterHistory`, which has no runner here; this pins the points it weighs.)
+  assert.equal(dmg, 1000);
+  assert.equal(sec, 32);
   assert.equal(Math.round(dmg / sec), 31);
-  assert.equal(Math.round((30 + 50) / 2), 40);
 });
 
 test("stance overview: the window's headline rate keeps zero-damage combo seconds", () => {
