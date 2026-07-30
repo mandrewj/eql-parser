@@ -328,6 +328,9 @@ export interface MilestoneSpan {
   kills: number;
   zones: number;
   combatSec: number;
+  /** Where I was standing when the milestone landed. Null on the open row, which has no
+   *  milestone of its own — and on any that landed before the first zone line was seen. */
+  zone?: string | null;
   open?: boolean; // the still-running stretch since the newest milestone
 }
 

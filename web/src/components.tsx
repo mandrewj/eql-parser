@@ -460,9 +460,18 @@ export function StatTabs({ stats, deaths }: { stats: LongTermStats; deaths: Deat
   const spanRow = (r: MilestoneSpan, i: number) => (
     <div key={`${r.label}-${r.tsMs ?? i}`} className={`lt-row ${r.open ? "open" : ""}`}>
       <span className="lt-since">
-        {r.label}
-        {/* AA labels are all "+2 AA" and only the clock tells them apart. */}
-        {r.tsMs !== null && <span className="lt-when"> {time(r.tsMs)}</span>}
+        <span className="lt-what">
+          {r.label}
+          {/* AA labels are all "+2 AA" and only the clock tells them apart. */}
+          {r.tsMs !== null && <span className="lt-when"> {time(r.tsMs)}</span>}
+        </span>
+        {/* Where it landed. Zone names run long, so the column ellipsises and the full one
+            lives in the title — "which camp was I in" is answerable from the first few words. */}
+        {r.zone && (
+          <span className="lt-zone" title={r.zone}>
+            {r.zone}
+          </span>
+        )}
       </span>
       <span className="lt-fig">
         {fmt(r.kills)} <span className="lt-unit">kills</span>

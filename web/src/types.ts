@@ -141,6 +141,7 @@ export interface MilestoneSpan {
   kills: number;
   zones: number;
   combatSec: number;
+  zone?: string | null; // where I was standing when the milestone landed
   open?: boolean;
 }
 

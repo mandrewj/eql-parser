@@ -459,8 +459,10 @@ interface MetricStat {                // every metric group has this one shape
   - **A tab carries a figure, not just a noun** (`Levels 1h 52m`, `Deaths 5`) — the strip is on
     screen permanently, so each label should be worth reading without opening anything.
   - Deaths only earns a tab once there are some, and tints the container red when open.
-  - Completed AA rows all read `+2 AA`, so each carries the **clock time** it landed; without it
-    four identical labels stack up with no way to tell them apart.
+  - Completed rows carry the **clock time** and the **zone** the milestone landed in — without
+    the time, four identical `+2 AA` labels stack up with nothing to tell them apart; the zone
+    answers "which camp was that". Zone names run long, so the column ellipsises with the full
+    name in the `title`. The open row has no milestone of its own, so it has neither.
 - **The "what killed me" tab** renders only when there are deaths. Each
   one is three lines: the killer and the **last blow to land**, then the damage by ability, then
   by attacker with the stance I died in. The two breakdown lines are the point — dying to one

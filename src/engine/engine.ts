@@ -74,6 +74,7 @@ const isTwinKey = (key: string): boolean => key.endsWith("§charmed");
 interface Anchor {
   label: string;
   tsMs: number;
+  zone: string | null; // where I was standing when it landed
   kills: number;
   zones: number;
   combatMs: number;
@@ -535,7 +536,7 @@ export class Engine {
   }
 
   private pushAnchor(into: Anchor[], label: string, tsMs: number, spans: number): void {
-    into.unshift({ label, tsMs, ...this.snapCounters() });
+    into.unshift({ label, tsMs, zone: this.zone?.name ?? null, ...this.snapCounters() });
     // One more than the spans shown: the oldest anchor is the *start* of the oldest span.
     if (into.length > spans + 1) into.length = spans + 1;
   }
@@ -560,7 +561,7 @@ export class Engine {
       // The oldest retained anchor has nothing before it, so its span would be a total rather
       // than a delta — drop it instead of printing a number that means something else.
       if (i + 1 >= anchors.length) break;
-      out.push({ label: a.label, tsMs: a.tsMs, ...between(a, anchors[i + 1]) });
+      out.push({ label: a.label, tsMs: a.tsMs, zone: a.zone, ...between(a, anchors[i + 1]) });
     }
     return out;
   }

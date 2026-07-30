@@ -831,6 +831,8 @@ test("long-term: each level reports what it cost, plus the stretch still in prog
   assert.equal(levels[1]!.label, "level 44", "labelled by the milestone that ended the stretch");
   assert.equal(levels[1]!.kills, 2, "the rat and the bat — what that level cost");
   assert.equal(levels[1]!.zones, 1);
+  assert.equal(levels[1]!.zone, "The Permafrost Caverns", "where I was standing when it landed");
+  assert.equal(levels[0]!.zone, undefined, "the open row has no milestone, so no zone");
   assert.equal(
     levels.length,
     2,

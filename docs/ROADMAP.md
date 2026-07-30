@@ -468,6 +468,8 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   is mounted. Clicking the open tab closes it, so "all closed" stays one click away.
 - Each tab carries a figure rather than just a noun (`Levels 1h 52m`, `Deaths 5`), since the strip
   is on screen permanently and should be worth reading unopened.
+- Completed rows also name the **zone** the milestone landed in (`level 43 · Nagafen's Lair 3`),
+  taken from the anchor rather than searched for. The open row has no milestone, so no zone.
 
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
