@@ -154,6 +154,15 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
   differ when mobs overlap — 75 vs 70 on a real window. Both are time-weighted; each tooltip names its
   denominator, and ARCHITECTURE explains which to quote.
 
+## Post-v1 — Engaged time per person in the encounter panes  ✅
+- Every encounter row gains a `time` column: the seconds that character was engaged with the mob
+  (`EncounterCard.activeSec` — their first contact, whether they swung or were hit, → the encounter's
+  end). The engine already computed this window to divide their rates by; it just never shipped it.
+- That makes the whole table self-explaining: the row's dps × its time is its damage, so a short window
+  behind a big headline rate is visible instead of having to be inferred (Mirad: 5s of a 31s fight).
+- The accent for a partial window fires only below **70%** of the encounter. Flagging any shortfall at
+  all lit up nearly every row — almost nobody engages on the exact second the mob is first seen.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.

@@ -276,6 +276,7 @@ export interface EncounterCard {
   damage: MetricStat; // damage this character did to the NPC (per-person active window)
   healing: MetricStat; // healing this character did during their active window
   taken: MetricStat; // damage this character took from the NPC
+  activeSec: number; // that window: their first contact with the NPC → the encounter's end
   pct: number; // share of total damage dealt to the NPC (for the bar)
 }
 

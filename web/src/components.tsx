@@ -438,15 +438,22 @@ export function StanceOverview({
 function EncounterRow({
   card,
   maxPct,
+  encSec,
   open,
   onToggle,
 }: {
   card: EncounterCardData;
   maxPct: number;
+  /** The encounter's own length, for reading a row's engaged time against. */
+  encSec: number;
   open: boolean;
   onToggle: () => void;
 }) {
   const d = card.damage;
+  const late = encSec - card.activeSec;
+  // Nearly everyone starts a second or two after the mob is first seen, so only a real
+  // shortfall earns the accent — otherwise every row lights up and the flag means nothing.
+  const partial = card.activeSec < encSec * 0.7;
   return (
     <>
       <div className={`erow ${card.kind} ${card.isSelf ? "is-self" : ""}`} onClick={onToggle}>
@@ -463,6 +470,16 @@ function EncounterRow({
         <span className="enum">{fmtK(d.perSec)}</span>
         <span className="enum heal">{card.healing.total ? fmtK(card.healing.perSec) : "·"}</span>
         <span className="enum tank">{card.taken.total ? fmtTank(card.taken.total) : "·"}</span>
+        <span
+          className={`enum time ${partial ? "part" : ""}`}
+          title={
+            `${card.name} was engaged for ${card.activeSec}s of the ${encSec}s encounter` +
+            (late > 0 ? `, joining ${late}s in` : " — there from the start") +
+            ". Their dps, hps and tank figures all divide by that window, not the encounter's."
+          }
+        >
+          {card.activeSec}s
+        </span>
       </div>
       {open && (
         <div className={`erow-drill ${card.isSelf ? "is-self" : ""}`}>
@@ -527,6 +544,9 @@ export function EncounterTable({
             <span className="enum muted">dps</span>
             <span className="enum muted">hps</span>
             <span className="enum muted">tank</span>
+            <span className="enum muted" title="Seconds each character was engaged with this mob">
+              time
+            </span>
           </div>
         )}
         {enc.cards.map((c) => (
@@ -534,6 +554,7 @@ export function EncounterTable({
             key={c.name}
             card={c}
             maxPct={maxPct}
+            encSec={enc.durationSec}
             // my own breakdown stays open in every encounter; others toggle
             open={c.isSelf || expanded.has(`${enc.id}:${c.name}`)}
             onToggle={() => onToggle(`${enc.id}:${c.name}`)}

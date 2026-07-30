@@ -121,7 +121,7 @@ interface EncounterView {           // one per-mob card
   name: string; active: boolean; durationSec: number;
   total: number; dps: number;       // whole encounter: damage dealt to the mob, and the combined rate
   npcDamage: MetricStat;            // what the mob dealt back, over the same span
-  cards: EncounterCard[];           // per-person rows, each over their own active window
+  cards: EncounterCard[];           // per-person rows, each rate over that row's activeSec
 }
 
 interface CombatantStats {          // one meter row
@@ -144,8 +144,9 @@ interface CombatantStats {          // one meter row
     holds open two empty 120px tracks and strands half the width.
   - A stance tile is **row-wrap**, so one or two combos read as a single line instead of three short
     lines in a mostly-empty box, and restack once several combos share the row.
-  - The `% damage / dps / hps / tank` labels print **once per section** (`showHead`), not once per
-    encounter; the shared grid keeps every table's columns aligned regardless.
+  - The `% damage / dps / hps / tank / time` labels print **once per section** (`showHead`), not once
+    per encounter; the shared grid keeps every table's columns aligned regardless. The five columns
+    cost the bar ~35px of its width, which it can spare; the labels are what make them legible.
   - An encounter header is **three parts on one line**: the mob's name (the only part that shrinks —
     `min-width: 0` + ellipsis), the red `→ <n> dps` it is dealing out, and the whole-encounter totals
     pinned right with `margin-left: auto`. The worst realistic case (a long boss title beside
@@ -162,6 +163,12 @@ interface CombatantStats {          // one meter row
   mistaken for the same thing; the `title` spells that out. The red figure by the name is what the mob
   is **dealing out** to everyone it fought — the same red the `tank` column uses for damage from mobs.
   It is hidden entirely for a mob that never landed a hit, rather than printing a zero.
+- **A `time` column ends each encounter row** — the seconds that character was engaged with this mob
+  (`EncounterCard.activeSec`, their first contact → the encounter's end). It is precisely the
+  denominator of their `dps`/`hps`/`tank` on the same row, which is what makes a 3-second visitor's
+  headline rate readable instead of suspicious. It stays deliberately quiet: everyone starts a second
+  or two after the mob is first seen, so the accent fires only below **70%** of the encounter —
+  otherwise every row lights up and the flag stops meaning anything.
 - **Your own row is always expanded** in every encounter table — the damage breakdown line (total, melee/spell/DoT split, crits) and top ability chips render without a click, marked with a blue left rule. Everyone else toggles on click.
 - **Number formatting** (`components.tsx`, one `scaleK(n, at)` helper): k-notation past a per-context threshold, one decimal, dropped to zero decimals past 100k so the narrow columns don't overflow. Thresholds — **10k** for the dps/hps columns, **2k** for the tank column (tanking totals climb fastest), **1k** inside the encounter drill-down lines.
 - **My DPS panel** — stance-combo cards (avg DPS per melee+invocation over the window) plus an **encounter history chart** below them, both driven by the same 10/25/50 window chip.

@@ -227,7 +227,7 @@ body { margin: 0; }
 .enc-tot { flex: none; margin-left: auto; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .enc-scope { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
 .etable { display: flex; flex-direction: column; }
-.erow { display: grid; grid-template-columns: 1fr 2.9rem 2.9rem 2.9rem; align-items: center; gap: 0.3rem; cursor: pointer; padding: 1px 0; }
+.erow { display: grid; grid-template-columns: 1fr 2.9rem 2.9rem 2.9rem 2.2rem; align-items: center; gap: 0.3rem; cursor: pointer; padding: 1px 0; }
 .erow.ehead { cursor: default; padding-bottom: 3px; }
 .erow.ehead > span:first-child { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); padding-left: 0.4rem; }
 .ebar { position: relative; height: 19px; border-radius: 3px; background: #2b313d; overflow: hidden; }
@@ -244,6 +244,10 @@ body { margin: 0; }
 .erow.ehead .enum { font-size: 0.6rem; font-weight: 400; text-transform: uppercase; color: var(--muted); }
 .enum.heal { color: var(--player); }
 .enum.tank { color: var(--npc); }
+/* the window the other three divide by — metadata, so it stays quiet; quieter still
+   when it's the whole encounter, which is the unremarkable case */
+.enum.time { color: var(--muted); font-weight: 500; opacity: 0.75; }
+.enum.time.part { color: #b9a06a; opacity: 1; } /* joined late — reads the rate differently */
 .erow-drill { display: flex; flex-wrap: wrap; gap: 0.45rem; padding: 0.2rem 0.4rem 0.35rem; font-size: 0.7rem; color: var(--muted); }
 .erow-drill.is-self { border-left: 2px solid var(--self); padding-left: 0.35rem; margin-left: 0.05rem; color: #9fb0cc; }
 .drill-cat { white-space: nowrap; }

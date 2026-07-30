@@ -860,6 +860,7 @@ export class Engine {
         damage: this.toStat(acc, activeDur),
         healing: rateStat(healByHealer.get(ownerKey) ?? 0, activeDur),
         taken: this.toStat(takenAcc, activeDur),
+        activeSec: Math.round(activeDur),
         pct: total > 0 ? Math.round((acc.total / total) * 1000) / 10 : 0,
       };
     });

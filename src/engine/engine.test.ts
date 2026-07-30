@@ -244,6 +244,24 @@ test("per-person DPS uses each character's own active window (late joiner)", () 
   assert.equal(enc.cards.map((c) => c.name)[0], "Feydie", "ranked by DPS: Feydie (100) first");
 });
 
+test("cards report the engaged window their rates divide by", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:06", "an orc hits Ranshi for 20 points of damage."), // Ranshi's first contact is being hit
+    L("01:00:08", "Feydie kicks an orc for 40 points of damage."),
+    L("01:00:10", "Ranshi slashes an orc for 60 points of damage."),
+    L("01:00:10", "You have slain an orc!"),
+  ]);
+  const enc = engine.snapshot().recentEncounters[0]!;
+  assert.equal(enc.durationSec, 10);
+  const by = Object.fromEntries(enc.cards.map((c) => [c.name, c]));
+  assert.equal(by.Sanluen!.activeSec, 10, "there from the start");
+  assert.equal(by.Feydie!.activeSec, 2, "joined 8s in");
+  assert.equal(by.Ranshi!.activeSec, 4, "engaged when the mob hit them, not when they swung back");
+  // The window is exactly what each rate divides by, so dps × activeSec is their damage.
+  for (const c of enc.cards) assert.equal(Math.round(c.damage.perSec * c.activeSec), c.damage.total);
+});
+
 test("recent-encounter cards carry windowed healing + taken-from-mob", () => {
   const engine = feed([
     L("01:00:00", "You crush an orc for 60 points of damage."),
