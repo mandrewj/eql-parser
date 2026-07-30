@@ -124,6 +124,19 @@ function addAbility(m: MetricAcc, name: string, type: DamageType, amount: number
   if (crit) a.crits++;
 }
 
+/** First index whose `ts` is >= `from`, by bisection — the timestamped logs are appended in
+ *  chronological order and only ever trimmed from the front, so they stay sorted. */
+function lowerBound(log: ReadonlyArray<{ ts: number }>, from: number): number {
+  let lo = 0;
+  let hi = log.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (log[mid]!.ts < from) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /** Merge one raw metric accumulator into another (used to fold pet → owner per encounter). */
 function mergeAcc(dst: MetricAcc, src: MetricAcc, petTag: string | null): void {
   dst.total += src.total;
@@ -452,35 +465,47 @@ export class Engine {
     const encs = this.finishedEncounters.slice(0, n);
     if (encs.length === 0) return { n, rows: [], damage: 0, seconds: 0 };
 
-    // Merge the encounters' time windows so simultaneous mobs aren't double-counted.
+    // Merge the encounters' time windows so simultaneous mobs aren't double-counted. Each is
+    // clamped to a second first: a mob I one-shot is first seen and slain within the same log
+    // second, so its raw interval is zero-width — it would contribute its damage to the window
+    // with no seconds behind it and inflate every rate divided by them. `durationSec` already
+    // credits that encounter one second; this is the same clamp, kept in step with it.
     const merged: Array<[number, number]> = [];
-    for (const iv of encs.map((e): [number, number] => [e.startMs, e.endMs]).sort((a, b) => a[0] - b[0])) {
+    for (const iv of encs
+      .map((e): [number, number] => [e.startMs, Math.max(e.endMs, e.startMs + 1000)])
+      .sort((a, b) => a[0] - b[0])) {
       const last = merged[merged.length - 1];
       if (last && iv[0] <= last[1]) last[1] = Math.max(last[1], iv[1]);
       else merged.push([iv[0], iv[1]]);
     }
-    const inMerged = (ts: number) => merged.some(([s, e]) => ts >= s && ts <= e);
-
     const blank = () => ({ damage: 0, taken: 0, seconds: 0 });
     const agg = new Map<string, ReturnType<typeof blank>>();
+    const bump = (combo: string, field: "damage" | "taken" | "seconds", amount: number) => {
+      const a = agg.get(combo) ?? blank();
+      a[field] += amount;
+      agg.set(combo, a);
+    };
     for (const [s, e] of merged) {
-      for (const [combo, sec] of this.comboSecondsIn(s, e)) {
-        const a = agg.get(combo) ?? blank();
-        a.seconds += sec;
-        agg.set(combo, a);
-      }
+      for (const [combo, sec] of this.comboSecondsIn(s, e)) bump(combo, "seconds", sec);
     }
-    for (const [log, field] of [
-      [this.selfComboLog, "damage"],
-      [this.selfTakenComboLog, "taken"],
-    ] as const) {
-      for (const ent of log) {
-        if (!inMerged(ent.ts)) continue;
-        const a = agg.get(ent.combo) ?? blank();
-        a[field] += ent.amount;
-        agg.set(ent.combo, a);
+
+    // Both combo logs are chronological and `merged` is sorted and disjoint, so one pointer
+    // walks a log against the windows — O(entries + windows) instead of testing every entry
+    // against every window. This is the engine's most expensive rebuild and it happens on
+    // every kill, so the difference is worth the pointer. Bisecting to the first entry inside
+    // the window also keeps a 10-encounter window from paying for a 50-encounter-deep log.
+    const sweep = (log: ReadonlyArray<{ combo: string; amount: number; ts: number }>, field: "damage" | "taken") => {
+      let iv = 0;
+      for (let i = lowerBound(log, merged[0]![0]); i < log.length; i++) {
+        const ent = log[i]!;
+        while (iv < merged.length && merged[iv]![1] < ent.ts) iv++;
+        if (iv === merged.length) return; // past the last window — so is the rest of the log
+        if (ent.ts < merged[iv]![0]) continue; // fell in a gap between two windows
+        bump(ent.combo, field, ent.amount);
       }
-    }
+    };
+    sweep(this.selfComboLog, "damage");
+    sweep(this.selfTakenComboLog, "taken");
 
     // Window totals come from `agg` *before* the zero-damage rows are dropped below: a combo
     // I stood in without swinging still spent real seconds, and leaving them out would inflate

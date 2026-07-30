@@ -424,6 +424,25 @@ test("stance overview: the window's headline rate keeps zero-damage combo second
   assert.equal(w.rows[0]!.timeShare, 44, "shares fall short of 100% by the silent combo's time");
 });
 
+test("stance overview: a window covers its own N encounters, not the whole retained log", () => {
+  // Twelve kills, two minutes apart, each worth 10× its index. The combo logs keep all of
+  // them (trimming only starts past 60 encounters), so the 10-window has to skip the two
+  // oldest — the path where entries sit before the first merged window.
+  const lines: string[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const t = `01:${String(i * 2).padStart(2, "0")}:00`;
+    lines.push(L(t, `You crush mob${i} for ${i * 10} points of damage.`));
+    lines.push(L(t, `You have slain mob${i}!`));
+  }
+  const windows = feed(lines).snapshot().stanceOverview;
+  const w10 = windows.find((w) => w.n === 10)!;
+  const w50 = windows.find((w) => w.n === 50)!;
+  assert.equal(w50.damage, 780, "all twelve: 10+20+…+120");
+  assert.equal(w10.damage, 750, "the last ten only: 780 − 10 − 20");
+  assert.equal(w50.seconds, 12, "one second of combat per kill");
+  assert.equal(w10.seconds, 10);
+});
+
 test("stance overview: damage taken and time share are split by combo too", () => {
   let clock = at("01:02:00");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

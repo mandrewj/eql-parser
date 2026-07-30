@@ -61,6 +61,18 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 - **Encounter liveness**: a per-NPC pane is *active* only while the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner dies), and it has seen activity within the inactivity window (~90s).
 - **Encounters** (the primary view): each mob is a per-character table (one row per player/pet, a %-of-damage bar + DPS/HPS/tank columns, expandable to abilities). `snapshot()` exposes **`activeEncounters`** (mobs currently being fought — live tables at the top) and **`recentEncounters`** (a rolling last-5, newest first). A mob is finalized on death **or on fight close** (zone / 90s / abandon) for a boss you fled. On death the mob's per-encounter tracking is **reset**, so a same-named respawn (`a clay gargoyle`) is a fresh instance rather than merging into one inflated span; fled/closed mobs cap their end to their last combat activity. **Rates are per-person**: each character's active window starts at *their* first contact with the mob (their attack, or the mob first hitting/casting on them — tracked as per-`attacker>target` first-contact timestamps) and runs to the encounter end, so late-joiners aren't diluted. Per-(target, attacker) damage is kept as full metric accumulators.
 - **Two whole-encounter figures sit alongside those per-person rows**, both over the encounter span (the mob's first interaction → its end, which *is* the mob's own active window, so the same denominator is honest for both): `total`/`dps` — what everyone dealt to the NPC, and `npcDamage` — what it dealt back, summed over every friendly it hit by scanning `perTarget` for the mob's own attacker cells. Those cells are cleared by `resetNpcTracking` along with everything else on death, so a same-named respawn's output starts at zero too. Only the **total** is folded (via `rateStat`, not `toStat`): the header prints a rate, and each victim's card already ships that same damage broken down under `taken`, so merging the mob's abilities again would put ~1.4KB of duplicate detail in every snapshot. The header prints both; the rows below stay per-person, which is exactly why the header labels itself.
+- **The stance overview is the engine's most expensive rebuild**, and it happens on **every kill** — so
+  it earns its algorithm. The merged encounter windows are sorted and disjoint and both combo logs are
+  chronological (appended in event order, trimmed only from the front), so a single pointer walks a log
+  against the windows instead of testing every entry against every window, and a bisect skips straight
+  to the first entry inside the window — a 10-encounter window stops paying for a 50-encounter-deep log.
+  Measured on the real 628k-line log: **758µs → 146µs**, which took a cold `snapshot()` from 854µs to
+  174µs. Verified byte-identical to the naive scan over that whole log before landing.
+- **Each window interval is clamped to a second** before merging. A mob you one-shot is first seen and
+  slain inside the same log second, so its raw interval is zero-width: it would contribute its damage to
+  the window with no seconds behind it and inflate every rate that divides by them. `durationSec` already
+  credits such an encounter one second; this keeps the window math in step. (No effect on a log where
+  every mob trades a few blows first — it is the one-shot trash case that breaks.)
 - **Stance overview windows** carry the window's own `damage`/`seconds` totals alongside the rows, taken
   from the aggregate **before** zero-damage combos are filtered out of `rows`: a combo I stood in without
   swinging earns no tile but its seconds are still real, and dropping them would inflate the headline

@@ -179,6 +179,22 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 - Documented what was imprecise: the header and chart averages differ in **numerator** as well as
   denominator (62,416 vs 60,969 on a real window), and README still said WebSocket in two places.
 
+## Post-v1 — Test the UI's arithmetic, and make the stance rebuild cheap  ✅
+- **Web helpers are now covered by the existing runner.** The pure parts moved out of the components
+  into `web/src/format.ts` (the `scaleK` family, whose thresholds exist for the 540px panel) and
+  `web/src/stats.ts` (`weightedAvgDps`, `isPartialWindow`), so `node --test` covers them with no second
+  runner and no new dependency. Node's types live only in `web/tsconfig.test.json`, so a component still
+  can't reach for `process` and typecheck — that config must clear the inherited `exclude`, or the test
+  files are filtered back out and the check passes on nothing.
+- **`stanceOverview`: 758µs → 146µs** on the real 628k-line log, taking a cold `snapshot()` from 854µs to
+  174µs. It was `merged.some(...)` per combo-log entry; the logs are chronological and the windows sorted
+  and disjoint, so one pointer walks them together, and a bisect skips to the first entry in range.
+  Proved byte-identical to the naive scan over the whole log before landing.
+- **A bug the new boundary test found:** a mob you one-shot is first seen and slain in the same log
+  second, so its window interval is zero-width — it contributed damage to the window with *no seconds*,
+  inflating every rate divided by them. Intervals are now clamped to a second, matching the clamp
+  `durationSec` already applied. No effect on the current log, where every mob trades blows first.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison.
