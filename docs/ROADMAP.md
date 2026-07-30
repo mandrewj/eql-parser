@@ -210,6 +210,35 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   turned a 7-bucket fight into blocks; capped bars in stretched slots read as scatter — both were
   screenshotted against real encounters before settling here.
 
+## Post-v1 — Charmed pets in the encounter tables  ✅
+- A charmed mob fights for us, and none of its damage was reaching the DPS list. Worse, it took
+  the pre-charm damage with it: on one real fight the mob I charmed dealt **924 damage** to the
+  target that went unrecorded, while the mob itself sat in the list as a phantom encounter
+  holding the 119 damage I'd done before charming it. Across the log the fix surfaces
+  **91,180 damage over 174 rows** — 57,463 of it from my own charm pets.
+- Parser gains a `Charm` event with three states, because the log splits the fact across lines
+  that never share a subject: the landing names the mob and no caster, the cast names the caster
+  and no mob. Pairing them is the engine's job, so `parseLine` stays pure. `eyes glaze over` is
+  charm here, not mez — verified against 12 mez casts that produce no such line.
+- **The mob gets its own row, never folded into its charmer** — a charm is temporary, breakable,
+  and often someone else's. Owner shown as a tag when a charm cast within 3s identifies one
+  (160 of 174 rows); unowned otherwise rather than guessed.
+- Boundaries are real events: the mob's life **before** the charm is banked as a finished
+  encounter and its tracking wiped, and again when the charm breaks — the same one-name-two-lives
+  reset a respawn already used.
+- Break detection is mostly behavioural, since only your own charm is announced. Two false
+  positives found on real data and fixed: **a pre-charm DoT still ticking** un-charmed a healthy
+  pet a few seconds in, and a **swing already in the air** when the charm landed did the same
+  (glazed at 03:35:56, struck a groupmate at 03:35:57, then fought for us for 30s).
+- **Two classification bugs surfaced and fixed**, both putting *players* in the encounter list:
+  rules all guard on "not already classified", so log order decided the winner — now tiered, with
+  strong evidence first. And a charmed mob is no longer trusted to classify anyone, in either
+  direction, because entities are keyed by name and names are not unique (`A wan ghoul knight
+  tries to slash a wan ghoul knight` — the charmed one fighting its twin). That also removed two
+  phantom player encounters (`Prisms`, `Rykkerr`) the pre-charm code was already inventing.
+- Validated by replaying the whole 742k-line log before and after: no player name gained an
+  encounter, two lost theirs, and my own damage total moved 0.8%.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the
@@ -229,8 +258,9 @@ Kept here so the reasoning isn't re-derived. Ranked by value-per-effort as judge
   the two averages is visible on the chart instead of explained in a tooltip.
 - **`scaleK` past 100k** prints `1284k` rather than `1.28M` — visible on long boss fights and tank
   totals. One line, whenever it next annoys.
-- **`.erow.pet` / `.erow.npc` fills are unreachable** (encounter rows are only ever `self`/`player`,
-  since pets fold into owners). Left in deliberately as the styling a mob-as-a-row would need.
+- ~~**`.erow.pet` / `.erow.npc` fills are unreachable**~~ — `.erow.pet` is now the charmed-pet row,
+  which is exactly the "mob as a row" this entry was holding the styling for. `.erow.npc` is still
+  unreachable and still deliberate.
 
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.

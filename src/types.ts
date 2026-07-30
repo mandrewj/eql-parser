@@ -101,6 +101,18 @@ export interface PetEvent extends BaseEvent {
   owner: string; // "You" for the logging character's pet
 }
 
+/** A mob fighting on our side. The log splits this across lines that never share a
+ *  subject — the landing names the mob but no caster, the cast names the caster but
+ *  no target — so the parser emits both halves and the engine pairs them by time. */
+export interface CharmEvent extends BaseEvent {
+  type: "charm";
+  state: "cast" | "on" | "off";
+  /** The caster for "cast"; the charmed mob for "on"/"off". Empty on a break that
+   *  names only the spell (a bard's song ending), meaning every mob that spell holds. */
+  who: string;
+  spell?: string; // the charm spell, when the line names one
+}
+
 export interface ZoneEvent extends BaseEvent {
   type: "zone";
   zone: string; // destination zone name — ends the current fight
@@ -133,6 +145,7 @@ export type CombatEvent =
   | StanceEvent
   | HealEvent
   | PetEvent
+  | CharmEvent
   | ZoneEvent
   | ProgressEvent;
 
@@ -271,8 +284,9 @@ export interface StanceSegment {
 /** One character's contribution to a single mob encounter (ranked by damage). */
 export interface EncounterCard {
   name: string;
-  kind: EntityKind;
+  kind: EntityKind; // "pet" here always means a charmed mob — summoned pets fold into their owner
   isSelf: boolean;
+  ownerName?: string; // charmed pets only, and only when a charm cast identified the charmer
   damage: MetricStat; // damage this character did to the NPC (per-person active window)
   healing: MetricStat; // healing this character did during their active window
   taken: MetricStat; // damage this character took from the NPC

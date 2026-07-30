@@ -195,6 +195,8 @@ DPS needs to know which side an entity is on. Heuristics, in order:
    "orc legionnaire") → NPCs.
 4. **Pets**: names ending in "pet" ("An orc thaumaturgist pet") or the `<owner>'s pet` /
    ``\`s pet`` pattern; attribute pet damage to its owner when derivable, else track as its own row.
+5. **Charmed mobs** are friendly *for as long as the charm holds* — an entity whose side
+   changes mid-fight, which is why it is a window rather than a fact (see "Charmed pets").
 
 This is inherently fuzzy from a single client's log; EQLogParser keeps a running roster and
 revises classification as evidence accumulates. We do the same: maintain an entity table,
@@ -218,6 +220,65 @@ The engine records `pet → owner` and **folds the pet's damage/healing/tanking 
 tagging the pet's categories with `🐾` in the owner's drill-down. Other players' pets can't be
 attributed from a single client's log (their pets don't call *you* Master), so they remain their
 own rows. `\bMaster\b` is case-sensitive, so NPC names like "Orc taskmaster" don't false-positive.
+
+## Charmed pets (a mob fighting on our side)
+
+A charmed mob keeps its own name and fights for its charmer. Nothing in the log ties the
+two together directly — **the landing message names the mob but no caster, and the cast
+names the caster but no target** — so the parser emits both halves and the engine pairs
+them by time.
+
+**Landing** — two forms, both seen in a real 742k-line log:
+
+```
+[..] a lava beetle's eyes glaze over.
+[..] a greater dark bone has been charmed.
+```
+```
+^(?<mob>.+?)'s eyes glaze over\.$
+^(?<mob>.+?) has been charmed\.$
+```
+- `eyes glaze over` is **charm, not mesmerize**, in this game: 12 casts of the bard mez
+  song (`Solon's Song of the Sirens`) produced zero glaze lines, while every glazed mob
+  went on to attack other mobs. Names ending in `s` still split at the possessive
+  (`a greater ice bones's eyes glaze over.`).
+- A bard's charm is a *song*, so it re-lands on every pulse — the same mob glazes over and
+  over. That is one pet, not a new one each tick.
+
+**Ownership** — from a charm cast shortly before the landing:
+
+```
+[..] Phatez begins casting Charm III.
+[..] You begin singing Solon's Bewitching Bravura V.
+```
+```
+^(?<caster>.+?) begins? (?:casting|singing) (?<spell>.+?)\.$
+```
+Only **charm-named spells** count. Verified in the log: `Charm`/`Charm III` and
+`Beguile I`–`IV` (enchanter), `Solon's Bewitching Bravura` (bard). The engine pairs a
+landing with the most recent such cast within **3 seconds** — measured against real data,
+128 of 153 landings fall in that window and only one more arrives by 6s, so widening it
+buys nothing and risks crediting the wrong enchanter in a busy camp. An unpaired landing
+is still a charm; it just gets no owner.
+
+**Breaks** — only your own charm announces itself:
+
+```
+[..] Your Solon's Bewitching Bravura spell has worn off of an imp protector.
+[..] You miss a note, bringing your Solon's Bewitching Bravura to a close!
+```
+```
+^Your (?<spell>.+?) spell has worn off of (?<mob>.+?)\.$      ← charm spells only
+^You miss a note, bringing your (?<song>.+?) to a close!$     ← names no mob
+```
+The second names the song and no mob, so it breaks **every** charm that song was holding.
+Another player's charm ending is announced to nobody, so those are detected behaviourally
+— see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+**The hard limit: names are not identities.** Entities are keyed by name, and two mobs can
+share one (`A wan ghoul knight tries to slash a wan ghoul knight, but misses!` is a real
+line — the charmed one attacking its twin). A single client's log cannot tell them apart,
+so a charmed mob is never trusted to classify anyone else.
 
 ## Stances (self only)
 

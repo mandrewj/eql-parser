@@ -47,7 +47,14 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 ### Parser
 - Pure function `parseLine(raw) → CombatEvent | null`.
 - **Keyword prefilter** before regex (skip lines lacking `damage`/`slain`/`but miss`/`assume`/…).
-- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
+- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, **`Charm`**, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
+- **`Charm`** carries one of three states — `cast` (someone began a charm spell; names the
+  caster, not the target), `on` (a mob became charmed; names the target, never the caster)
+  and `off` (a charm broke). The two halves never share a subject, so pairing them is the
+  *engine's* job — the parser stays a pure function of one line. Charm lines are ~0.07% of a
+  real log, so the whole block sits behind one token test and is tried after every damage
+  pattern; it falls through to `Progress` rather than returning, since an AA can be named
+  for a charm spell.
 - **`Progress`** covers self progression — level-ups, ability points, AAs bought/ranked, skill
   unlocks, skill-ups and xp ticks. These are orders of magnitude rarer than damage lines, so they
   are tried **last**, behind a single `^You (have )?(gain|become|improved)` prefix test: the hot
@@ -56,6 +63,42 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 
 ### Engine
 - **Entity roster** — players, pets, and **NPCs are all first-class**; each can be inspected for outgoing damage.
+- **Charmed pets are a *window*, not a fact.** The same mob is an enemy before the charm, an
+  ally during it, and an enemy again after it breaks, so the engine closes the books at each
+  boundary instead of picking a side: on the charm it banks what the mob did and what was
+  done to it as a finished encounter and wipes its tracking (the same reset a death does,
+  for the same reason — one name, two separate lives), and on the break it wipes again so
+  the next blow opens a fresh encounter. A charmed mob is dropped from `npcSeeds` and
+  `aliveEngaged` so it can't hold a fight open past its kill, and a charm is cleared on the
+  pet's death (or a name-shared respawn would inherit it) and on zoning.
+  - **Ownership** is inferred by pairing an `on` with the most recent `cast` within **3s**;
+    unpaired charms still get a row, just without a charmer. On the real log this named an
+    owner for 160 of 174 pet rows.
+  - **Breaks** that the log announces cover only your own charm, so two behavioural signals
+    carry the rest: a pet turning on **its own charmer**, and blows traded with **me** in
+    either direction (you cannot damage your own charmed pet, nor it you). Both wait out a
+    3s grace window, because a swing already in the air when the charm lands still connects —
+    a real pet glazed at 03:35:56 and struck a groupmate at 03:35:57, then fought for us for
+    the next half minute. A **DoT tick never breaks a charm**: an AoE DoT cast before the
+    charm keeps ticking for its full duration, and reading that as a break un-charmed a
+    healthy pet a few seconds in. Real breaks always bring melee or a nuke with them.
+- **Classification runs in two tiers**, because its rules are not equally trustworthy and
+  every one of them guards on "not already classified" — so whichever fires first wins,
+  which used to be an accident of log order. Pass 0 is the strong evidence (attacking or
+  being attacked by a *known* mob, heals, kills, pet ownership); pass 1 is the softer
+  inference from who swung at whom, in both directions (nothing damages a friendly except an
+  enemy — this game has no friendly fire).
+  - **A charmed mob is never a witness in pass 1, on either side.** Entities are keyed by
+    name and a generic name is not unique, so a charmed `a wan ghoul knight` shares its key
+    with the twin still fighting us — `A wan ghoul knight tries to slash a wan ghoul knight,
+    but misses!` is one real line. Trusting it as an attacker brands whoever the *twin*
+    mauls as a mob; trusting it as a target brands the groupmate hitting the twin. Both were
+    observed on the real log putting a **player** in the encounter list, and excluding it in
+    both directions is what removed them — including two (`Prisms`, `Rykkerr`) that the
+    pre-charm code was already inventing.
+  - The residual cost: a mob *only* ever touched by a charmed pet, that never hits anything
+    back, stays unclassified and gets no encounter. On the whole log that was one mob, in
+    which I dealt no damage.
 - **Stance timeline** — updated on every `Stance` event; each self damage event is tagged with the stance active at its timestamp (self only; other players' stances aren't in the log).
 - **Fight segmentation** (configurable): opens on first player→NPC damage after idle; closes when all engaged NPCs are slain, on **zoning** (`You have entered <zone>.` — you leave all mobs behind), **or** after `inactivityTimeout` s (default **90s**, wall-clock — a 3s tick closes abandoned fights with no new log lines). Named NPCs get friendly titles; trash groups by the active NPC set.
 - **Encounter liveness**: a per-NPC pane is *active* only while the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner dies), and it has seen activity within the inactivity window (~90s).
@@ -166,7 +209,8 @@ interface EncounterView {             // one per-mob card
 }
 
 interface EncounterCard {             // one row of that card
-  name: string; kind: "self" | "player"; isSelf: boolean;  // pets fold into their owner
+  name: string; kind: "self" | "player" | "pet"; isSelf: boolean;
+  ownerName?: string;                 // charmed pets only, when a cast identified the charmer
   pct: number;                        // share of damage dealt to the mob (the bar)
   activeSec: number;                  // their engaged window — what all three rates divide by
   damage: MetricStat; healing: MetricStat; taken: MetricStat;
@@ -229,7 +273,14 @@ interface MetricStat {                // every metric group has this one shape
   headline rate readable instead of suspicious. It stays deliberately quiet: everyone starts a second
   or two after the mob is first seen, so the accent fires only below **70%** of the encounter —
   otherwise every row lights up and the flag stops meaning anything.
-- **Your own row is always expanded** in every encounter table — the damage breakdown line (total, melee/spell/DoT split, crits) and top ability chips render without a click, marked with a blue left rule. Everyone else toggles on click.
+- **A charmed pet gets its own row**, never folded into its charmer — a summoned pet folds
+  (it is an extension of its owner's damage), but a charm is a temporary, breakable thing
+  whose contribution is worth reading on its own, and it is often not even *our* charm. So
+  `kind: "pet"` on an encounter card always means charmed, and it reuses the row styling
+  pets already had. The mob keeps its own name, which reads exactly like the enemy it was a
+  moment ago, so a **⛓ glyph** carries the identity — at 540px the name is the first thing
+  the ellipsis eats — and the charmer's name rides beside it as a quiet tag when known.
+  Surfaced 91,180 damage across the real log that was previously invisible. — the damage breakdown line (total, melee/spell/DoT split, crits) and top ability chips render without a click, marked with a blue left rule. Everyone else toggles on click.
 - **Number formatting** (`components.tsx`, one `scaleK(n, at)` helper): k-notation past a per-context threshold, one decimal, dropped to zero decimals past 100k so the narrow columns don't overflow. Thresholds — **10k** for the dps/hps columns, **2k** for the tank column (tanking totals climb fastest), **1k** inside the encounter drill-down lines.
 - **My DPS panel** — stance-combo cards (avg DPS per melee+invocation over the window) plus an **encounter history chart** below them, both driven by the same 10/25/50 window chip.
   - Each card carries the combo's **defensive cost and usage** under its DPS — `🛡 <taken>/s · ⏱ <share>%` — so a combo that out-damages the rest on 5% of your time reads as the thin sample it is. The full sentence (including the raw seconds behind the share) is in the card's `title`.

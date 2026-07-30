@@ -447,8 +447,23 @@ function EncounterRow({
           <div className="fill" style={{ width: `${(card.pct / maxPct) * 100}%` }} />
           <div className="etxt">
             <span className="ename">
+              {/* A charmed mob fights for us under its own name, which reads exactly like
+                  the enemy it was a moment ago — the glyph is what tells them apart. */}
+              {card.kind === "pet" && (
+                <span
+                  className="charm"
+                  title={
+                    `${card.name} is charmed` +
+                    (card.ownerName ? ` by ${card.ownerName}` : "") +
+                    " — its damage counts for our side while the charm holds."
+                  }
+                >
+                  ⛓
+                </span>
+              )}
               {card.name}
               {card.isSelf && <span className="tag you">you</span>}
+              {card.ownerName && <span className="tag owner">{card.ownerName}</span>}
             </span>
             <span className="epct">{card.pct}%</span>
           </div>

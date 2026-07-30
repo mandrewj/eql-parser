@@ -159,6 +159,69 @@ test("pet — NPC dialogue is not mistaken for a pet", () => {
   assert.equal(parseLine(TS + "Orc taskmaster says, 'Centurions!  Come join the fight!'"), null);
 });
 
+test("charm — both landing messages name the mob and no caster", () => {
+  for (const [line, mob] of [
+    ["a lava beetle's eyes glaze over.", "a lava beetle"],
+    ["a greater dark bone has been charmed.", "a greater dark bone"],
+    // A name ending in "s" still splits at the possessive, not inside itself.
+    ["a greater ice bones's eyes glaze over.", "a greater ice bones"],
+  ] as const) {
+    const e = parseLine(TS + line);
+    assert.equal(e?.type, "charm", line);
+    if (e?.type !== "charm") continue;
+    assert.equal(e.state, "on");
+    assert.equal(e.who, mob);
+    assert.equal(e.spell, undefined, "the landing line never names the spell or its caster");
+  }
+});
+
+test("charm — a cast names the caster but no target, for the engine to pair up", () => {
+  for (const [line, caster, spell] of [
+    ["Phatez begins casting Charm III.", "Phatez", "Charm III"],
+    ["Bloodgurgler begins casting Beguile IV.", "Bloodgurgler", "Beguile IV"],
+    ["You begin singing Solon's Bewitching Bravura V.", "You", "Solon's Bewitching Bravura V"],
+  ] as const) {
+    const e = parseLine(TS + line);
+    assert.equal(e?.type, "charm", line);
+    if (e?.type !== "charm") continue;
+    assert.equal(e.state, "cast");
+    assert.equal(e.who, caster);
+    assert.equal(e.spell, spell);
+  }
+});
+
+test("charm — only charm-named spells count as a charm cast", () => {
+  assert.equal(parseLine(TS + "You begin casting Greater Healing III."), null);
+  assert.equal(parseLine(TS + "Orson begins casting Expulse Undead."), null);
+});
+
+test("charm — breaks, by wear-off and by the song ending", () => {
+  const worn = parseLine(TS + "Your Solon's Bewitching Bravura spell has worn off of an imp protector.");
+  assert.equal(worn?.type, "charm");
+  if (worn?.type !== "charm") return;
+  assert.equal(worn.state, "off");
+  assert.equal(worn.who, "an imp protector");
+
+  // The song ending names the song and no mob: it breaks every charm that song holds.
+  const fizzle = parseLine(TS + "You miss a note, bringing your Solon's Bewitching Bravura to a close!");
+  assert.equal(fizzle?.type, "charm");
+  if (fizzle?.type !== "charm") return;
+  assert.equal(fizzle.state, "off");
+  assert.equal(fizzle.who, "");
+  assert.equal(fizzle.spell, "Solon's Bewitching Bravura");
+});
+
+test("charm — a non-charm spell wearing off is not a charm break", () => {
+  assert.equal(parseLine(TS + "Your Chords of Dissonance spell has worn off of a lava beetle."), null);
+  assert.equal(parseLine(TS + "Your Selo's Accelerando spell has worn off of Futor."), null);
+});
+
+test("charm — chatter mentioning charm is not an event", () => {
+  assert.equal(parseLine(TS + "Nottle tells General1:2, 'can enchanters not turn charmed pets taunt on?'"), null);
+  // My own charm ending is about me, not about a pet of mine.
+  assert.equal(parseLine(TS + "You are no longer charmed."), null);
+});
+
 test("miss — you", () => {
   const e = parseLine(TS + "You try to crush orc legionnaire, but miss!");
   assert.equal(e?.type, "miss");

@@ -27,6 +27,7 @@ function main(): void {
     stance: 0,
     heal: 0,
     pet: 0,
+    charm: 0,
     zone: 0,
     progress: 0,
   };

@@ -261,6 +261,12 @@ body { margin: 0; }
 .etxt { position: relative; display: flex; justify-content: space-between; align-items: center; height: 100%; padding: 0 0.4rem; font-size: 0.74rem; gap: 0.4rem; }
 .ename { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 1px #0006; }
 .ename .tag.you { margin-left: 0.3rem; }
+/* A charmed mob keeps its own mob name, so the glyph carries the identity, not the
+   text — at this width the name is the first thing the ellipsis eats. */
+.charm { margin-right: 0.25rem; opacity: 0.85; font-weight: 400; }
+/* The charmer's name is context, never the row's own subject — so it stays quieter than
+   the `you` tag, but still needs to read against the pet bar's fill underneath it. */
+.ename .tag.owner { background: #0b0f16aa; color: #b9c6da; font-weight: 500; margin-left: 0.3rem; }
 .epct { font-variant-numeric: tabular-nums; opacity: 0.9; font-weight: 600; }
 .enum { text-align: right; font-size: 0.74rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .erow.ehead .enum { font-size: 0.6rem; font-weight: 400; text-transform: uppercase; color: var(--muted); }

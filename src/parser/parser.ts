@@ -4,6 +4,7 @@
 // so we prefilter before running the (heavier) regexes.
 
 import type {
+  CharmEvent,
   CombatEvent,
   DeathEvent,
   DotTickEvent,
@@ -21,7 +22,7 @@ const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
 const RELEVANT_RE =
-  /damage|slain|but |assume |heal|Master|invocation|entered|a level|ability|better at|experience/;
+  /damage|slain|but |assume |heal|Master|invocation|entered|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching/;
 
 // Zoning is a hard fight boundary: "You have entered The Greater Faydark."
 // (guard against the non-zone "You have entered an area where …" warning).
@@ -69,6 +70,57 @@ const MELEE_OTHER_RE = new RegExp(
 // optional HoT phrase, effective/raw amounts, spell, and a trailing " (Critical)" flag.
 const HEAL_RE =
   /^(.+?) (?:heals|healed) (.+?)(?: over time)? for (\d+)(?: \((\d+)\))? hit points(?: by (.+?))?[.!](?: \([^)]+\))?$/;
+
+// --- charm (a mob turned into someone's pet) --------------------------------
+// Charm lines are ~0.07% of a real log, so the whole block sits behind one token
+// test and is tried after every damage pattern — the hot path never runs these.
+const CHARM_HINT_RE = /glaze|[Cc]harm|Beguile|Bewitching/;
+// Two landing messages, both naming the mob and neither naming the caster.
+const CHARM_GLAZE_RE = /^(.+?)'s eyes glaze over\.$/;
+const CHARM_ON_RE = /^(.+?) has been charmed\.$/;
+// The cast names the caster but not its target, which is why ownership is the
+// engine's job: it pairs a landing with a charm cast a few seconds earlier.
+const CHARM_CAST_RE = /^(.+?) begins? (?:casting|singing) (.+?)\.$/;
+const CHARM_WORE_OFF_RE = /^Your (.+?) spell has worn off of (.+?)\.$/;
+// A bard holds charm with a song, so the charm dies when the song does. This line
+// names the song and no mob at all — it breaks every charm that song is holding.
+const CHARM_FIZZLE_RE = /^You miss a note, bringing your (.+?) to a close!$/;
+// Spell names that identify a charm. Verified against a real 742k-line log: Charm
+// and Charm III, Beguile I–IV (enchanter), and Solon's Bewitching Bravura (bard).
+// The rest are the classic-EQ charm family, listed so another class's charm isn't
+// silently missed — an unlisted one still parses as a charm, it just lands without
+// an owner, because only the *cast* line is matched against this.
+const CHARM_SPELL_RE = /\b(?:charm|beguile|bewitching bravura|allure|cajoling|dominate)\b/i;
+
+/** Charm lines, tried last and only when a charm token is present. */
+function parseCharm(tsMs: number, body: string): CharmEvent | null {
+  const ev = (state: CharmEvent["state"], who: string, spell?: string): CharmEvent => ({
+    type: "charm",
+    tsMs,
+    raw: body,
+    state,
+    who: normName(who),
+    ...(spell ? { spell } : {}),
+  });
+
+  let m = CHARM_GLAZE_RE.exec(body);
+  if (m) return ev("on", m[1]!);
+
+  m = CHARM_ON_RE.exec(body);
+  if (m) return ev("on", m[1]!);
+
+  // Only charm-named spells matter here; "You begin casting Healing." is not one.
+  m = CHARM_CAST_RE.exec(body);
+  if (m) return CHARM_SPELL_RE.test(m[2]!) ? ev("cast", m[1]!, m[2]!) : null;
+
+  m = CHARM_WORE_OFF_RE.exec(body);
+  if (m) return CHARM_SPELL_RE.test(m[1]!) ? ev("off", m[2]!, m[1]!) : null;
+
+  m = CHARM_FIZZLE_RE.exec(body);
+  if (m) return CHARM_SPELL_RE.test(m[1]!) ? ev("off", "", m[1]!) : null;
+
+  return null;
+}
 
 // --- character progression (self only) --------------------------------------
 const LEVEL_RE = /^You have gained a level! Welcome to level (\d+)!$/;
@@ -290,8 +342,14 @@ export function parseLine(raw: string): CombatEvent | null {
     return ev;
   }
 
-  // Progression last: these lines are rare next to damage, so the hot path never
-  // pays for them. One cheap prefix test gates the whole block.
+  // Charm and progression last: both are rare next to damage, so the hot path never
+  // pays for them. One cheap token test gates each block.
+  if (CHARM_HINT_RE.test(body)) {
+    // Falls through rather than returning: an AA named for a charm spell is a
+    // progression line that happens to carry a charm token.
+    const charm = parseCharm(tsMs, body);
+    if (charm) return charm;
+  }
   if (/^You (?:have )?(?:gain|become|improved)/.test(body)) return parseProgress(tsMs, body);
 
   return null;

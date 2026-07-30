@@ -603,6 +603,194 @@ test("a friendly death does not erase that character's damage from the live figh
   assert.equal(enc.cards.find((c) => c.name === "Feydie")!.damage.total, 60);
 });
 
+// --- charmed pets ---------------------------------------------------------
+
+test("charm: a charmed mob's damage joins the table of the mob it is sent at", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush a lava beetle for 119 points of damage."), // still an enemy
+    L("01:00:00", "You begin singing Solon's Bewitching Bravura V."),
+    L("01:00:02", "a lava beetle's eyes glaze over."), // ours from here
+    L("01:00:10", "You strike a death beetle for 100 points of damage."),
+    L("01:00:11", "A lava beetle pierces a death beetle for 40 points of damage."),
+    L("01:00:12", "A lava beetle kicks a death beetle for 60 points of damage."),
+  ]);
+  const snap = engine.snapshot();
+
+  // The pet is no longer a mob being fought…
+  assert.deepEqual(
+    snap.activeEncounters.map((e) => e.name.toLowerCase()),
+    ["a death beetle"],
+    "a charmed mob must not show as an encounter of its own",
+  );
+
+  // …it is a row on the table of the mob it attacked, under its own name.
+  const enc = snap.activeEncounters[0]!;
+  const pet = enc.cards.find((c) => c.name.toLowerCase() === "a lava beetle")!;
+  assert.equal(pet.kind, "pet");
+  assert.equal(pet.damage.total, 100);
+  assert.equal(pet.ownerName, "Sanluen", "the charm cast two seconds earlier names the owner");
+  assert.equal(enc.cards.find((c) => c.isSelf)!.damage.total, 100);
+  assert.equal(enc.total, 200, "the encounter total counts both");
+});
+
+test("charm: the mob's life before the charm is banked as its own encounter", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush a lava beetle for 119 points of damage."),
+    L("01:00:02", "a lava beetle's eyes glaze over."),
+    L("01:00:10", "A lava beetle kicks a death beetle for 60 points of damage."),
+  ]);
+  const done = engine.snapshot().recentEncounters;
+  assert.equal(done.length, 1, "the pre-charm fight against it is a finished encounter");
+  assert.equal(done[0]!.name.toLowerCase(), "a lava beetle");
+  assert.equal(done[0]!.cards.find((c) => c.isSelf)!.damage.total, 119);
+});
+
+test("charm: an unattributed charm still gets a row, just without an owner", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You strike a death beetle for 10 points of damage."),
+    L("01:00:02", "a lava beetle's eyes glaze over."), // nobody's cast to pair it with
+    L("01:00:11", "A lava beetle pierces a death beetle for 40 points of damage."),
+  ]);
+  const pet = engine
+    .snapshot()
+    .activeEncounters[0]!.cards.find((c) => c.name.toLowerCase() === "a lava beetle")!;
+  assert.equal(pet.kind, "pet");
+  assert.equal(pet.ownerName, undefined);
+});
+
+test("charm: a cast too long before the landing does not name an owner", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "Phatez begins casting Charm III."),
+    L("01:00:20", "a lava beetle's eyes glaze over."), // 20s later — a different charm
+    L("01:00:21", "You strike a death beetle for 10 points of damage."),
+    L("01:00:22", "A lava beetle pierces a death beetle for 40 points of damage."),
+  ]);
+  const pet = engine
+    .snapshot()
+    .activeEncounters[0]!.cards.find((c) => c.name.toLowerCase() === "a lava beetle")!;
+  assert.equal(pet.ownerName, undefined);
+});
+
+test("charm: a lingering DoT ticking on the pet does not break the charm", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You begin singing Solon's Bewitching Bravura V."),
+    L("01:00:02", "a lava beetle's eyes glaze over."),
+    L("01:00:10", "You strike a death beetle for 100 points of damage."),
+    // My AoE DoT was on it before the charm and keeps ticking for its full duration.
+    L("01:00:15", "A lava beetle has taken 38 damage from your Chords of Dissonance V."),
+    L("01:00:20", "A lava beetle kicks a death beetle for 60 points of damage."),
+  ]);
+  const encs = engine.snapshot().activeEncounters;
+  assert.equal(
+    encs.some((e) => e.name.toLowerCase() === "a lava beetle"),
+    false,
+    "DoT residue is not the charm breaking",
+  );
+  const enc = encs.find((e) => e.name.toLowerCase() === "a death beetle")!;
+  assert.equal(enc.cards.find((c) => c.name.toLowerCase() === "a lava beetle")!.damage.total, 60);
+});
+
+test("charm: trading blows with me breaks it, and the mob is an enemy again", () => {
+  let clock = at("01:01:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You begin singing Solon's Bewitching Bravura V."),
+    L("01:00:02", "a lava beetle's eyes glaze over."),
+    L("01:00:10", "A lava beetle kicks a death beetle for 60 points of damage."),
+    L("01:00:30", "A lava beetle bites YOU for 25 points of damage."), // charm broke
+    L("01:00:31", "You crush a lava beetle for 80 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "a lava beetle");
+  assert.ok(enc, "an ex-pet fighting me is an encounter again");
+  assert.equal(enc!.cards.find((c) => c.isSelf)!.damage.total, 80, "its new life starts from the break");
+});
+
+test("charm: a swing already in the air when the charm lands does not break it", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:02", "a lava beetle's eyes glaze over."),
+    L("01:00:03", "A lava beetle bites YOU for 25 points of damage."), // one second later
+    L("01:00:10", "A lava beetle kicks a death beetle for 60 points of damage."),
+  ]);
+  const names = engine.snapshot().activeEncounters.map((e) => e.name.toLowerCase());
+  assert.equal(names.includes("a lava beetle"), false, "still ours after a late-landing blow");
+});
+
+test("charm: a pet turning on its own charmer breaks it", () => {
+  let clock = at("01:01:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "Phatez begins casting Charm III."),
+    L("01:00:02", "a greater dark bone has been charmed."),
+    L("01:00:10", "A greater dark bone slashes a werebat for 32 points of damage."),
+    L("01:00:40", "A greater dark bone kicks Phatez for 14 points of damage."), // it broke loose
+    L("01:00:41", "You crush a greater dark bone for 50 points of damage."), // so we kill it
+  ]);
+  // Phatez is a groupmate throughout — never a mob the party appears to be fighting.
+  const names = engine.snapshot().activeEncounters.map((e) => e.name.toLowerCase());
+  assert.equal(names.includes("phatez"), false, "the charmer must not read as a mob");
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "a greater dark bone");
+  assert.ok(enc, "the ex-pet is an enemy again");
+  assert.equal(enc!.cards.find((c) => c.isSelf)!.damage.total, 50);
+});
+
+test("charm: the song ending breaks every charm that song was holding", () => {
+  let clock = at("01:01:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You begin singing Solon's Bewitching Bravura V."),
+    L("01:00:02", "a lava beetle's eyes glaze over."),
+    L("01:00:10", "A lava beetle kicks a death beetle for 60 points of damage."),
+    L("01:00:20", "You miss a note, bringing your Solon's Bewitching Bravura to a close!"),
+    L("01:00:25", "You crush a lava beetle for 80 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "a lava beetle");
+  assert.ok(enc, "with the song gone the mob is an enemy again");
+  assert.equal(enc!.cards.find((c) => c.isSelf)!.damage.total, 80);
+});
+
+test("charm: a charm does not carry over to a same-named respawn", () => {
+  let clock = at("01:01:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:02", "a lava beetle's eyes glaze over."),
+    L("01:00:10", "A lava beetle kicks a death beetle for 60 points of damage."),
+    L("01:00:20", "A lava beetle has been slain by a death beetle!"), // my pet dies
+    // A different beetle of the same name wanders up. It is not charmed.
+    L("01:00:40", "You crush a lava beetle for 30 points of damage."),
+    L("01:00:41", "A lava beetle bites YOU for 12 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "a lava beetle");
+  assert.ok(enc, "the respawn is a mob, not an inherited pet");
+  assert.equal(enc!.cards.find((c) => c.isSelf)!.damage.total, 30);
+});
+
+test("charm: my damage to my own pet never counts toward my personal DPS", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You begin singing Solon's Bewitching Bravura V."),
+    L("01:00:02", "a lava beetle's eyes glaze over."),
+    L("01:00:05", "A lava beetle has taken 38 damage from your Chords of Dissonance V."),
+    L("01:00:10", "You strike a death beetle for 100 points of damage."),
+    L("01:00:12", "You have slain a death beetle!"),
+  ]);
+  const point = engine.snapshot().encounterHistory[0]!;
+  assert.equal(point.name.toLowerCase(), "a death beetle");
+  assert.equal(point.damage, 100, "the DoT residue on my own pet is not encounter damage");
+});
+
 test("milestones: an AA rank-up carries the rank in its label", () => {
   const engine = feed([L("01:00:01", "You have improved Lay on Hands 3 at a cost of 0 ability points.")]);
   assert.equal(engine.snapshot().milestones[0]!.label, "Lay on Hands 3");

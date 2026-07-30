@@ -12,6 +12,7 @@
 
 import type {
   AbilityBreakdown,
+  CharmEvent,
   CombatEvent,
   CombatantStats,
   DamageType,
@@ -35,6 +36,25 @@ import type {
 } from "../types.js";
 
 const STANCE_DIMS: StanceDim[] = ["melee", "invocation"];
+
+/** How long after a charm cast a landing can still be attributed to it. Measured on a
+ *  real log: 128 of 153 charm landings sat within 3s of a charm cast, and only one more
+ *  arrived by 6s — so widening the window buys almost nothing and risks crediting the
+ *  wrong enchanter in a busy camp. Landings outside it simply get no owner. */
+const CHARM_ATTRIB_MS = 3000;
+
+/** A swing already in the air when the charm lands still connects, so the mob hits a
+ *  friendly a second *after* becoming a pet. Blows inside this window therefore can't
+ *  be read as the charm breaking. (Real case: a wan ghoul knight glazed at 03:35:56
+ *  and struck Hugh at 03:35:57, then spent the rest of the fight on our side.) */
+const CHARM_GRACE_MS = 3000;
+
+/** Who holds a charm, and since when. */
+interface CharmHold {
+  ownerKey: string | null; // the charmer, when a cast within CHARM_ATTRIB_MS identified one
+  spell: string | null;
+  sinceMs: number;
+}
 
 export interface EngineOptions {
   selfName: string; // resolved from the log filename; "You" maps to this
@@ -217,6 +237,13 @@ export class Engine {
   // Same, for damage *taken* — so a combo's defensive cost sits next to its DPS.
   private readonly selfTakenComboLog: Array<{ combo: string; amount: number; ts: number }> = [];
   private readonly petOwners = new Map<string, string>(); // petKey → ownerKey (global)
+  // Mobs currently fighting on our side. Unlike `petOwners` this is a *window*, not a
+  // fact: the same mob is an enemy before the charm and again after it breaks, so the
+  // engine closes out its encounter at each boundary rather than picking one side.
+  private readonly charmed = new Map<string, CharmHold>();
+  // The last few seconds of charm casts, purely to put an owner on the next landing —
+  // the landing line never names one. Trimmed to CHARM_ATTRIB_MS, so it stays tiny.
+  private charmCasts: Array<{ casterKey: string; spell: string; ts: number }> = [];
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
   // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
@@ -272,9 +299,18 @@ export class Engine {
       this.petOwners.set(pk, this.keyOf(ev.owner));
       return;
     }
+    if (ev.type === "charm") {
+      // Before the inactivity check below: a charm landing is not combat activity and
+      // must not hold a dead fight open, but it does need the fight that is still live.
+      this.applyCharm(ev);
+      return;
+    }
     if (ev.type === "zone") {
       // Zoning leaves all mobs behind — end the current fight immediately.
       if (this.current) this.closeFight(this.current.lastActivityMs);
+      // A charmed pet doesn't zone with you either.
+      this.charmed.clear();
+      this.charmCasts = [];
       this.pushMilestone(ev.tsMs, "zone", ev.zone, `Zoned into ${ev.zone}`);
       return;
     }
@@ -579,6 +615,100 @@ export class Engine {
     return `${this.currentStances.melee}|${this.currentStances.invocation}`;
   }
 
+  // --- charm --------------------------------------------------------------
+
+  private applyCharm(ev: CharmEvent): void {
+    if (ev.state === "cast") {
+      this.charmCasts.push({ casterKey: this.keyOf(ev.who), spell: ev.spell ?? "", ts: ev.tsMs });
+      this.trimCharmCasts(ev.tsMs);
+      return;
+    }
+    if (ev.state === "off") {
+      // An empty `who` is a song ending: it breaks every charm that song is holding.
+      if (ev.who) this.breakCharm(this.keyOf(ev.who));
+      else {
+        for (const [key, hold] of [...this.charmed]) {
+          if (hold.spell === ev.spell) this.breakCharm(key);
+        }
+      }
+      return;
+    }
+
+    const key = this.keyOf(ev.who);
+    this.see(key, ev.who);
+    const held = this.charmed.get(key);
+    if (held) {
+      // A bard's song re-lands on every pulse. That is the same pet, not a new one —
+      // re-splitting its encounter here would shred the fight into one-tick slivers.
+      // A later pulse can still name the owner an earlier one missed.
+      held.ownerKey ??= this.charmOwner(ev.tsMs);
+      return;
+    }
+
+    const f = this.current;
+    if (f) {
+      // The mob was an enemy until this instant. Bank what it did and what was done to
+      // it as a finished encounter, then wipe its tracking, so the pet's row starts from
+      // zero instead of inheriting the health bar we just chewed through. This is the
+      // same reset a death does, for the same reason: one name, two separate lives.
+      const { friendly, npc } = this.resolveKinds(f);
+      if (npc.has(key)) {
+        this.pushEncounter(f, key, ev.tsMs, friendly);
+        this.resetNpcTracking(f, key);
+      }
+      f.npcSeeds.delete(key);
+      // Stop it holding the fight open: an un-killed pet would otherwise keep the
+      // engaged set non-empty until the inactivity timeout.
+      f.aliveEngaged.delete(key);
+    }
+    this.charmed.set(key, {
+      ownerKey: this.charmOwner(ev.tsMs),
+      spell: ev.spell ?? null,
+      sinceMs: ev.tsMs,
+    });
+  }
+
+  private trimCharmCasts(tsMs: number): void {
+    let drop = 0;
+    while (drop < this.charmCasts.length && tsMs - this.charmCasts[drop]!.ts > CHARM_ATTRIB_MS) drop++;
+    if (drop > 0) this.charmCasts.splice(0, drop);
+  }
+
+  /** The most recent charm cast still inside the attribution window, if any. */
+  private charmOwner(tsMs: number): string | null {
+    this.trimCharmCasts(tsMs);
+    const last = this.charmCasts[this.charmCasts.length - 1];
+    return last && tsMs >= last.ts ? last.casterKey : null;
+  }
+
+  /** End a charm: the mob is an enemy again, so its pet-era tracking is wiped and the
+   *  next blow it trades opens a fresh encounter. Its damage to mobs that already died
+   *  is untouched — those encounters were banked when they were finalized. */
+  private breakCharm(key: string): void {
+    if (!this.charmed.delete(key)) return;
+    if (this.current) this.resetNpcTracking(this.current, key);
+  }
+
+  /** The charm breaks that need no message — which is the only kind another player's
+   *  charm ever gets, since the log announces theirs to nobody. Two signals:
+   *
+   *  - a pet turning on its own charmer, the classic break (real case: a greater dark
+   *    bone healed by Phatez at 23:17:36, kicking him at 23:17:41);
+   *  - blows traded with me in either direction, which covers a pet whose charmer we
+   *    never identified — you cannot damage your own charmed pet, nor it you.
+   *
+   *  Both wait out the grace window, so a swing already in the air when the charm landed
+   *  doesn't un-charm a pet that goes on to fight for us for the next half minute. */
+  private maybeBreakCharm(aKey: string, tKey: string, tsMs: number): void {
+    const broke = (key: string): boolean => {
+      const held = this.charmed.get(key);
+      return held !== undefined && tsMs - held.sinceMs > CHARM_GRACE_MS;
+    };
+    if (this.charmed.get(aKey)?.ownerKey === tKey && broke(aKey)) return this.breakCharm(aKey);
+    const key = tKey === this.selfKey ? aKey : aKey === this.selfKey ? tKey : null;
+    if (key !== null && key !== this.selfKey && broke(key)) this.breakCharm(key);
+  }
+
   // --- identity -----------------------------------------------------------
 
   private keyOf(name: string): string {
@@ -672,6 +802,11 @@ export class Engine {
     attacker: string,
     target: string,
     tsMs: number,
+    /** Whether this blow is evidence a charm broke. A DoT cast before the charm keeps
+     *  ticking on the mob for its full duration afterwards — that is residue, not a
+     *  fresh decision to attack, and reading it as a break un-charms a healthy pet a
+     *  few seconds in. Real breaks always bring melee or a nuke with them. */
+    breaksCharm = true,
   ): { f: FightState; aKey: string; tKey: string } {
     const f = this.openFight(tsMs);
     f.lastActivityMs = tsMs;
@@ -679,7 +814,17 @@ export class Engine {
     const tKey = this.keyOf(target);
     this.see(aKey, attacker);
     this.see(tKey, target);
-    f.damagePairs.push([aKey, tKey]);
+    // Before the NPC seeding below, so a pet that just broke loose is seeded as the
+    // enemy it now is rather than being held friendly by a stale charm.
+    if (breaksCharm) this.maybeBreakCharm(aKey, tKey, tsMs);
+    // A blow from a pet still inside its grace window is pre-charm aggression that merely
+    // landed late, so it is no evidence of anyone's faction. `damagePairs` feeds only the
+    // classifier, so dropping it costs no damage accounting. (Real case: a wan ghoul knight
+    // glazed at 03:35:56 and struck the player Hugh at 03:35:57 — without this, Hugh reads
+    // as a mob the group is fighting. Its blows after the window classify as normal, which
+    // is what still identifies the mobs a pet is genuinely sent at.)
+    const settling = this.charmed.get(aKey);
+    if (!settling || tsMs - settling.sinceMs > CHARM_GRACE_MS) f.damagePairs.push([aKey, tKey]);
     const pk = `${aKey}>${tKey}`;
     if (!f.pairFirst.has(pk)) f.pairFirst.set(pk, tsMs); // first attack/contact (hit or miss)
     if (!f.firstSeen.has(aKey)) f.firstSeen.set(aKey, tsMs);
@@ -699,7 +844,7 @@ export class Engine {
 
   private recordDamage(ev: Extract<CombatEvent, { type: "melee" | "spell" | "dot" }>): void {
     const attacker = ev.type === "melee" ? ev.attacker : ev.type === "spell" ? ev.owner : ev.caster;
-    const { f, aKey, tKey } = this.recordInteraction(attacker, ev.target, ev.tsMs);
+    const { f, aKey, tKey } = this.recordInteraction(attacker, ev.target, ev.tsMs, ev.type !== "dot");
 
     const inc = f.targetIncoming.get(tKey) ?? { name: this.nameOf(tKey), total: 0 };
     inc.total += ev.amount;
@@ -774,6 +919,9 @@ export class Engine {
     if (kKey && killer) this.see(kKey, killer);
     f.deaths.push({ victim: vKey, killer: kKey, killerSelf });
     if (killerSelf) f.npcSeeds.add(vKey);
+    // A charm dies with its holder. Leaving it set would hand the charm to the next
+    // mob of the same name — "a lava beetle" is not a unique creature.
+    this.charmed.delete(vKey);
     // My own death is the single biggest explanation for a collapsed DPS bar — mark it.
     if (vKey === this.selfKey) {
       const by = kKey ? this.nameOf(kKey) : "something";
@@ -917,10 +1065,14 @@ export class Engine {
       const activeDur = Math.max(1, (endMs - activeStart) / 1000);
 
       const takenAcc = f.perTarget.get(ownerKey)?.get(npcKey) ?? newMetric();
+      // A summoned pet folded into its owner above and never reaches here, so a "pet"
+      // card is always a charmed mob — its own row, per the owner's row alongside it.
+      const charm = this.charmed.get(ownerKey);
       return {
         name: this.nameOf(ownerKey),
-        kind: ownerKey === this.selfKey ? "self" : "player",
+        kind: ownerKey === this.selfKey ? "self" : charm ? "pet" : "player",
         isSelf: ownerKey === this.selfKey,
+        ...(charm?.ownerKey ? { ownerName: this.nameOf(charm.ownerKey) } : {}),
         damage: this.toStat(acc, activeDur),
         healing: rateStat(healByHealer.get(ownerKey) ?? 0, activeDur),
         taken: this.toStat(takenAcc, activeDur),
@@ -956,36 +1108,63 @@ export class Engine {
   // --- classification + view building -------------------------------------
 
   private resolveKinds(f: FightState): { friendly: Set<string>; npc: Set<string> } {
-    const friendly = new Set<string>([this.selfKey]);
+    // A charmed mob seeds `friendly` as strongly as the self does. Every rule below
+    // guards on `!friendly.has(...)` before adding to `npc`, so seeding it here is also
+    // what stops the propagation walking it back to an enemy on its pre-charm swings.
+    const friendly = new Set<string>([this.selfKey, ...this.charmed.keys()]);
     const npc = new Set<string>(f.npcSeeds);
+    for (const key of this.charmed.keys()) npc.delete(key);
 
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const [a, t] of f.damagePairs) {
-        if (npc.has(t) && !npc.has(a) && !friendly.has(a)) (friendly.add(a), (changed = true));
-        if (npc.has(a) && !npc.has(t) && !friendly.has(t)) (friendly.add(t), (changed = true));
-        if (friendly.has(a) && a !== t && !friendly.has(t) && !npc.has(t)) (npc.add(t), (changed = true));
-      }
-      // Heals connect same-faction pairs.
-      for (const [h, t] of f.healPairs) {
-        if (friendly.has(h) && !friendly.has(t) && !npc.has(t)) (friendly.add(t), (changed = true));
-        if (friendly.has(t) && !friendly.has(h) && !npc.has(h)) (friendly.add(h), (changed = true));
-        if (npc.has(h) && !npc.has(t) && !friendly.has(t)) (npc.add(t), (changed = true));
-        if (npc.has(t) && !npc.has(h) && !friendly.has(h)) (npc.add(h), (changed = true));
-      }
-      for (const d of f.deaths) {
-        if (d.killer && friendly.has(d.killer) && !friendly.has(d.victim) && !npc.has(d.victim))
-          (npc.add(d.victim), (changed = true));
-        if (friendly.has(d.victim) && d.killer && !friendly.has(d.killer) && !npc.has(d.killer))
-          (npc.add(d.killer), (changed = true));
-        if (d.killer && npc.has(d.killer) && !friendly.has(d.victim) && !npc.has(d.victim))
-          (friendly.add(d.victim), (changed = true));
-      }
-      // A pet shares its owner's faction.
-      for (const [pet, owner] of this.petOwners) {
-        if (friendly.has(owner) && !friendly.has(pet) && !npc.has(pet)) (friendly.add(pet), (changed = true));
-        if (npc.has(owner) && !npc.has(pet) && !friendly.has(pet)) (npc.add(pet), (changed = true));
+    // Two passes, in descending order of how much the evidence can be trusted. Every rule
+    // guards on "not already classified", so whichever fires first wins — which used to be
+    // an accident of log order. Running them in tiers lets the good evidence win: pass 0 is
+    // attacking or being attacked by a *known* mob, heals, kills and pet ownership; pass 1
+    // is the softer inference from who swung at whom.
+    for (const phase of [0, 1]) {
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const [a, t] of f.damagePairs) {
+          if (npc.has(t) && !npc.has(a) && !friendly.has(a)) (friendly.add(a), (changed = true));
+          if (npc.has(a) && !npc.has(t) && !friendly.has(t)) (friendly.add(t), (changed = true));
+          if (phase < 1 || a === t) continue;
+          // A friendly's choice of target marks an enemy — but never a *charmed* one's.
+          // A charmed mob is the one unreliable witness in the log: entities are keyed by
+          // name and a generic name is not unique, so a charmed "a wan ghoul knight" shares
+          // its key with the twin still fighting us ("A wan ghoul knight tries to slash a
+          // wan ghoul knight, but misses!" is one real line), and whoever that twin mauls
+          // would read as a mob — including the groupmate it is actually mauling.
+          if (friendly.has(a) && !this.charmed.has(a) && !friendly.has(t) && !npc.has(t))
+            (npc.add(t), (changed = true));
+          // Nothing damages a friendly except an enemy — this game has no friendly fire.
+          // Without this a mob nobody but a charmed pet ever touched stays unclassified and
+          // gets no encounter, which is most of what another player's charm pet fights. A
+          // charmed *target* is excluded for the same shared-key reason as above, mirrored:
+          // "Hugh kicks a wan ghoul knight" would otherwise brand Hugh an enemy, because
+          // the knight he is hitting is the twin of the one that is charmed.
+          if (friendly.has(t) && !this.charmed.has(t) && !friendly.has(a) && !npc.has(a))
+            (npc.add(a), (changed = true));
+        }
+        // Heals connect same-faction pairs.
+        for (const [h, t] of f.healPairs) {
+          if (friendly.has(h) && !friendly.has(t) && !npc.has(t)) (friendly.add(t), (changed = true));
+          if (friendly.has(t) && !friendly.has(h) && !npc.has(h)) (friendly.add(h), (changed = true));
+          if (npc.has(h) && !npc.has(t) && !friendly.has(t)) (npc.add(t), (changed = true));
+          if (npc.has(t) && !npc.has(h) && !friendly.has(h)) (npc.add(h), (changed = true));
+        }
+        for (const d of f.deaths) {
+          if (d.killer && friendly.has(d.killer) && !friendly.has(d.victim) && !npc.has(d.victim))
+            (npc.add(d.victim), (changed = true));
+          if (friendly.has(d.victim) && d.killer && !friendly.has(d.killer) && !npc.has(d.killer))
+            (npc.add(d.killer), (changed = true));
+          if (d.killer && npc.has(d.killer) && !friendly.has(d.victim) && !npc.has(d.victim))
+            (friendly.add(d.victim), (changed = true));
+        }
+        // A pet shares its owner's faction.
+        for (const [pet, owner] of this.petOwners) {
+          if (friendly.has(owner) && !friendly.has(pet) && !npc.has(pet)) (friendly.add(pet), (changed = true));
+          if (npc.has(owner) && !npc.has(pet) && !friendly.has(pet)) (npc.add(pet), (changed = true));
+        }
       }
     }
     return { friendly, npc };
@@ -1016,10 +1195,14 @@ export class Engine {
     const byKey = new Map<string, { key: string; ownerKey: string | null; stats: CombatantStats }>();
     for (const c of f.combatants.values()) {
       const isSelf = c.key === this.selfKey;
+      // Only a *summoned* pet folds into its owner below, so `ownerKey` stays null for a
+      // charmed mob — it keeps its own row here exactly as it does in an encounter table.
       const ownerKey = this.petOwners.get(c.key) ?? null;
+      const charm = this.charmed.get(c.key);
+      const charmerKey = charm?.ownerKey ?? null;
       const kind = isSelf
         ? "self"
-        : ownerKey
+        : ownerKey || charm
           ? "pet"
           : npc.has(c.key)
             ? "npc"
@@ -1030,7 +1213,7 @@ export class Engine {
         name: c.name,
         kind,
         isSelf,
-        ...(ownerKey ? { ownerName: this.nameOf(ownerKey) } : {}),
+        ...(ownerKey || charmerKey ? { ownerName: this.nameOf((ownerKey ?? charmerKey)!) } : {}),
         damage: this.toStat(c.done, dur),
         healing: this.toStat(c.heal, dur),
         taken: this.toStat(c.taken, dur),

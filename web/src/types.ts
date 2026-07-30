@@ -125,8 +125,9 @@ export interface StanceSegment {
 
 export interface EncounterCard {
   name: string;
-  kind: EntityKind;
+  kind: EntityKind; // "pet" here always means a charmed mob — summoned pets fold into their owner
   isSelf: boolean;
+  ownerName?: string; // charmed pets only, and only when a charm cast identified the charmer
   damage: MetricStat; // damage this character did to the NPC (per-person active window)
   healing: MetricStat; // healing this character did during their active window
   taken: MetricStat; // damage this character took from the NPC
