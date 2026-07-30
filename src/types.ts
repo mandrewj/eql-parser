@@ -314,6 +314,9 @@ export interface EncounterCard {
    *  the same key and its blows are identical either way, so this row's figures are the
    *  whole exchange between the pair — an upper bound on the pet, not its output alone. */
   ambiguous?: boolean;
+  /** The owner is the best of several candidates of the casting class, not the only one.
+   *  Shown as a name either way — a blank helps nobody — but marked as inference. */
+  ownerGuess?: boolean;
   damage: MetricStat; // damage this character did to the NPC (per-person active window)
   healing: MetricStat; // healing this character did during their active window
   taken: MetricStat; // damage this character took from the NPC

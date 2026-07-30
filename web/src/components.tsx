@@ -475,7 +475,21 @@ function EncounterRow({
               )}
               {card.name}
               {card.isSelf && <span className="tag you">you</span>}
-              {card.ownerName && <span className="tag owner">{card.ownerName}</span>}
+              {card.ownerName && (
+                <span
+                  className={`tag owner ${card.ownerGuess ? "guess" : ""}`}
+                  title={
+                    card.ownerGuess
+                      ? `Best guess: ${card.ownerName}. Several of the casting class were in this ` +
+                        `fight, so the charm's landing message narrows it to a class but not a person — ` +
+                        `this is the one seen casting charms most often.`
+                      : `Charmed by ${card.ownerName}.`
+                  }
+                >
+                  {card.ownerName}
+                  {card.ownerGuess && "?"}
+                </span>
+              )}
               {/* Same name on both sides of the fight: the log cannot say which of the two
                   swung, so the figures are the pair's whole exchange. Marked rather than
                   hidden — the pet is a real participant and this is its true upper bound. */}

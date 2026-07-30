@@ -129,6 +129,9 @@ export interface EncounterCard {
   isSelf: boolean;
   ownerName?: string; // charmed pets only, and only when a charm cast identified the charmer
   ambiguous?: boolean; // charmed mob sharing a name with its target — figures are the pair's exchange
+  /** The owner is the best of several candidates of the casting class, not the only one.
+   *  Shown as a name either way — a blank helps nobody — but marked as inference. */
+  ownerGuess?: boolean;
   damage: MetricStat; // damage this character did to the NPC (per-person active window)
   healing: MetricStat; // healing this character did during their active window
   taken: MetricStat; // damage this character took from the NPC

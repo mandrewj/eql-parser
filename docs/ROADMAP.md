@@ -397,12 +397,43 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 - Mid-fight stance changes are rarer than expected — **1 encounter in 64** — because you don't
   reswitch during short trash pulls. It shows on the long boss fights, which is where it matters.
 
+## Post-v1 — Best-guess charm ownership, and a cleanup pass  ✅
+- Ambiguous charms now **name someone instead of nobody**. Ranking is by evidence — whoever has
+  been seen casting a charm this session, then whoever cast most recently — and the card marks it
+  with `ownerGuess` so the UI can append a `?` and italicise the name.
+- **A resolved owner is remembered per mob.** That turned out to matter more than the guessing:
+  a charm on a name we are also fighting breaks and re-infers constantly, and the re-inference
+  has no landing message to work from, so the pet kept reverting to unowned. Unattributed pet
+  damage fell 250,634 → **129,282** (76% of charmed-pet damage now owned); `Mirad` 18 → 39 rows.
+- Cleanups from the audit: dropped `SHIELD_ELEMENTS` (an exported table nothing read — the same
+  content lives in `LOG_FORMAT.md`, and a table no code consults drifts rather than helps), folded
+  two near-identical owner-resolution blocks into `resolveCharmOwner`, dropped an unused import,
+  and replaced the per-bucket `dominantComboIn` loop with a single pass (`comboPerBucket`).
+- **The single-pass rewrite is not a speedup and shouldn't be sold as one**: 0.59ms → 0.56ms per
+  `snapshot()`, inside the noise, because `comboSegments` is only ~210 entries on this log. What
+  it removes is a factor that grows with session length, plus a comment that had drifted — the
+  old one claimed it ran "once per encounter" when the timeline had made it run 40 times.
+  Verified byte-identical against the naive version over the whole log before landing.
+
 ## Backlog (engine already supports the shape)
-- Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
+- ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
+  cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now
+  identified in `LOG_FORMAT.md`. Every other damage line states its element inline, so the full
+  1,965-page spell scrape this entry imagined would buy nothing.
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the
   app: today the log file *is* the store and backfill re-derives everything in ~25s, so this only earns
   its keep across log rotations.
 - Optional true always-on-top overlay (revisit Tauri/Electron only if the browser window proves insufficient).
+
+### Charm/pet work that is still open
+- **The two unimplemented charm emotes** — `<mob> blinks.` (Druid/Shaman) and `<mob> moans.`
+  (Necromancer). Zero occurrences in 875k lines and generic enough to fire on ambient emotes, so
+  they wait for a log that actually shows one. The table in `spells.ts` already names them.
+- **139 pet rows (129k damage) still have no owner**, almost all because no `/who` ever covered the
+  charmer. A `/who` costs the user one keystroke; a nudge in the UI when an unowned pet appears would
+  convert most of them. Cheap, and the highest-value remaining charm item.
+- **Charm uptime** — the engine knows every charm window; "your pet was yours for 71% of that fight"
+  is a bard/enchanter metric nothing else reports.
 
 ### Weighed on 2026-07-29 and not taken (yet)
 Kept here so the reasoning isn't re-derived. Ranked by value-per-effort as judged then:
@@ -416,6 +447,19 @@ Kept here so the reasoning isn't re-derived. Ranked by value-per-effort as judge
   the two averages is visible on the chart instead of explained in a tooltip.
 - **`scaleK` past 100k** prints `1284k` rather than `1.28M` — visible on long boss fights and tank
   totals. One line, whenever it next annoys.
+
+### Weighed on 2026-07-30 and not taken
+- **An element dimension** (fire/cold/magic/poison/disease) alongside the melee/spell/dot split. Every
+  typed line now carries its element, so the data is *there* — but `DamageType` means mechanism, and
+  adding a second axis touches the types, the engine's `byType`, the drill-down row and the History
+  pane. Worth it only if "what resists me" becomes a question you're asking.
+- **Merging `EncounterTimeline` with `EncounterHistory`** — both draw diverging stance-coloured bars.
+  Left separate deliberately: the history chart also carries milestones, hover readout, an average
+  line and per-point titles, and folding the plain strip into it would cost more in options than it
+  saves in lines.
+- **Trimming `comboSegments`** — it grows for the life of the session (one entry per stance change,
+  ~210 over 875k lines). Bounded in practice, and everything that walks it is now single-pass, so
+  there is nothing to fix until a session gets far longer.
 - ~~**`.erow.pet` / `.erow.npc` fills are unreachable**~~ — `.erow.pet` is now the charmed-pet row,
   which is exactly the "mob as a row" this entry was holding the styling for. `.erow.npc` is still
   unreachable and still deliberate.

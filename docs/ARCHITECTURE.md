@@ -91,10 +91,17 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     inference** — the landing *message* identifies the spell, the spell identifies the caster's
     class ([`spells.ts`](../src/parser/spells.ts), from the wiki's `Cast on Other Message`
     field), and `/who` gives us everyone's classes. `<mob> has been charmed` means an Enchanter
-    cast it, so a fight holding exactly one Enchanter has exactly one candidate. Two, and the
-    pet stays unowned: a coin-flip attribution of someone's damage is worse than an honest
-    blank. This is what finally names another player's charm, whose cast line is usually not
-    echoed to our log at all — it took `Mirad` from absent to 18 rows and 33,875 damage.
+    cast it, so a fight holding exactly one Enchanter has exactly one candidate. This is what
+    finally names another player's charm, whose cast line is usually not echoed to our log.
+  - **With several candidates it still answers, and marks the answer.** Ranking is by evidence,
+    not luck: whoever has been *seen casting* a charm this session comes first, then whoever
+    cast most recently. The card carries `ownerGuess`, and the UI appends a `?` and italicises
+    the name — a blank helps nobody, but a name presented as fact should have been deduced.
+  - **A resolved owner is remembered per mob** (`lastCharmOwner`). A charm on a name we are also
+    fighting breaks and re-infers constantly, and the re-inference has no landing message to
+    work from, so without this the pet reverted to unowned the moment its charm flickered.
+    Together these took unattributed pet damage from 250,634 to **129,282** — 76% of charmed-pet
+    damage now has an owner — and `Mirad` from absent to 39 rows and 65,153 damage.
   - **Two mobs can wear one name**, and the log keys them the same. A blow between them
     (`A fire giant warrior slashes a fire giant warrior`) proves they are two, since **nothing
     attacks itself**, so the attacker is moved onto a key of its own at that point and the rest

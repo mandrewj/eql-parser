@@ -877,23 +877,44 @@ test("charm: the landing message names a class, and /who names the only one who 
   assert.equal(pet.ownerName, "Mirad", "the only enchanter in the fight");
 });
 
-test("charm: two of the casting class in the fight means no owner rather than a coin flip", () => {
+test("charm: with two of the casting class, the one seen charming wins — and is flagged a guess", () => {
   let clock = at("01:00:30");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
   feedInto(engine, [
-    L("00:59:00", "[32 PAL/MNK/ENC] Mirad (Iksar) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
-    L("00:59:01", "[23 DRU/BRD/ENC] Prisms (Human) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+    L("00:58:00", "[32 PAL/MNK/ENC] Mirad (Iksar) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+    L("00:58:01", "[23 DRU/BRD/ENC] Prisms (Human) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+    // Mirad has been seen casting a charm earlier; Prisms merely has the class.
+    L("00:58:30", "Mirad begins casting Beguile IV."),
     L("01:00:00", "You crush a death beetle for 100 points of damage."),
     L("01:00:01", "Mirad crushes a death beetle for 50 points of damage."),
     L("01:00:02", "Prisms crushes a death beetle for 10 points of damage."),
+    // Long after that cast, so the 3s window can't be what matches it.
     L("01:00:05", "a lava beetle has been charmed."),
     L("01:00:11", "A lava beetle pierces a death beetle for 40 points of damage."),
   ]);
   const pet = engine
     .snapshot()
     .activeEncounters[0]!.cards.find((c) => c.name.toLowerCase() === "a lava beetle")!;
-  assert.equal(pet.kind, "pet", "still a pet — only the charmer is in doubt");
-  assert.equal(pet.ownerName, undefined);
+  assert.equal(pet.kind, "pet");
+  assert.equal(pet.ownerName, "Mirad", "ranked by who has actually been seen charming");
+  assert.equal(pet.ownerGuess, true, "named, but marked as inference rather than deduction");
+});
+
+test("charm: a sole candidate of the casting class is not flagged as a guess", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("00:59:00", "[32 PAL/MNK/ENC] Mirad (Iksar) <Afterlife> ZONE: Nagafen's Lair (soldungb)"),
+    L("01:00:00", "You crush a death beetle for 100 points of damage."),
+    L("01:00:01", "Mirad crushes a death beetle for 50 points of damage."),
+    L("01:00:05", "a lava beetle has been charmed."),
+    L("01:00:11", "A lava beetle pierces a death beetle for 40 points of damage."),
+  ]);
+  const pet = engine
+    .snapshot()
+    .activeEncounters[0]!.cards.find((c) => c.name.toLowerCase() === "a lava beetle")!;
+  assert.equal(pet.ownerName, "Mirad");
+  assert.equal(pet.ownerGuess, undefined, "the only enchanter present is a deduction, not a guess");
 });
 
 test("charm: an actual cast beats the class inference", () => {

@@ -31,7 +31,6 @@ import type {
   SelfEncounterPoint,
   StanceBreakdown,
   StanceDim,
-  StanceOverviewRow,
   StanceOverviewWindow,
   StanceSegment,
   StanceState,
@@ -63,6 +62,9 @@ const isTwinKey = (key: string): boolean => key.endsWith("§charmed");
 /** Who holds a charm, and since when. */
 interface CharmHold {
   ownerKey: string | null; // the charmer, when a cast within CHARM_ATTRIB_MS identified one
+  /** True when `ownerKey` is the best of several candidates rather than the only one — the
+   *  card says so, because a name presented as fact should have been deduced, not picked. */
+  ownerGuess: boolean;
   spell: string | null;
   sinceMs: number;
 }
@@ -270,6 +272,15 @@ export class Engine {
   // what turns a charm's landing message into a name: the message identifies the spell, the
   // spell identifies the class, and a fight with one member of that class has one candidate.
   private readonly classes = new Map<string, string[]>();
+  // playerKey → how often we have *seen* them cast a charm, and when last. Ranks the
+  // candidates when a fight holds several of the casting class: someone who has charmed in
+  // front of us is a better bet than a groupmate who merely has the class on their /who.
+  private readonly charmCasters = new Map<string, { casts: number; lastTs: number }>();
+  // mobKey → the last owner we resolved for it. A charm on a name we are also fighting is
+  // broken and re-inferred constantly, and the re-inference has no landing message to work
+  // from — so without this the pet reverts to "owner unknown" the moment its charm flickers,
+  // discarding an attribution we had already earned.
+  private readonly lastCharmOwner = new Map<string, { ownerKey: string | null; guess: boolean }>();
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
   // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
@@ -353,6 +364,7 @@ export class Engine {
       // A charmed pet doesn't zone with you either.
       this.charmed.clear();
       this.charmCasts = [];
+      this.lastCharmOwner.clear();
       this.pushMilestone(ev.tsMs, "zone", ev.zone, `Zoned into ${ev.zone}`);
       return;
     }
@@ -548,6 +560,8 @@ export class Engine {
     const out = new Map<string, number>();
     // Walk the closed segments plus the still-open one without copying the array — this runs
     // once per encounter when the history is rebuilt, and once per merged window per overview.
+    // Per-*bucket* callers must use `comboPerBucket` instead, which does all buckets in one
+    // walk; calling this in a loop is what makes it quadratic in a long session.
     const add = (seg: { startMs: number; endMs: number; combo: string }) => {
       const s = Math.max(seg.startMs, startMs);
       const e = Math.min(seg.endMs, endMs);
@@ -557,6 +571,38 @@ export class Engine {
     for (const seg of this.comboSegments) add(seg);
     add({ startMs: this.comboStartMs, endMs, combo: this.combo() });
     return out;
+  }
+
+  /** The dominant combo for each of `count` buckets, in **one** pass over the segments.
+   *
+   *  The obvious form — `dominantComboIn` per bucket — walks the whole segment list 40 times
+   *  per encounter, on every snapshot, and `comboSegments` grows for the length of the
+   *  session. Segments are few and buckets are many, so it is cheaper to push each segment
+   *  into the buckets it covers than to ask each bucket which segments cover it. */
+  private comboPerBucket(startMs: number, endMs: number, bucketMs: number, count: number): string[] {
+    const perBucket: Array<Map<string, number>> = Array.from({ length: count }, () => new Map());
+    const add = (seg: { startMs: number; endMs: number; combo: string }) => {
+      const s = Math.max(seg.startMs, startMs);
+      const e = Math.min(seg.endMs, endMs);
+      if (e <= s) return;
+      const first = Math.max(0, Math.floor((s - startMs) / bucketMs));
+      const last = Math.min(count - 1, Math.floor((e - startMs) / bucketMs));
+      for (let i = first; i <= last; i++) {
+        const overlap =
+          Math.min(e, startMs + (i + 1) * bucketMs) - Math.max(s, startMs + i * bucketMs);
+        if (overlap <= 0) continue;
+        const m = perBucket[i]!;
+        m.set(seg.combo, (m.get(seg.combo) ?? 0) + overlap);
+      }
+    };
+    for (const seg of this.comboSegments) add(seg);
+    add({ startMs: this.comboStartMs, endMs, combo: this.combo() });
+    return perBucket.map((m) => {
+      let best = "none|none";
+      let bestMs = -1;
+      for (const [combo, ms] of m) if (ms > bestMs) [best, bestMs] = [combo, ms];
+      return best;
+    });
   }
 
   private buildStanceOverviews(): StanceOverviewWindow[] {
@@ -666,6 +712,9 @@ export class Engine {
       // otherwise be credited under its lowercased key ("phatez") on the pet's row.
       this.see(casterKey, ev.who);
       this.charmCasts.push({ casterKey, spell: ev.spell ?? "", ts: ev.tsMs });
+      const seen = this.charmCasters.get(casterKey);
+      if (seen) (seen.casts++, (seen.lastTs = ev.tsMs));
+      else this.charmCasters.set(casterKey, { casts: 1, lastTs: ev.tsMs });
       this.trimCharmCasts(ev.tsMs);
       return;
     }
@@ -691,7 +740,7 @@ export class Engine {
       // A bard's song re-lands on every pulse. That is the same pet, not a new one —
       // re-splitting its encounter here would shred the fight into one-tick slivers.
       // A later pulse can still name the owner an earlier one missed.
-      held.ownerKey ??= this.charmOwner(ev.tsMs) ?? this.charmOwnerByClass(ev.emote!, this.current);
+      if (held.ownerKey === null) Object.assign(held, this.resolveCharmOwner(ev, key, this.current));
       return;
     }
 
@@ -712,12 +761,27 @@ export class Engine {
       f.aliveEngaged.delete(key);
     }
     this.charmed.set(key, {
-      // A matched cast is the stronger evidence and wins; the class inference is the
-      // fallback for the charms nobody's cast line announced.
-      ownerKey: this.charmOwner(ev.tsMs) ?? this.charmOwnerByClass(ev.emote!, f),
+      ...this.resolveCharmOwner(ev, key, f),
       spell: ev.spell ?? null,
       sinceMs: ev.tsMs,
     });
+  }
+
+  /** Who owns this charm, by the strongest evidence available, remembering the answer so a
+   *  charm that flickers off and back doesn't lose an attribution we already earned. */
+  private resolveCharmOwner(
+    ev: CharmEvent,
+    key: string,
+    f: FightState | null,
+  ): { ownerKey: string | null; ownerGuess: boolean } {
+    // A matched cast is the stronger evidence and wins; the class inference is the fallback
+    // for the charms nobody's cast line announced.
+    const cast = this.charmOwner(ev.tsMs);
+    const byClass = cast || !ev.emote ? null : this.charmOwnerByClass(ev.emote, f);
+    const ownerKey = cast ?? byClass?.key ?? null;
+    const ownerGuess = byClass?.guess ?? false;
+    if (ownerKey) this.lastCharmOwner.set(key, { ownerKey, guess: ownerGuess });
+    return { ownerKey, ownerGuess };
   }
 
   private trimCharmCasts(tsMs: number): void {
@@ -736,22 +800,37 @@ export class Engine {
   /** Who, of the people actually in this fight, could have cast the charm that made this
    *  emote. The message identifies the spell (`spells.ts`), the spell identifies the class,
    *  and `/who` gives us classes — so "a mob has been charmed" in a group holding exactly
-   *  one enchanter names that enchanter. Two enchanters and it names nobody: a coin-flip
-   *  attribution on someone's damage is worse than an honest blank.
+   *  one enchanter names that enchanter.
+   *
+   *  With more than one candidate it still answers, but says so: `guess` marks the name as a
+   *  best effort rather than a deduction, and the card passes that on. Ranking is by evidence,
+   *  not by luck — whoever has been *seen casting* a charm this session comes first, and among
+   *  equals the one who cast most recently. Someone who has actually charmed in front of us is
+   *  a better bet than a groupmate who merely has the class.
    *
    *  Only ever consulted when no charm *cast* matched, which is the common case for another
    *  player's charm — their cast line is usually not echoed to our log at all. */
-  private charmOwnerByClass(emote: CharmEmoteKind, f: FightState | null): string | null {
+  private charmOwnerByClass(
+    emote: CharmEmoteKind,
+    f: FightState | null,
+  ): { key: string; guess: boolean } | null {
     const casters = CHARM_EMOTES[emote]?.casters;
     if (!casters || !f) return null;
-    let found: string | null = null;
+    const candidates: string[] = [];
     for (const key of f.combatants.keys()) {
       const cls = this.classes.get(key);
-      if (!cls || !cls.some((c) => casters.includes(c as ClassCode))) continue;
-      if (found && found !== key) return null; // more than one candidate — say nothing
-      found = key;
+      if (cls?.some((c) => casters.includes(c as ClassCode))) candidates.push(key);
     }
-    return found;
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return { key: candidates[0]!, guess: false };
+    const rank = (k: string) => this.charmCasters.get(k) ?? { casts: 0, lastTs: 0 };
+    const best = candidates.reduce((a, b) => {
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra.casts !== rb.casts) return rb.casts > ra.casts ? b : a;
+      return rb.lastTs > ra.lastTs ? b : a;
+    });
+    return { key: best, guess: true };
   }
 
   /** End a charm: the mob is an enemy again, so its pet-era tracking is wiped and the
@@ -824,7 +903,18 @@ export class Engine {
     if (this.charmed.has(twin)) return twin;
     const hold = this.charmed.get(key);
     this.charmed.delete(key);
-    this.charmed.set(twin, hold ?? { ownerKey: this.charmOwner(tsMs), spell: null, sinceMs: tsMs });
+    // No landing message reaches this path, so there is no class to infer from — but this mob
+    // may already have been attributed earlier in the fight, before its charm flickered off.
+    const remembered = this.lastCharmOwner.get(key) ?? this.lastCharmOwner.get(twin);
+    this.charmed.set(
+      twin,
+      hold ?? {
+        ownerKey: this.charmOwner(tsMs) ?? remembered?.ownerKey ?? null,
+        ownerGuess: remembered?.guess ?? false,
+        spell: null,
+        sinceMs: tsMs,
+      },
+    );
     this.current?.everCharmed.add(twin);
     this.display.set(twin, this.nameOf(key));
     const owner = this.petOwners.get(key);
@@ -1226,6 +1316,7 @@ export class Engine {
         kind: ownerKey === this.selfKey ? "self" : isPet ? "pet" : "player",
         isSelf: ownerKey === this.selfKey,
         ...(charm?.ownerKey ? { ownerName: this.nameOf(charm.ownerKey) } : {}),
+        ...(charm?.ownerKey && charm.ownerGuess ? { ownerGuess: true } : {}),
         // This row is the charmed half of a same-named pair, so its figures are the whole
         // exchange between the two — an upper bound on the pet, not its output alone.
         ...(isTwinKey(ownerKey) ? { ambiguous: true } : {}),
@@ -1249,11 +1340,7 @@ export class Engine {
     // …and the combo I was in for each bucket, so the strip can be coloured by stance. A
     // bucket can straddle a stance change; the combo holding the most of it wins, which is
     // the same rule `dominantComboIn` applies to a whole encounter.
-    const sparkCombos = spark.map((_, i) => {
-      const from = startMs + i * bucketSec * 1000;
-      const { melee, invocation } = this.dominantComboIn(from, Math.min(from + bucketSec * 1000, endMs));
-      return `${melee}|${invocation}`;
-    });
+    const sparkCombos = this.comboPerBucket(startMs, endMs, bucketSec * 1000, spark.length);
 
     return {
       id,

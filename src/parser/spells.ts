@@ -5,6 +5,10 @@
 // inline for typed damage ("… for 151 points of *magic* damage by Smiting Strike"), so no
 // table is needed to classify those; what the log never states is **who owns a charm**, and
 // that is what this file exists to recover.
+//
+// The three damage-shield messages (thorns/flames/frost) and their elements are recorded in
+// LOG_FORMAT.md rather than here: nothing reads them, and a table no code consults is a
+// liability that drifts rather than a reference that helps.
 
 /** A class abbreviation as it appears in a `/who` line: `[42 PAL/MNK/BRD] Sanluen (Wood Elf)`. */
 export type ClassCode =
@@ -40,13 +44,3 @@ export const CHARM_EMOTES: Record<"charmed" | "glaze", CharmEmote> = {
  *  Undead, Beguile Undead). */
 export const CHARM_SPELL_RE =
   /\b(?:charm|beguile|bewitching bravura|cajoling whispers|befriend animal|dominate undead)\b/i;
-
-/** The three damage-shield messages a real log contains, with the element the wiki gives for
- *  each. The "non-melee" line names the *message*, never the spell, so this is the only way to
- *  know what element it was. Kept for the record and for labelling; the engine's own
- *  `DamageType` is about mechanism (melee/spell/dot), not element, so nothing reads it yet. */
-export const SHIELD_ELEMENTS: Record<string, "magic" | "fire" | "cold"> = {
-  thorns: "magic", // thorns-line damage shield, Magic resist
-  flames: "fire", // Shield of Flame (Magician 19), Fire resist
-  frost: "cold",
-};
