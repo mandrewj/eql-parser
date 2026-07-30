@@ -378,12 +378,13 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 
 ## Post-v1 — The encounter sparkline becomes a full-card diverging timeline  ✅
 - The per-encounter strip was my damage only, on a fixed-width stub between header and table. It
-  now **fills the card and is drawn over the table**, with the My DPS chart's grammar: my damage
-  above a baseline, what this mob dealt me below, each half scaled to its own peak.
-- **Over rather than behind, and that had to be tried to be known.** Behind first: the rows carry
-  their own backgrounds, so the timeline survived only in the gaps between columns and read as
-  scattered blocks. Over the top spans the full width, at the cost of crossing the numbers —
-  hence 19% opacity and no interactivity.
+  now **spans the full card width** with the My DPS chart's grammar: my damage above a baseline,
+  what this mob dealt me below, each half scaled to its own peak.
+- **It took two wrong turns to place it.** Behind the table first: the rows carry their own
+  backgrounds, so it survived only in the gaps between columns and read as scattered blocks.
+  Then over the table, which spans the full width but washes bars across every number and made
+  the table genuinely hard to read. It ends up as its own band between header and table — full
+  width, no overlap, and at full strength rather than hiding at 19% opacity.
 - Needed one new piece of engine state: **`selfTaken`**, what each mob dealt *me*, timestamped and
   per-mob. `selfTakenComboLog` is per-session, so during a two-mob pull it would have drawn a
   strip that disagreed with the `tank` figure on the row directly above it — the same trap

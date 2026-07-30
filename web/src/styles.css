@@ -209,8 +209,6 @@ body { margin: 0; }
   border: 1px solid var(--border); border-radius: 9px; background: var(--panel);
   padding: 0.45rem 0.55rem 0.55rem; margin-bottom: 0.55rem;
   box-shadow: 0 1px 3px #00000055;
-  /* positioning context for the timeline that fills it */
-  position: relative; isolation: isolate;
 }
 /* an active fight is loud: warm tint, heavier frame, accent stripe down the side */
 .enc-table.live {
@@ -219,7 +217,7 @@ body { margin: 0; }
   box-shadow: 0 0 0 1px #8f444440, 0 2px 12px #00000066;
 }
 /* name (shrinks first) · what the mob hits for · whole-encounter totals, pinned right */
-.enc-th { display: flex; align-items: baseline; gap: 0.4rem; margin-bottom: 0.4rem; position: relative; z-index: 1; }
+.enc-th { display: flex; align-items: baseline; gap: 0.4rem; margin-bottom: 0.4rem; }
 .enc-title {
   font-weight: 700; font-size: 0.92rem; letter-spacing: 0.01em;
   min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -229,32 +227,29 @@ body { margin: 0; }
 .enc-out { flex: none; font-size: 0.74rem; font-weight: 600; color: var(--npc); font-variant-numeric: tabular-nums; }
 .enc-tot { flex: none; margin-left: auto; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .enc-scope { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
-/* The encounter's own timeline, filling the card and drawn *over* the table. Behind it was
-   tried first and doesn't work: the rows carry their own backgrounds, so a timeline under
-   them survives only in the gaps between columns and reads as scattered blocks rather than a
-   shape. Over the top it spans the full width — at the cost of running across the numbers,
-   which is why it is kept faint and why nothing about it is interactive. */
+/* The encounter's own timeline: a band of its own between the header and the table. It was
+   briefly drawn *over* the table to "fill the card" and that was a mistake — bars washing
+   across every number made the table hard to read, which is the opposite of the point. Given
+   its own row it can run at full strength and full width instead of hiding at 19%.
+   Heights are in px, like the history chart's, so shrinking the type never costs the bars
+   their resolution. */
 .enc-timeline {
-  position: absolute; inset: 0; z-index: 2;
   display: flex; align-items: stretch; gap: 1px;
-  padding: 0.15rem 0.1rem; opacity: 0.19; pointer-events: none;
-  border-radius: inherit; overflow: hidden;
+  width: 100%; margin: 0 0 0.45rem;
 }
 .tl-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
 /* Two mirrored panels over one time axis, each scaled to its own peak — my damage and what
-   the mob dealt me differ by an order of magnitude, so a shared scale would flatten one. The
-   split is 62/38 rather than even: the upper half is the one being read. */
+   the mob dealt me differ by an order of magnitude, so a shared scale would flatten one.
+   The upper half gets the greater share: it is the one being read. */
 .tl-half { display: flex; min-height: 0; }
-.tl-half.up { flex: 0 0 66%; align-items: flex-end; }
-/* The divergence line. Brightened because the whole layer is at 19% — at --hair it
-   vanished entirely and the two halves read as unrelated blocks. */
-.tl-half.down { flex: 1 1 auto; align-items: flex-start; border-top: 1px solid #ffffffcc; }
+.tl-half.up { flex: 0 0 26px; align-items: flex-end; }
+.tl-half.down { flex: 0 0 14px; align-items: flex-start; border-top: 1px solid var(--hair); }
 .tl-bar { width: 100%; min-height: 0; background: var(--s-other); }
 .tl-half.up .tl-bar { border-radius: 1px 1px 0 0; }
 /* Damage taken is one colour throughout — it is the mob's doing, not a stance of mine, so
    colouring it by combo would imply an authorship it doesn't have. */
-.tl-half.down .tl-bar { border-radius: 0 0 1px 1px; background: #a15a5a !important; }
-.etable { display: flex; flex-direction: column; position: relative; z-index: 1; }
+.tl-half.down .tl-bar { border-radius: 0 0 1px 1px; background: var(--npc) !important; opacity: 0.75; }
+.etable { display: flex; flex-direction: column; }
 .erow { display: grid; grid-template-columns: 1fr 2.9rem 2.9rem 2.9rem 2.2rem; align-items: center; gap: 0.3rem; cursor: pointer; padding: 1px 0; }
 .erow.ehead { cursor: default; padding-bottom: 3px; }
 .erow.ehead > span:first-child { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); padding-left: 0.4rem; }

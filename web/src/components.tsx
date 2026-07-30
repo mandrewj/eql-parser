@@ -538,18 +538,21 @@ function EncounterRow({
   );
 }
 
-/** The encounter's own timeline, drawn across the whole card and *behind* the table.
+/** The encounter's own timeline: a band of its own, full card width, above the table.
  *
- *  Same grammar as the My DPS chart, at a different scale: my damage above the baseline,
- *  what the mob dealt me below it, each half normalised to its own peak so neither flattens
- *  the other (they routinely differ by an order of magnitude). Colour is the stance combo I
- *  was in for that bucket, from the same map the My DPS panel uses, so a combo means one
- *  colour everywhere and a mid-fight stance change reads as a change of colour.
+ *  Same grammar as the My DPS chart at a different scale: my damage above the baseline, what
+ *  the mob dealt me below it, each half normalised to its own peak so neither flattens the
+ *  other (they routinely differ by an order of magnitude). Colour is the stance combo I was
+ *  in for that bucket, from the same map the My DPS panel uses, so a combo means one colour
+ *  everywhere and a mid-fight stance change reads as a change of colour.
  *
- *  Behind the table, so it is context rather than content: it stays low-contrast and the
- *  rows keep their own background, because a number that has to be read over a bar is worse
- *  than no bar at all. Hidden when there is nothing to show — a fight too short to have a
- *  shape, or one where I neither dealt nor took anything. */
+ *  It briefly overlapped the table, to "fill the card" literally. That was wrong: bars
+ *  running across every number made the table hard to read, which is the opposite of what a
+ *  chart beside a table is for. Separated, it can also run at full strength rather than
+ *  hiding at 19% opacity to stay out of the way of the text.
+ *
+ *  Hidden when there is nothing to show — a fight too short to have a shape, or one where I
+ *  neither dealt nor took anything. */
 function EncounterTimeline({ enc, colors }: { enc: EncounterView; colors: Map<string, number> }) {
   const dealt = enc.selfSpark ?? [];
   const taken = enc.selfTakenSpark ?? [];
@@ -563,7 +566,6 @@ function EncounterTimeline({ enc, colors }: { enc: EncounterView; colors: Map<st
   return (
     <div
       className="enc-timeline"
-      aria-hidden
       title={
         `This encounter, ${plural(bucketSec, "second")} per bar. Above the line my damage ` +
         `(peak ${fmtDrill(upPeak)} dps), below it what ${enc.name} dealt me ` +
@@ -617,7 +619,6 @@ export function EncounterTable({
   const out = enc.npcDamage;
   return (
     <section className={`enc-table ${enc.active ? "live" : ""}`}>
-      <EncounterTimeline enc={enc} colors={colors} />
       <div className="enc-th">
         <span className="enc-title">
           {enc.active && <span className="live-dot">⚔</span>} {enc.name}
@@ -637,6 +638,7 @@ export function EncounterTable({
           <span className="enc-scope">encounter</span> {enc.durationSec}s · {fmtK(enc.total)} dmg · {fmtK(enc.dps)} dps
         </span>
       </div>
+      <EncounterTimeline enc={enc} colors={colors} />
       <div className="etable">
         {showHead && (
           <div className="erow ehead">
