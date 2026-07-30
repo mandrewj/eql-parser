@@ -122,34 +122,61 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   - `GET  /api/fights` → fight summaries (history).
   - `GET  /api/fights/:id` → full combatant + ability + stance detail for one fight.
   - `GET  /api/config` / `POST /api/config` → inactivityTimeout, etc.
-- `GET /events` → **SSE** stream of `snapshot`, `fightStarted`, `fightUpdate`, `fightEnded`, `stanceChanged`, `entityUpdate`. The `snapshot` payload carries `milestones`, `progressWindows` and `progress` alongside the combat state; the UI reads all three defensively so an older backend still renders.
+- `GET /events` → **SSE**, carrying just `snapshot` and `activeLogChanged` (see [Streaming
+  protocol](#streaming-protocol) for why there are no delta events). New snapshot fields are defaulted
+  at the `useAppData` ingest boundary, so that is the one place version skew is handled — not in the
+  components.
 - Binds to `127.0.0.1` only.
 
-## Streaming protocol (draft)
+## Streaming protocol
+
+**The whole state goes over the wire on every push, not deltas.** The M0 draft here specified
+`fightStarted` / `fightUpdate` / `fightEnded` / `stanceChanged` / `entityUpdate` events; none were ever
+built, because a full snapshot is ~40–60KB of JSON on `localhost` and it makes the client a pure
+function of the last message — no replaying deltas, no divergence to debug, and a reconnect needs no
+catch-up protocol. Pushes are debounced (~200ms in `app.ts`), so a 30MB backfill sends about ten of
+them rather than one per line. Two event types exist:
 
 ```ts
-// SSE events (server → browser); each SSE `data:` is one JSON object
+// SSE events (server → browser); each SSE `data:` line is one JSON object.
 type ServerEvent =
-  | { t: "snapshot";      activeLog: string | null; current: Fight | null; recent: FightSummary[]; stance: string }
-  | { t: "fightStarted";  fight: FightSummary }
-  | { t: "fightUpdate";   fightId: string; combatants: CombatantStats[]; durationSec: number }
-  | { t: "fightEnded";    fight: FightSummary }
-  | { t: "stanceChanged"; stance: string; sinceMs: number };
+  | ({ t: "snapshot" } & Snapshot)
+  | { t: "activeLogChanged"; path: string | null; mode?: "live" | "backfill" };
 
-interface EncounterView {           // one per-mob card
-  name: string; active: boolean; durationSec: number;
-  total: number; dps: number;       // whole encounter: damage dealt to the mob, and the combined rate
-  npcDamage: MetricStat;            // what the mob dealt back, over the same span
-  cards: EncounterCard[];           // per-person rows, each rate over that row's activeSec
+interface Snapshot {                  // everything the UI draws
+  current: Fight | null;              // the fight in progress, full per-combatant detail
+  recent: FightSummary[];             // last 20 closed fights — the History pane's list
+  activeEncounters: EncounterView[];  // mobs being fought right now
+  recentEncounters: EncounterView[];  // the last 5 finished, newest first
+  stance: { melee: string; invocation: string };
+  stanceOverview: StanceOverviewWindow[];  // one per 10/25/50-encounter window
+  encounterHistory: SelfEncounterPoint[];  // last 50 finished, from my side (the chart)
+  milestones: Milestone[];            // the rail's marks
+  progressWindows: ProgressWindow[];
+  progress: { level: number | null; abilityPoints: number | null };
 }
 
-interface CombatantStats {          // one meter row
-  name: string; kind: "self"|"player"|"pet"|"npc"|"unknown"; isSelf: boolean;
-  total: number; dps: number; pct: number;
-  hits: number; crits: number; misses: number;
-  byType: { melee: number; spell: number; dot: number };   // drill-down
-  abilities: { name: string; damageType: "melee"|"spell"|"dot"; total: number; hits: number; crits: number }[];
-  stances?: { stance: string; total: number; dps: number }[];   // self only
+interface EncounterView {             // one per-mob card
+  name: string; active: boolean; durationSec: number;
+  total: number; dps: number;         // whole encounter: damage dealt to the mob, and the combined rate
+  npcDamage: MetricStat;              // what the mob dealt back, over the same span
+  selfSpark: number[];                // my dps per bucket across the span
+  sparkBucketSec: number;             // seconds each bucket covers (>= 1)
+  cards: EncounterCard[];
+}
+
+interface EncounterCard {             // one row of that card
+  name: string; kind: "self" | "player"; isSelf: boolean;  // pets fold into their owner
+  pct: number;                        // share of damage dealt to the mob (the bar)
+  activeSec: number;                  // their engaged window — what all three rates divide by
+  damage: MetricStat; healing: MetricStat; taken: MetricStat;
+}
+
+interface MetricStat {                // every metric group has this one shape
+  total: number; perSec: number;      // perSec is DPS, or HPS for healing
+  hits: number; crits: number; avoided: number;
+  byType: Record<"melee" | "spell" | "dot" | "unknown", number>;
+  entries: { name: string; damageType: DamageType; total: number; hits: number; crits: number }[];
 }
 ```
 
@@ -239,6 +266,15 @@ interface CombatantStats {          // one meter row
 ## Tech stack & packaging
 
 - **Language/runtime:** TypeScript on **Node.js 22** (already installed). Dev via `tsx`; tests via `node --test`.
+- **One test runner for both halves.** `node --test` globs `src/**` *and* `web/src/**`, so the UI's own
+  arithmetic is covered without a browser runner: the pure parts live in DOM-free modules
+  (`web/src/format.ts`, `web/src/stats.ts`) that it can import directly. Node's types are confined to
+  `web/tsconfig.test.json` so a component still can't reach for `process` and typecheck — and that
+  config **must clear the inherited `exclude`**, or the test files it exists for are filtered straight
+  back out and the check passes on nothing.
+- **Verifying the UI** means SSR + screenshot, not a headless load: the page holds an open `/events`
+  stream, so `--screenshot` never fires. Render a component with `renderToStaticMarkup` into a shell
+  that inlines `styles.css`, feed it a real `/api/snapshot`, and shoot the `file://` page.
 - **Runtime dependencies:** aim for none in the backend (built-in `node:http`, `node:fs`); React/Vite are frontend build-time only.
 - **Distribution (M5):** **Node SEA** (single-executable app) bundling the built SPA → one file to double-click. If cross-compiling to Windows proves cleaner via Bun's `--compile`, we can switch the packaging step without touching app code.
 - **Config:** JSON/`.env` for `logDir`, `port`, `inactivityTimeout`; auto-detects the newest `eqlog_*.txt`. Env override `EQL_LOG_DIR`.

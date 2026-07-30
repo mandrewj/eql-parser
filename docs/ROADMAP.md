@@ -7,7 +7,9 @@ so we prove the parser/engine are correct against the real log before building a
 live updates via **SSE**. Single-binary packaging deferred to M5 (Node SEA).
 
 **Progress:** M0–M5 complete — v1 shipped. Parser, engine, live tailer/SSE, React UI, and a
-single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA binary.
+single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA binary. Everything
+after that is the **Post-v1** sections below, newest last: the app has since been rebuilt around
+per-NPC encounters and a self-analysis panel, which is where the work now goes.
 
 ## M0 — Project scaffold  ✅
 - TypeScript project (Node + tsx), tsconfig, `.gitignore`, folder layout (`tailer/ parser/ engine/ server/ web/`).
@@ -210,8 +212,25 @@ single self-contained bundle (`dist/eql-parser.cjs`) plus an optional native SEA
 
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
-- Fight export/share (JSON/image) and run-over-run comparison.
+- Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the
+  app: today the log file *is* the store and backfill re-derives everything in ~25s, so this only earns
+  its keep across log rotations.
 - Optional true always-on-top overlay (revisit Tauri/Electron only if the browser window proves insufficient).
+
+### Weighed on 2026-07-29 and not taken (yet)
+Kept here so the reasoning isn't re-derived. Ranked by value-per-effort as judged then:
+- **"What killed me"** — deaths are already milestones and the last hits before one are in `perTarget`;
+  a survivability drill-down needs no new parsing. The strongest of these.
+- **Ability-level efficiency over the window** — crit and miss rates per ability across the last N
+  encounters rather than one fight, turning the drill-down into "your crush crits 12%, your smite 4%".
+- **Prescriptive stance cards** — the tiles report each combo's DPS and defensive cost but never say
+  *switch*; `seconds` per combo is already the confidence needed to suppress a thin-sample suggestion.
+- **A second line on the history chart** at the panel header's combat-clock figure, so the gap between
+  the two averages is visible on the chart instead of explained in a tooltip.
+- **`scaleK` past 100k** prints `1284k` rather than `1.28M` — visible on long boss fights and tank
+  totals. One line, whenever it next annoys.
+- **`.erow.pet` / `.erow.npc` fills are unreachable** (encounter rows are only ever `self`/`player`,
+  since pets fold into owners). Left in deliberately as the styling a mob-as-a-row would need.
 
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
