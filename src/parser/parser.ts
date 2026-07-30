@@ -62,7 +62,26 @@ const MISS_YOU_RE = /^You try to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
 const MISS_OTHER_RE = /^(.+?) tries to (\w+) (.+?), but (.+?)!(?: \([^)]+\))?$/;
 // DoT/nuke crits append " (Critical)" AFTER the sentence terminator, e.g.
 // "… has taken 33 damage from Stinging Swarm by Orson. (Critical)".
-const DOT_RE = /^(.+?) has taken (\d+) damage from (.+?)[.!](?: \([^)]+\))?$/;
+//
+// Two widenings, both found by clustering every unparsed line in a real log:
+//   `ha(?:s|ve)` — a tick on *me* reads "You **have** taken", which the third-person form
+//     cannot match. Same trap as "You have been slain by" (see the death patterns): 1,331
+//     lines and 32,949 points of damage taken, previously invisible.
+//   `from|by`   — 395 lines say "damage **by** <Spell>" and name no caster at all, among
+//     them my own Chords of Dissonance and Denon's Disruptive Discord. `splitDotSource`
+//     already yields "Unknown" for a source with no " by " inside it, which is the honest
+//     answer here rather than a guess.
+const DOT_RE = /^(.+?) ha(?:s|ve) taken (\d+) damage (?:from|by) (.+?)[.!](?: \([^)]+\))?$/;
+
+// Damage to me from a source the line declines to name. Distinct from NONMELEE_RE, which
+// needs "points of non-melee damage" and an owner; this form has neither.
+const SELF_NONMELEE_RE = /^You were hit by non-melee for (\d+) damage\.$/;
+
+// A damage shield that was fully absorbed: no damage, but a real swing's worth of
+// avoidance. "<Target>'s magical skin absorbs the damage of <Owner> <effect>."
+// (The sibling "absorbs the blow!" needs nothing — it arrives inside a "tries to …, but
+// …!" line, which the miss patterns already read.)
+const SHIELD_ABSORB_RE = /^(.+?)'s magical skin absorbs the damage of (.+?)\.$/;
 const NONMELEE_RE =
   /^(.+?) (?:is|are|was|were) .+? by (.+?) for (\d+) points? of non-melee damage[.!](?: \([^)]+\))?$/;
 // A named ability resolving as typed damage — magic/fire/cold/poison/disease/unresistable —
@@ -272,6 +291,22 @@ export function parseLine(raw: string): CombatEvent | null {
     return ev;
   }
 
+  // A damage shield fully absorbed — zero damage, so it is avoidance, not a damage event.
+  m = SHIELD_ABSORB_RE.exec(body);
+  if (m) {
+    const { caster, effect } = splitOwner(m[2]!);
+    const ev: MissEvent = {
+      type: "miss",
+      tsMs,
+      raw: body,
+      attacker: caster,
+      target: normName(m[1]!),
+      verb: effect,
+      avoidance: "absorbed",
+    };
+    return ev;
+  }
+
   // Healing
   m = HEAL_RE.exec(body);
   if (m) {
@@ -317,6 +352,22 @@ export function parseLine(raw: string): CombatEvent | null {
       target: normName(m[1]!),
       effect,
       amount: Number(m[3]),
+    };
+    return ev;
+  }
+
+  // Damage to me whose source the log doesn't name. "Unknown" is the honest attacker —
+  // it only ever appears on this side of a blow, so it never becomes a mob of its own.
+  m = SELF_NONMELEE_RE.exec(body);
+  if (m) {
+    const ev: SpellDamageEvent = {
+      type: "spell",
+      tsMs,
+      raw: body,
+      owner: "Unknown",
+      target: "You",
+      effect: "non-melee",
+      amount: Number(m[1]),
     };
     return ev;
   }

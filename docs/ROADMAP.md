@@ -279,6 +279,26 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   Spot-checked against raw grep on one fight: engine 5,936 vs 3,858 melee + 1,186 DoT + 288 proc
   + 604 typed = exact.
 
+## Post-v1 — A full parser audit, by clustering every unparsed line  ✅
+- The typed-damage miss proved that a hand-written "is this relevant?" regex only ever finds what
+  it already knows about — `parse:check` shared the parser's blind spots and called the log clean.
+  Replaced with the opposite shape: run **every** line through `parseLine`, cluster the `null`s by
+  shape (numbers and proper nouns collapsed), read the ranked tail. 7,039 distinct unparsed shapes,
+  205 combat-suspicious. Four real finds:
+  - **`You have taken N damage from <Spell> by <X>`** — 1,331 lines, **32,949 damage taken**. DoT
+    ticks on *me*: `DOT_RE` matched only `has taken`. The third time this exact has/have trap has
+    bitten (see the death-line fix above).
+  - **`<X> has taken N damage by <Spell>`** — 395 lines, 7,411 damage. A preposition: `by`, not
+    `from`, naming no caster. Includes ~800 of my own Chords/Denon's ticks.
+  - **`You were hit by non-melee for N damage`** — 62 lines, 2,465 damage taken, attacker unnamed.
+  - **`X's magical skin absorbs the damage of YOUR thorns`** — 292 lines of fully-absorbed damage
+    shield. Zero damage, so it lands in `avoided`, not as a damage event.
+- Log-wide: dot events 44,392 → 46,813, my damage taken **1.45M → 1.51M**, my damage 4.15M → 4.22M.
+- Combat-suspicious unparsed shapes fell 205 → 85, and every survivor is flavour text with no
+  number in it. Exactly **three** unparsed lines in 785k now carry both a number and a combat word,
+  all one-offs and none worth a pattern — they are listed in `LOG_FORMAT.md` so the next audit
+  doesn't re-derive them.
+
 ## Backlog (engine already supports the shape)
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the

@@ -88,18 +88,45 @@ to real spell names later needs a spell-message table (EQLogParser ships one).
 ```
 [..] Orc legionnaire has taken 9 damage from your Chords of Dissonance III.
 [..] Orc centurion has taken 15 damage from Tainted Breath by Frogorson.
+[..] You have taken 50 damage from Burrowing Scarab by a death beetle.   ← a tick on ME
+[..] A Tesch Mal Gnoll has taken 26 damage by Chords of Dissonance V.    ← "by", no caster
 ```
 ```
-^(?<target>.+?) has taken (?<amount>\d+) damage from (?:your (?<spellA>.+?)|(?<spellB>.+?) by (?<caster>.+?))\.$
+^(?<target>.+?) ha(?:s|ve) taken (?<amount>\d+) damage (?:from|by) (?:your (?<spellA>.+?)|(?<spellB>.+?)(?: by (?<caster>.+?))?)\.$
 ```
 - `your <Spell>` → caster = you.
 - `<Spell> by <Caster>` → named caster. This gives the **real spell name** directly — the best source for per-ability attribution.
+- **`ha(?:s|ve)`** — a tick on *you* reads `You **have** taken`, which the third-person form
+  cannot match. The same trap as `You have been slain by`, and it cost 1,331 lines and
+  **32,949 points of damage taken** — absent from the tank column, the stance cards'
+  defensive cost, and the whole lower half of the history chart.
+- **`from|by`** — 395 lines say `damage **by** <Spell>` and name no caster at all, among them
+  the self's own Chords of Dissonance and Denon's Disruptive Discord. Caster resolves to
+  `Unknown`, which is what the line actually says.
 
-### 5. Damage taken by you (not outgoing DPS — for future tank metrics)
+### 5. Damage to you from a source the log doesn't name
 ```
 [..] You were hit by non-melee for 93 damage.
 [..] YOU were injured by falling.
 ```
+```
+^You were hit by non-melee for (?<amount>\d+) damage\.$
+```
+Distinct from form 3 — no `points of`, no owner. Recorded against an `Unknown` attacker, which
+only ever appears on the dealing side of a blow and so never becomes a mob of its own.
+`injured by falling` is environmental and still ignored.
+
+### 6. A fully absorbed damage shield (no damage — avoidance)
+```
+[..] A yun ghoul wizard's magical skin absorbs the damage of YOUR thorns.
+[..] Princess Cherista's magical skin absorbs the damage of Orson's thorns.
+```
+```
+^(?<target>.+?)'s magical skin absorbs the damage of (?<owner>YOUR|.+?'s) (?<effect>.+?)\.$
+```
+Zero damage, so it counts as **avoidance**, not a damage event. Its sibling
+`<Target>'s magical skin absorbs the blow!` needs no pattern of its own — it arrives inside a
+`tries to …, but …!` line the miss patterns already read.
 
 ## Modifier flags (crits) placement
 
@@ -195,6 +222,23 @@ in your log.
   pattern has missed, behind one `^You (have )?(gain|become|improved)` prefix test.
 - `You have reached the experience cap and will not gain any further experience.` is not an
   xp tick and must not match.
+
+## Coverage, and how it is checked
+
+Hand-written "is this line relevant?" regexes are how the gaps above survived — `parse:check`
+shared the parser's own blind spots and reported the log clean throughout. The check that
+actually works is the opposite shape: run **every** line through `parseLine`, cluster what comes
+back `null` by shape (numbers and proper nouns collapsed to tokens), and read the ranked tail.
+That is what surfaced typed ability damage, the `have taken` ticks and the `damage by` form.
+
+Against the 785k-line log, exactly **three** unparsed lines still carry both a number and a
+combat word, and none is worth a pattern:
+
+```
+You have been healed for 80 hit points.        ← 1 occurrence, names no healer
+You gain a rune for 305 points of absorption.  ← 1 occurrence, absorption applied, not damage
+You tell your party, '… my DPS 50PCT …'        ← chat
+```
 
 ## Non-combat noise to ignore
 

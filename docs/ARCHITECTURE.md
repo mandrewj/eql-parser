@@ -67,6 +67,11 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   are tried **last**, behind a single `^You (have )?(gain|become|improved)` prefix test: the hot
   path never pays for them.
 - Deterministic, side-effect-free → unit-testable against fixture lines.
+- **Coverage is audited by clustering, not by a relevance regex.** Every gap found so far hid
+  behind one: `parse:check`'s own filter shared the parser's blind spots and reported the log
+  clean while ~15% of the self's damage went unread. The audit that works runs every line through
+  `parseLine` and ranks what returns `null` by shape. Three unparsed lines in 785k now carry a
+  number and a combat word; `LOG_FORMAT.md` lists them so the next pass doesn't re-derive them.
 
 ### Engine
 - **Entity roster** — players, pets, and **NPCs are all first-class**; each can be inspected for outgoing damage.

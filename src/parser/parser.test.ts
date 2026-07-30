@@ -176,6 +176,60 @@ test("pet — NPC dialogue is not mistaken for a pet", () => {
   assert.equal(parseLine(TS + "Sarys told you, 'the orc taskmaster hits hard'"), null);
 });
 
+test("dot — a tick on me reads 'You have taken', not 'has taken'", () => {
+  const e = parseLine(TS + "You have taken 50 damage from Burrowing Scarab by a death beetle.");
+  assert.equal(e?.type, "dot");
+  if (e?.type !== "dot") return;
+  assert.equal(e.target, "You");
+  assert.equal(e.caster, "a death beetle");
+  assert.equal(e.spell, "Burrowing Scarab");
+  assert.equal(e.amount, 50);
+});
+
+test("dot — 'damage by <Spell>' names no caster, so it resolves to Unknown", () => {
+  const e = parseLine(TS + "A Tesch Mal Gnoll has taken 26 damage by Chords of Dissonance V.");
+  assert.equal(e?.type, "dot");
+  if (e?.type !== "dot") return;
+  assert.equal(e.spell, "Chords of Dissonance V");
+  assert.equal(e.caster, "Unknown", "the line simply does not say");
+  assert.equal(e.amount, 26);
+});
+
+test("dot — widening to has/have and from/by leaves the named-caster form alone", () => {
+  const e = parseLine(TS + "Orc centurion has taken 15 damage from Tainted Breath by Frogorson.");
+  assert.equal(e?.type, "dot");
+  if (e?.type !== "dot") return;
+  assert.equal(e.spell, "Tainted Breath", "still splits at the last ' by '");
+  assert.equal(e.caster, "Frogorson");
+});
+
+test("damage to me from an unnamed source", () => {
+  const e = parseLine(TS + "You were hit by non-melee for 93 damage.");
+  assert.equal(e?.type, "spell");
+  if (e?.type !== "spell") return;
+  assert.equal(e.target, "You");
+  assert.equal(e.owner, "Unknown");
+  assert.equal(e.amount, 93);
+});
+
+test("a fully absorbed damage shield is avoidance, not damage", () => {
+  for (const [line, attacker, target] of [
+    ["A yun ghoul wizard's magical skin absorbs the damage of YOUR thorns.", "You", "A yun ghoul wizard"],
+    ["Princess Cherista's magical skin absorbs the damage of Orson's thorns.", "Orson", "Princess Cherista"],
+  ] as const) {
+    const e = parseLine(TS + line);
+    assert.equal(e?.type, "miss", line);
+    if (e?.type !== "miss") continue;
+    assert.equal(e.attacker, attacker);
+    assert.equal(e.target, target);
+    assert.equal(e.verb, "thorns");
+    assert.equal(e.avoidance, "absorbed");
+  }
+  // Its sibling arrives inside a "tries to …, but …!" line and is already a miss.
+  const blow = parseLine(TS + "You try to kick Kahaptra Z`Taj, but Kahaptra Z`Taj's magical skin absorbs the blow!");
+  assert.equal(blow?.type, "miss");
+});
+
 test("typed ability damage — the type adjective no longer hides the line", () => {
   const e = parseLine(TS + "You hit a bandit lookout for 4 points of fire damage by Burst of Flame.");
   assert.equal(e?.type, "spell");
