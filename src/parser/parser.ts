@@ -24,7 +24,7 @@ const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
 const RELEVANT_RE =
-  /damage|slain|but |assume |heal|Master|invocation|entered|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: /;
+  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: /;
 
 // A `/who` result line — the only place the log states anyone's class:
 //   [42 PAL/MNK/BRD] Sanluen (Wood Elf) <Guild Name> ZONE: Nagafen's Lair (soldungb)
@@ -36,6 +36,10 @@ const WHO_RE = /^\[(\d+) ([A-Z]{3}(?:\/[A-Z]{3})*)\] (\S+) \(/;
 // Zoning is a hard fight boundary: "You have entered The Greater Faydark."
 // (guard against the non-zone "You have entered an area where …" warning).
 const ZONE_RE = /^You have entered (?!an area\b)(.+?)\.$/;
+// The other half of a zone transition, and the earlier one. A real log has 110 of these
+// against 115 named arrivals, so the two do not pair up exactly — on its own this line still
+// means "everything you were fighting is behind you", it just can't say where you now are.
+const LOADING_RE = /^LOADING, PLEASE WAIT\.$/;
 
 // A pet addressing you as "Master" only ever refers to *your* pet in your own log, so it
 // identifies the self's pet. Two delivery verbs: this game sends pet chatter as `told you`
@@ -99,14 +103,20 @@ const SELF_NONMELEE_RE = /^You were hit by non-melee for (\d+) damage\.$/;
 const SHIELD_ABSORB_RE = /^(.+?)'s magical skin absorbs the damage of (.+?)\.$/;
 const NONMELEE_RE =
   /^(.+?) (?:is|are|was|were) .+? by (.+?) for (\d+) points? of non-melee damage[.!](?: \([^)]+\))?$/;
-// A named ability resolving as typed damage — magic/fire/cold/poison/disease/unresistable —
-// rather than a plain swing. That adjective sits exactly where the melee patterns require
-// "points of damage" with nothing in between, which is why these went unparsed: 26,864 lines
-// in a real log, 564,644 points of them the self's own. Anchoring on the literal " hit " is
-// what splits a multi-word attacker correctly ("Ranshi`s warder hit …"); across the whole log
-// the verb is always "hit", the spell is always named, and "(Critical)" is the only flag.
+// A named ability resolving as typed damage rather than a plain swing. That adjective sits
+// exactly where the melee patterns require "points of damage" with nothing in between, which is
+// why these went unparsed at first: 26,864 lines in a real log, 564,644 points of them the
+// self's own. Anchoring on the literal " hit " is what splits a multi-word attacker correctly
+// ("Ranshi`s warder hit …"); the verb is always "hit", the spell is always named, and
+// "(Critical)" is the only flag.
+//
+// The element is `\w+`, not a list. It was magic/fire/cold/poison/disease/unresistable until a
+// boss turned up dealing **chromatic** damage, and four lines went unparsed — the fixed list was
+// a standing invitation to miss the next one. Nothing else can reach this pattern anyway: a
+// plain swing has no adjective at all, and "non-melee" is hyphenated, so neither matches `\w+`,
+// and both lack the trailing " by <Spell>".
 const TYPED_DAMAGE_RE =
-  /^(.+?) hit (.+?) for (\d+) points? of (?:magic|fire|cold|poison|disease|unresistable) damage by (.+?)\.(?: \(([^)]+)\))?$/;
+  /^(.+?) hit (.+?) for (\d+) points? of \w+ damage by (.+?)\.(?: \(([^)]+)\))?$/;
 
 const MELEE_YOU_RE =
   /^You ([a-z]+) (.+?) for (\d+) points? of damage\.(?: \(([^)]+)\))?$/;
@@ -263,6 +273,11 @@ export function parseLine(raw: string): CombatEvent | null {
   m = ZONE_RE.exec(body);
   if (m) {
     const ev: ZoneEvent = { type: "zone", tsMs, raw: body, zone: m[1]! };
+    return ev;
+  }
+  if (LOADING_RE.test(body)) {
+    // A transition with no name attached: it ends the fight but can't name the destination.
+    const ev: ZoneEvent = { type: "zone", tsMs, raw: body, zone: null };
     return ev;
   }
 

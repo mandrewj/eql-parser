@@ -86,6 +86,13 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   the next blow opens a fresh encounter. A charmed mob is dropped from `npcSeeds` and
   `aliveEngaged` so it can't hold a fight open past its kill, and a charm is cleared on the
   pet's death (or a name-shared respawn would inherit it) and on zoning.
+  - **Charm flips allegiance, so it cuts both ways.** On a mob it makes them ours; on one of
+    *ours* it makes them the enemy. A landing on a key that is already `friendly` is therefore
+    the mirror case — the target joins `charmedAway`, which seeds `npc` and is stripped from
+    `friendly`, so the damage they now deal the group is counted instead of hidden. (A mob is an
+    enemy at the instant its charm lands, which is exactly what separates the two.) Released on
+    the wear-off, on their death and on zoning. No occurrence in a 900k-line log yet, but a long
+    fight is where it happens.
   - **Ownership** is settled by three sources, strongest first: a pet's own `Master` line
     (which names the charmer outright), then a `cast` paired within **3s**, then the **class
     inference** — the landing *message* identifies the spell, the spell identifies the caster's
@@ -168,6 +175,11 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   the NPC is un-slain, its owner is alive (enemy pets named `<owner> pet` despawn when the owner
   dies), and it has traded blows within **60s**. That window is separate from the *fight*
   timeout, and shorter: a pull can stay open while one particular mob is left alone.
+  - **Zoning terminates every encounter**, from either half of the transition: `LOADING, PLEASE
+    WAIT.` as well as `You have entered <zone>.` The two don't pair up one-for-one in a real log
+    (110 against 115), so relying on the named one alone let encounters span a transition. Only
+    the named half moves the zone, counts a zone change or marks the timeline — the unnamed one
+    ends the fight and says nothing about where we now are.
   - **Re-engaging a mob after that window starts a new encounter**, and the abandoned stretch is
     **discarded** rather than banked — it is not a fight, and keeping it would put a fragment in
     the recent list and in every average. Dropping the encounter also keeps its damage out of the

@@ -298,6 +298,11 @@ export class Engine {
   // fact: the same mob is an enemy before the charm and again after it breaks, so the
   // engine closes out its encounter at each boundary rather than picking one side.
   private readonly charmed = new Map<string, CharmHold>();
+  // The mirror case: one of *ours* charmed away from us. Charm flips allegiance, so on a mob it
+  // makes them our pet and on a player it makes them the enemy — seeding them friendly, as a
+  // charmed mob is, would hide the damage they are now dealing the group. Rare enough that a
+  // real 900k-line log contains none, but a long fight is exactly where it happens.
+  private readonly charmedAway = new Set<string>();
   // The last few seconds of charm casts, purely to put an owner on the next landing —
   // the landing line never names one. Trimmed to CHARM_ATTRIB_MS, so it stays tiny.
   private charmCasts: Array<{ casterKey: string; spell: string; ts: number }> = [];
@@ -412,13 +417,18 @@ export class Engine {
     if (ev.type === "zone") {
       // Zoning leaves all mobs behind — end the current fight immediately.
       if (this.current) this.closeFight(this.current.lastActivityMs);
-      this.totals.zones++;
-      this.zone = { name: ev.zone, sinceMs: ev.tsMs };
+      // Both halves of a transition end the fight; only the named one moves the zone, or a
+      // single zoning would be counted twice and reset the stance window twice.
+      if (ev.zone !== null) {
+        this.totals.zones++;
+        this.zone = { name: ev.zone, sinceMs: ev.tsMs };
+      }
       // A charmed pet doesn't zone with you either.
       this.charmed.clear();
+      this.charmedAway.clear();
       this.charmCasts = [];
       this.lastCharmOwner.clear();
-      this.pushMilestone(ev.tsMs, "zone", ev.zone, `Zoned into ${ev.zone}`);
+      if (ev.zone !== null) this.pushMilestone(ev.tsMs, "zone", ev.zone, `Zoned into ${ev.zone}`);
       return;
     }
     if (ev.type === "progress") {
@@ -858,6 +868,7 @@ export class Engine {
       // An empty `who` is a song ending: it breaks every charm that song is holding.
       if (ev.who) {
         const key = this.keyOf(ev.who);
+        this.charmedAway.delete(key); // one of ours, handed back
         this.breakCharm(key);
         this.breakCharm(twinKey(key)); // it may have been split off from its namesake
       } else {
@@ -882,11 +893,19 @@ export class Engine {
 
     const f = this.current;
     if (f) {
+      const { friendly, npc } = this.resolveKinds(f);
+      // Charm flips allegiance, so landing on one of *ours* is the opposite event: they
+      // become the enemy, not our pet. A mob being charmed is an enemy at this instant, so
+      // "already friendly" is what separates the two cases.
+      if (friendly.has(key) && key !== this.selfKey && !isTwinKey(key)) {
+        this.charmedAway.add(key);
+        f.npcSeeds.add(key);
+        return;
+      }
       // The mob was an enemy until this instant. Bank what it did and what was done to
       // it as a finished encounter, then wipe its tracking, so the pet's row starts from
       // zero instead of inheriting the health bar we just chewed through. This is the
       // same reset a death does, for the same reason: one name, two separate lives.
-      const { friendly, npc } = this.resolveKinds(f);
       if (npc.has(key)) {
         this.pushEncounter(f, key, ev.tsMs, friendly);
         this.resetNpcTracking(f, key, friendly);
@@ -1357,6 +1376,7 @@ export class Engine {
     // A charm dies with its holder. Leaving it set would hand the charm to the next
     // mob of the same name — "a lava beetle" is not a unique creature.
     this.charmed.delete(vKey);
+    this.charmedAway.delete(vKey);
     // My own death is the single biggest explanation for a collapsed DPS bar — mark it, and
     // keep the run-up to it while it is still in the window.
     if (vKey === this.selfKey) {
@@ -1590,6 +1610,11 @@ export class Engine {
     const friendly = new Set<string>([this.selfKey, ...this.charmed.keys()]);
     const npc = new Set<string>(f.npcSeeds);
     for (const key of this.charmed.keys()) npc.delete(key);
+    // …and the reverse for anyone charmed away from us: hostile until it breaks.
+    for (const key of this.charmedAway) {
+      friendly.delete(key);
+      npc.add(key);
+    }
 
     // Two passes, in descending order of how much the evidence can be trusted. Every rule
     // guards on "not already classified", so whichever fires first wins — which used to be

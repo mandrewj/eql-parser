@@ -71,7 +71,7 @@ to real spell names later needs a spell-message table (EQLogParser ships one).
 [..] Futor hit a Teir`Dal priestess for 52 points of fire damage by Fingers of Fire. (Critical)
 ```
 ```
-^(?<attacker>.+?) hit (?<target>.+?) for (?<amount>\d+) points? of (?<type>magic|fire|cold|poison|disease|unresistable) damage by (?<spell>.+?)\.(?: \((?<flag>[^)]+)\))?$
+^(?<attacker>.+?) hit (?<target>.+?) for (?<amount>\d+) points? of (?<type>\w+) damage by (?<spell>.+?)\.(?: \((?<flag>[^)]+)\))?$
 ```
 - **The type adjective sits exactly where the melee patterns require `points of damage` with
   nothing in between**, so these lines matched nothing at all until the pattern above existed
@@ -80,6 +80,10 @@ to real spell names later needs a spell-message table (EQLogParser ships one).
   the spell is **always named**, across all 26,864. Anchoring on ` hit ` is what splits a
   multi-word attacker correctly (`Ranshi\`s warder hit …`).
 - `(Critical)` is the only trailing flag observed.
+- **The element is `\w+`, not a list.** Observed: magic, fire, cold, poison, disease,
+  unresistable — and then a boss turned up dealing **chromatic**, and four lines went unparsed
+  against a fixed alternation. Nothing else can reach this pattern anyway: a plain swing has no
+  adjective, `non-melee` is hyphenated, and neither carries the trailing ` by <Spell>`.
 - Like the DoT form, this **names the real ability**, so it needs no damage-message table.
   Recorded as `spell` damage: the type adjective says it is not a plain swing, and a single
   client's log gives no way to tell a melee-triggered ability from a cast one.
@@ -419,6 +423,17 @@ A single client's log cannot tell them apart, with two consequences:
 - Which side of any individual blow was the pet stays unknowable — both swing and the lines
   are identical — so the exchange is credited to the pet as an **upper bound** and the UI
   marks it.
+
+## Zoning — two lines, one boundary
+
+```
+[..] LOADING, PLEASE WAIT.
+[..] You have entered The Permafrost Caverns.
+```
+An 875k-line log holds **110** of the first and **115** of the second, so they do *not* pair up
+one-for-one. Both end the fight — an encounter can never cross a zone line — but only the named
+one moves the current zone, counts a zone change, or marks the timeline. Treating `LOADING` as a
+full zone event would double-count a single transition; ignoring it lets an encounter span one.
 
 ## `/who` results — the only place a class is stated
 

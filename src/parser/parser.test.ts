@@ -295,6 +295,24 @@ test("typed ability damage — every damage type, and a multi-word attacker", ()
   }
 });
 
+test("typed ability damage — the element is not a fixed list", () => {
+  // It was magic/fire/cold/poison/disease/unresistable until a boss dealt *chromatic* damage
+  // and four lines silently went unparsed. Any adjective in that slot is typed damage.
+  const e = parseLine(TS + "Master Yael hit you for 640 points of chromatic damage by Mana Detonation.");
+  assert.equal(e?.type, "spell");
+  if (e?.type !== "spell") return;
+  assert.equal(e.owner, "Master Yael");
+  assert.equal(e.target, "You");
+  assert.equal(e.amount, 640);
+  assert.equal(e.effect, "Mana Detonation");
+  // …and the two neighbouring forms must still not be swallowed by it.
+  assert.equal(parseLine(TS + "You strike an orc for 50 points of damage.")?.type, "melee");
+  assert.equal(
+    parseLine(TS + "An orc is burned by YOUR flames for 5 points of non-melee damage.")?.type,
+    "spell",
+  );
+});
+
 test("typed ability damage — the trailing crit flag is read", () => {
   const e = parseLine(
     TS + "Futor hit a Teir`Dal priestess for 52 points of fire damage by Fingers of Fire. (Critical)",

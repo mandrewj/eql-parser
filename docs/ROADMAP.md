@@ -486,6 +486,22 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 - Log-wide: 3,748 → 4,157 encounters, mean duration 58s → 45s, and the engine's total self damage
   fell by 26,026 — exactly the abandoned stretches, and the right direction.
 
+## Post-v1 — Charmed groupmates, and zoning as a hard encounter boundary  ✅
+- **Charm flips allegiance, and it cuts both ways.** On a mob it makes them our pet; on one of
+  *ours* it makes them the enemy. Only the first half was handled, so a charmed groupmate stayed
+  `friendly` and the damage they were dealing the group went nowhere. A landing on a key that is
+  already friendly now marks it `charmedAway` — seeded as an NPC, stripped from friendly — and
+  released on the wear-off, on their death, and on zoning. A mob is an enemy at the instant its
+  charm lands, which is exactly what tells the two cases apart. No occurrence in a 900k-line log
+  yet; a long ongoing fight is where it will happen.
+- **Zoning terminates every encounter, from either half of the transition.** `You have entered
+  <zone>.` already did; `LOADING, PLEASE WAIT.` did not, and the two don't pair one-for-one
+  (110 against 115 in a real log), so an encounter could span a transition. Only the named half
+  moves the zone, counts a zone change or marks the timeline — counting both would double every
+  zoning, and ignoring the unnamed one leaves the gap.
+- Log-wide: +27 encounters from transitions that previously merged, no player gained an encounter,
+  and the engine stays 0.65% above raw-log ground truth (the summoned-pet folding).
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

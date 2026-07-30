@@ -200,6 +200,49 @@ test("an encounter goes inactive after 60s of no activity on that NPC", () => {
   assert.equal(active.includes("orc b"), false, "B stale (70s idle > 60)");
 });
 
+test("a groupmate charmed away from us becomes the enemy, not our pet", () => {
+  let clock = at("01:01:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 300, now: () => clock });
+  feedInto(engine, [
+    // Mirad is plainly one of ours: he fights the orc and heals me.
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:01", "Mirad crushes an orc for 80 points of damage."),
+    L("01:00:02", "Mirad healed you for 40 hit points."),
+    // …then a mob charms him, and he turns on the group.
+    L("01:00:20", "Mirad's eyes glaze over."),
+    L("01:00:30", "Mirad crushes YOU for 90 points of damage."),
+    L("01:00:31", "You crush Mirad for 60 points of damage."),
+  ]);
+  const names = engine.snapshot().activeEncounters.map((e) => e.name);
+  assert.equal(names.includes("Mirad"), true, "he is something we are now fighting");
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name === "Mirad")!;
+  assert.equal(enc.cards.find((c) => c.isSelf)!.damage.total, 60, "my damage to him counts");
+  assert.equal(enc.cards.find((c) => c.isSelf)!.taken.total, 90, "and his to me");
+  // The mirror of the mob case: he must not be folded in as a charmed pet of ours.
+  assert.equal(
+    enc.cards.some((c) => c.kind === "pet"),
+    false,
+    "a charmed groupmate is not our pet",
+  );
+});
+
+test("zoning ends encounters even when the line has no zone name", () => {
+  let clock = at("01:00:40");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 300, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    // The unnamed half of a transition. Encounters cannot cross a zone line either way.
+    L("01:00:20", "LOADING, PLEASE WAIT."),
+    L("01:00:30", "You crush an orc for 50 points of damage."),
+  ]);
+  const snap = engine.snapshot();
+  assert.equal(snap.activeEncounters[0]!.cards.find((c) => c.isSelf)!.damage.total, 50);
+  assert.equal(snap.recentEncounters[0]!.cards.find((c) => c.isSelf)!.damage.total, 100);
+  // …but an unnamed transition must not be counted as a zone or move the stance window.
+  assert.equal(snap.stats.zoneStance.zone, null, "it cannot say where we now are");
+  assert.equal(snap.stats.levels[0]!.zones, 0, "and is not double-counted against the named half");
+});
+
 test("re-engaging a mob after a lull starts a new encounter, not a longer one", () => {
   let clock = at("01:05:30");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 300, now: () => clock });

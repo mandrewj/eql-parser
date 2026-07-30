@@ -137,7 +137,9 @@ export interface WhoEvent extends BaseEvent {
 
 export interface ZoneEvent extends BaseEvent {
   type: "zone";
-  zone: string; // destination zone name — ends the current fight
+  /** Destination zone, or null for the unnamed half of a transition (`LOADING, PLEASE
+   *  WAIT.`). Either way it ends the current fight; only a named one moves the zone. */
+  zone: string | null;
 }
 
 /** Character progression (self only) — what changed about *me* between fights. */
