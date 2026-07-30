@@ -287,6 +287,10 @@ export interface EncounterCard {
   kind: EntityKind; // "pet" here always means a charmed mob — summoned pets fold into their owner
   isSelf: boolean;
   ownerName?: string; // charmed pets only, and only when a charm cast identified the charmer
+  /** A charmed mob that shares its name with the mob it was sent at. The log gives both
+   *  the same key and its blows are identical either way, so this row's figures are the
+   *  whole exchange between the pair — an upper bound on the pet, not its output alone. */
+  ambiguous?: boolean;
   damage: MetricStat; // damage this character did to the NPC (per-person active window)
   healing: MetricStat; // healing this character did during their active window
   taken: MetricStat; // damage this character took from the NPC

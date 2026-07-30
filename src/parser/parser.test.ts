@@ -155,8 +155,25 @@ test("pet — self's pet identified via 'Master' message", () => {
   assert.equal(e.owner, "You");
 });
 
+test("pet — 'told you' is how this game delivers pet chatter", () => {
+  for (const [line, pet] of [
+    ["A fire giant warrior told you, 'Attacking a fire giant warrior Master.'", "A fire giant warrior"],
+    ["Jonantik told you, 'Attacking a bandit lookout Master.'", "Jonantik"],
+    // The comma form, where "Master" is an address rather than the sentence's tail.
+    ["Kebekn told you, 'I am unable to wake an imp protector, Master.'", "Kebekn"],
+  ] as const) {
+    const e = parseLine(TS + line);
+    assert.equal(e?.type, "pet", line);
+    if (e?.type !== "pet") continue;
+    assert.equal(e.pet, pet);
+    assert.equal(e.owner, "You");
+  }
+});
+
 test("pet — NPC dialogue is not mistaken for a pet", () => {
   assert.equal(parseLine(TS + "Orc taskmaster says, 'Centurions!  Come join the fight!'"), null);
+  // "taskmaster" is not "Master" — the check is case-sensitive and word-bounded.
+  assert.equal(parseLine(TS + "Sarys told you, 'the orc taskmaster hits hard'"), null);
 });
 
 test("charm — both landing messages name the mob and no caster", () => {

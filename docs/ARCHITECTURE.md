@@ -71,9 +71,22 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   the next blow opens a fresh encounter. A charmed mob is dropped from `npcSeeds` and
   `aliveEngaged` so it can't hold a fight open past its kill, and a charm is cleared on the
   pet's death (or a name-shared respawn would inherit it) and on zoning.
-  - **Ownership** is inferred by pairing an `on` with the most recent `cast` within **3s**;
-    unpaired charms still get a row, just without a charmer. On the real log this named an
-    owner for 160 of 174 pet rows.
+  - **Ownership** comes from a pet's own `Master` line when it has one — that names the
+    charmer outright — and otherwise by pairing an `on` with the most recent `cast` within
+    **3s**. Unpaired charms still get a row, just without a charmer.
+  - **Two mobs can wear one name**, and the log keys them the same. A blow between them
+    (`A fire giant warrior slashes a fire giant warrior`) proves they are two, since nothing
+    attacks itself, so the charmed one is moved onto a key of its own at that point and the
+    rest of the engine treats them as the separate entities they are: the pet earns its own
+    encounter row, and our swings at its namesake stop reading as swings at our own pet —
+    which used to break the charm within seconds of it landing. Which side of any one blow
+    was the pet is unknowable, so the exchange is credited to it as an upper bound and the
+    card is flagged `ambiguous`. On the live fight this recovered a 4,613-damage exchange
+    the list had shown nothing of.
+  - **A charmed mob never folds into its owner**, unlike a summoned pet: a charm is
+    temporary, breakable, and often not even ours. A `Master` line from one therefore sets
+    the *charm's* owner rather than a `petOwners` entry — filing it as a summon would fold
+    it into that row, and in the twin case would fold the enemy in with it.
   - **Breaks** that the log announces cover only your own charm, so two behavioural signals
     carry the rest: a pet turning on **its own charmer**, and blows traded with **me** in
     either direction (you cannot damage your own charmed pet, nor it you). Both wait out a
@@ -210,7 +223,8 @@ interface EncounterView {             // one per-mob card
 
 interface EncounterCard {             // one row of that card
   name: string; kind: "self" | "player" | "pet"; isSelf: boolean;
-  ownerName?: string;                 // charmed pets only, when a cast identified the charmer
+  ownerName?: string;                 // charmed pets only, when the charmer is known
+  ambiguous?: boolean;                // charmed mob sharing its target's name: figures are the pair's exchange
   pct: number;                        // share of damage dealt to the mob (the bar)
   activeSec: number;                  // their engaged window — what all three rates divide by
   damage: MetricStat; healing: MetricStat; taken: MetricStat;
@@ -280,7 +294,15 @@ interface MetricStat {                // every metric group has this one shape
   pets already had. The mob keeps its own name, which reads exactly like the enemy it was a
   moment ago, so a **⛓ glyph** carries the identity — at 540px the name is the first thing
   the ellipsis eats — and the charmer's name rides beside it as a quiet tag when known.
-  Surfaced 91,180 damage across the real log that was previously invisible. — the damage breakdown line (total, melee/spell/DoT split, crits) and top ability chips render without a click, marked with a blue left rule. Everyone else toggles on click.
+  Surfaced 91,180 damage across the real log that was previously invisible.
+  - An `ambiguous` row adds a **`~`** tag in the `--partial` amber: its figures are the whole
+    exchange between two same-named mobs, so they bound the pet rather than measure it. The
+    tag qualifies the numbers rather than naming anyone, which is the same job the `time`
+    column's flag does in the same colour.
+  - `.erow.pet`'s fill moved from a teal a step from `--player`'s green to a clearly cooler
+    cyan. It had been unreachable while every pet folded into its owner; now a charmed pet
+    and a groupmate share a table, so the two must not read alike. Colour is never the only
+    signal — the row also carries the glyph and its charmer's name. — the damage breakdown line (total, melee/spell/DoT split, crits) and top ability chips render without a click, marked with a blue left rule. Everyone else toggles on click.
 - **Number formatting** (`components.tsx`, one `scaleK(n, at)` helper): k-notation past a per-context threshold, one decimal, dropped to zero decimals past 100k so the narrow columns don't overflow. Thresholds — **10k** for the dps/hps columns, **2k** for the tank column (tanking totals climb fastest), **1k** inside the encounter drill-down lines.
 - **My DPS panel** — stance-combo cards (avg DPS per melee+invocation over the window) plus an **encounter history chart** below them, both driven by the same 10/25/50 window chip.
   - Each card carries the combo's **defensive cost and usage** under its DPS — `🛡 <taken>/s · ⏱ <share>%` — so a combo that out-damages the rest on 5% of your time reads as the thin sample it is. The full sentence (including the raw seconds behind the share) is in the card's `title`.

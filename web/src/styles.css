@@ -256,7 +256,11 @@ body { margin: 0; }
 .ebar > .fill { position: absolute; inset: 0 auto 0 0; opacity: 0.95; }
 .erow.self .ebar > .fill { background: linear-gradient(90deg, #34528f, var(--self)); }
 .erow.player .ebar > .fill { background: linear-gradient(90deg, #2c6f4e, var(--player)); }
-.erow.pet .ebar > .fill { background: linear-gradient(90deg, #3f7d6a, #57b39a); }
+/* A charmed mob. This sat unreachable while pets folded into their owners, at a teal a
+   step from --player's green — fine in isolation, but a charmed pet and a groupmate now
+   share a table, so it moves to a clearly cooler hue. Colour is never the only signal:
+   the row also carries the ⛓ glyph and its charmer's name. */
+.erow.pet .ebar > .fill { background: linear-gradient(90deg, #2f6f86, #4fb3cf); }
 .erow.npc .ebar > .fill { background: linear-gradient(90deg, #8f3a3a, var(--npc)); }
 .etxt { position: relative; display: flex; justify-content: space-between; align-items: center; height: 100%; padding: 0 0.4rem; font-size: 0.74rem; gap: 0.4rem; }
 .ename { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 1px #0006; }
@@ -267,6 +271,9 @@ body { margin: 0; }
 /* The charmer's name is context, never the row's own subject — so it stays quieter than
    the `you` tag, but still needs to read against the pet bar's fill underneath it. */
 .ename .tag.owner { background: #0b0f16aa; color: #b9c6da; font-weight: 500; margin-left: 0.3rem; }
+/* "~": this row's figures are a pair's exchange, not one mob's output. Amber, because it
+   qualifies the numbers rather than naming anyone — same job as the `time` column's flag. */
+.ename .tag.approx { background: #0b0f16aa; color: var(--partial); font-weight: 700; padding: 0 0.3rem; }
 .epct { font-variant-numeric: tabular-nums; opacity: 0.9; font-weight: 600; }
 .enum { text-align: right; font-size: 0.74rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .erow.ehead .enum { font-size: 0.6rem; font-weight: 400; text-transform: uppercase; color: var(--muted); }

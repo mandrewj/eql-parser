@@ -28,9 +28,13 @@ const RELEVANT_RE =
 // (guard against the non-zone "You have entered an area where …" warning).
 const ZONE_RE = /^You have entered (?!an area\b)(.+?)\.$/;
 
-// A pet addressing you as "Master" (e.g. "Gore says, 'Attacking a rat Master.'")
-// only ever refers to *your* pet in your own log, so it identifies the self's pet.
-const PET_SAY_RE = /^(.+?) says,? '.*\bMaster\b[.!]?'$/;
+// A pet addressing you as "Master" only ever refers to *your* pet in your own log, so it
+// identifies the self's pet. Two delivery verbs: this game sends pet chatter as `told you`
+// ("A fire giant warrior told you, 'Attacking a fire giant warrior Master.'"), which is the
+// only form a real 763k-line log contains — `says` is kept for the classic phrasing.
+// `\bMaster\b` stays case-sensitive so "Orc taskmaster" can't false-positive, and the
+// terminator allows the comma form ("I am unable to wake an imp protector, Master.").
+const PET_SAY_RE = /^(.+?) (?:says|told you),? '.*\bMaster\b[.!]?'$/;
 
 // Third-person melee verbs. Constraining the verb (vs. a bare \w+) is what lets
 // a multi-word attacker like "Orc legionnaire" split correctly.

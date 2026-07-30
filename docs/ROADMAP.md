@@ -239,7 +239,39 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 - Validated by replaying the whole 742k-line log before and after: no player name gained an
   encounter, two lost theirs, and my own damage total moved 0.8%.
 
+## Post-v1 — Pet chatter, and charmed mobs that share their target's name  ✅
+- **Summoned pets were never detected at all.** `PET_SAY_RE` matched `X says, '… Master.'`,
+  but this game delivers pet chatter as `X told you, '… Master.'` — `says` appears zero
+  times in 768k lines, so `parse:check` reported `pet: 0` and no pet ever folded into its
+  owner. Now 318 pet events.
+- **A charmed mob fighting its own namesake is now a participant.** Entities are keyed by
+  name, so the charmed one and the mob it was sent at were a single entity: the encounter
+  showed neither its damage nor, for a while, itself. A blow between them proves there are
+  two (nothing attacks itself), so the charmed one splits onto its own key from that point.
+  On the live fire giant fight this surfaced a **4,613-damage exchange** the list showed
+  nothing of, and stopped the charm breaking seconds in — our swings at the *twin* had been
+  reading as swings at our own pet.
+- Which of the pair swung on any given line is unknowable, so the exchange is credited to
+  the pet as an **upper bound** and the row carries a `~` tag saying so. Better than the
+  alternatives: crediting nothing hid a 38%-of-encounter participant, and splitting it
+  evenly would have invented a number.
+- A pet's `Master` line turns out to be the **best ownership evidence available** — it names
+  the charmer outright, where the cast window only time-matches. It sets the charm's owner
+  rather than a `petOwners` entry, since filing a charm as a summon would fold it into that
+  row (and, in the twin case, fold the enemy in with it).
+- Recovered **143k of my own damage** on charm-target mobs that the shared key had been
+  wiping on every charm/break cycle. Spot-checked against raw grep on one fight: engine
+  5,332 vs 3,858 melee + 1,186 DoT + 288 proc = exact.
+
 ## Backlog (engine already supports the shape)
+- **Typed damage lines are not parsed at all** — `You hit a fire giant warrior for 151 points of
+  **magic** damage by Smiting Strike.` The damage patterns require `points of damage` or `points of
+  non-melee damage`, so an adjective between them misses. Found while ground-truthing the charm work:
+  **26,642 such lines in the log, 5,845 of them mine, worth 564,644 damage** — roughly 15% of my
+  total, absent from every DPS figure the app shows. `parse:check` reports it as clean because its
+  own relevance regex has the same blind spot, so fix that in the same pass. The highest-value item
+  here by some distance; the shape is one alternation in `MELEE_YOU_RE`/`MELEE_OTHER_RE` plus a
+  decision on whether the named ability (`by Smiting Strike`) becomes the per-ability label.
 - Real spell-name mapping for non-melee "effect" messages via a damage-message table (from EQLogParser).
 - Fight export/share (JSON/image) and run-over-run comparison. Needs the first **persistence** in the
   app: today the log file *is* the store and backfill re-derives everything in ~25s, so this only earns

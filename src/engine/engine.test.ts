@@ -776,6 +776,50 @@ test("charm: a charm does not carry over to a same-named respawn", () => {
   assert.equal(enc!.cards.find((c) => c.isSelf)!.damage.total, 30);
 });
 
+test("charm: a pet fighting its own namesake is split off and shown as a participant", () => {
+  let clock = at("01:01:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush a fire giant warrior for 100 points of damage."),
+    L("01:00:02", "a fire giant warrior's eyes glaze over."),
+    // Nothing attacks itself: one name on both sides means two mobs wearing it.
+    L("01:00:05", "A fire giant warrior told you, 'Attacking a fire giant warrior Master.'"),
+    L("01:00:06", "A fire giant warrior slashes a fire giant warrior for 79 points of damage."),
+    L("01:00:07", "A fire giant warrior cleaves a fire giant warrior for 175 points of damage."),
+    // My swings land on the enemy twin, and must not read as hitting my own pet.
+    L("01:00:20", "You crush a fire giant warrior for 200 points of damage."),
+    L("01:00:21", "A fire giant warrior hits YOU for 50 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "a fire giant warrior")!;
+  assert.ok(enc, "the enemy twin is still an encounter");
+
+  const pet = enc.cards.find((c) => c.kind === "pet")!;
+  assert.ok(pet, "the charmed twin is a participant in it");
+  assert.equal(pet.name.toLowerCase(), "a fire giant warrior", "it keeps its own name");
+  assert.equal(pet.damage.total, 254, "the exchange between the two");
+  assert.equal(pet.ambiguous, true, "flagged: the log cannot say which of the pair swung");
+  assert.equal(pet.ownerName, "Sanluen", "the 'Master' line names it as mine");
+
+  const self = enc.cards.find((c) => c.isSelf)!;
+  assert.equal(self.damage.total, 200, "my post-charm damage lands on the enemy, not the pet");
+});
+
+test("charm: a 'Master' line makes a charmed mob its charmer's, without folding it in", () => {
+  let clock = at("01:00:30");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:02", "a lava beetle's eyes glaze over."), // no cast to pair it with
+    L("01:00:04", "A lava beetle told you, 'Attacking a death beetle Master.'"),
+    L("01:00:10", "You strike a death beetle for 100 points of damage."),
+    L("01:00:11", "A lava beetle kicks a death beetle for 60 points of damage."),
+  ]);
+  const cards = engine.snapshot().activeEncounters[0]!.cards;
+  const pet = cards.find((c) => c.name.toLowerCase() === "a lava beetle")!;
+  assert.equal(pet.ownerName, "Sanluen", "the Master line names an owner no cast did");
+  assert.equal(pet.damage.total, 60, "still its own row — a charm never folds into its owner");
+  assert.equal(cards.find((c) => c.isSelf)!.damage.total, 100);
+});
+
 test("charm: my damage to my own pet never counts toward my personal DPS", () => {
   let clock = at("01:00:30");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

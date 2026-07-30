@@ -207,15 +207,25 @@ the mob did to the group) as well as each player's damage to the mob.
 
 ## Pets (self's pet)
 
-Only *your* pet addresses you as **Master** in your own log, so a pet "say" line ending in
-`Master` identifies it as the logging character's pet:
+Only *your* pet addresses you as **Master** in your own log, so a pet line ending in
+`Master` identifies it as the logging character's pet. This game delivers that chatter as
+**`told you`** — `says` did not appear once in a 768k-line log, and matching only `says`
+left every summoned pet undetected:
 
 ```
-[..] Gore says, 'Attacking a decaying skeleton Master.'
+[..] Jonantik told you, 'Attacking a bandit lookout Master.'
+[..] Kebekn told you, 'I am unable to wake an imp protector, Master.'
+[..] Gore says, 'Attacking a decaying skeleton Master.'        ← classic phrasing, kept
 ```
 ```
-^(?<pet>.+?) says,? '.*\bMaster\b[.!]?'$
+^(?<pet>.+?) (?:says|told you),? '.*\bMaster\b[.!]?'$
 ```
+- The terminator allows the **comma** form, where `Master` is an address rather than the
+  sentence's tail (`…, Master.'`).
+- Pet names are re-rolled on every summon, so one player produces many over a session (22
+  in this log). They can be told from *charmed* pets, which also use this line, because
+  charmed names never interleave with a summon's: two names alternating in one stretch
+  were always the two mobs being charm-swapped, never two summons.
 The engine records `pet → owner` and **folds the pet's damage/healing/tanking into its owner**,
 tagging the pet's categories with `🐾` in the owner's drill-down. Other players' pets can't be
 attributed from a single client's log (their pets don't call *you* Master), so they remain their
@@ -275,10 +285,30 @@ The second names the song and no mob, so it breaks **every** charm that song was
 Another player's charm ending is announced to nobody, so those are detected behaviourally
 — see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
+**A charmed pet also names its charmer**, using the same `Master` line as a summoned pet —
+and it names its target too:
+
+```
+[..] A fire giant warrior told you, 'Attacking a fire giant warrior Master.'
+```
+This is the *strongest* ownership evidence there is, better than time-matching a cast: it
+says outright whose pet it is. (It is also proof of the twin case below — the pet is being
+sent at a mob of its own name.)
+
 **The hard limit: names are not identities.** Entities are keyed by name, and two mobs can
-share one (`A wan ghoul knight tries to slash a wan ghoul knight, but misses!` is a real
-line — the charmed one attacking its twin). A single client's log cannot tell them apart,
-so a charmed mob is never trusted to classify anyone else.
+share one:
+
+```
+[..] A wan ghoul knight tries to slash a wan ghoul knight, but misses!
+[..] A fire giant warrior slashes a fire giant warrior for 79 points of damage.
+```
+A single client's log cannot tell them apart, with two consequences:
+- A charmed mob is **never trusted to classify anyone else**, in either direction — its
+  swings would otherwise brand whoever its *twin* mauls (a groupmate) as a mob.
+- Same-name blows do prove there are **two** mobs, since nothing attacks itself, so the
+  charmed one is split onto a key of its own from that point. Which side of any individual
+  blow was the pet stays unknowable — both swing and the lines are identical — so the
+  exchange is credited to the pet as an **upper bound** and the UI marks it.
 
 ## Stances (self only)
 

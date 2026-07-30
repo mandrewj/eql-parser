@@ -464,6 +464,21 @@ function EncounterRow({
               {card.name}
               {card.isSelf && <span className="tag you">you</span>}
               {card.ownerName && <span className="tag owner">{card.ownerName}</span>}
+              {/* Same name on both sides of the fight: the log cannot say which of the two
+                  swung, so the figures are the pair's whole exchange. Marked rather than
+                  hidden — the pet is a real participant and this is its true upper bound. */}
+              {card.ambiguous && (
+                <span
+                  className="tag approx"
+                  title={
+                    `${card.name} is charmed and fighting another mob of the same name. The log ` +
+                    `gives both the same name, so this row is the whole exchange between them — ` +
+                    `an upper bound on the charmed one's damage, not its output alone.`
+                  }
+                >
+                  ~
+                </span>
+              )}
             </span>
             <span className="epct">{card.pct}%</span>
           </div>
