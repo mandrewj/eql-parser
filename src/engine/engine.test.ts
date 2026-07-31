@@ -200,6 +200,47 @@ test("an encounter goes inactive after 60s of no activity on that NPC", () => {
   assert.equal(active.includes("orc b"), false, "B stale (70s idle > 60)");
 });
 
+test("stance overview counts the fight in progress, not just finished encounters", () => {
+  let clock = at("01:04:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 300, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You assume an offensive stance."),
+    L("01:00:00", "You begin reciting the spellblade invocation."),
+    L("01:00:01", "You crush an orc for 400 points of damage."),
+    L("01:00:30", "You have slain an orc!"), // a finished encounter, offensive
+    // Now a long fight that has not ended, with a stance change part way in. Before this the
+    // panel showed only "offensive" and disagreed with the stance pill in the topbar.
+    L("01:01:00", "You crush Lord Nagafen for 300 points of damage."),
+    L("01:02:00", "You assume a defensive stance."),
+    L("01:02:10", "You crush Lord Nagafen for 500 points of damage."),
+    L("01:03:00", "You crush Lord Nagafen for 500 points of damage."),
+  ]);
+  const w = engine.snapshot().stanceOverview.find((x) => x.n === 10)!;
+  const combos = w.rows.map((r) => `${r.melee}|${r.invocation}`);
+  assert.ok(combos.includes("offensive|spellblade"), "the finished encounter");
+  assert.ok(combos.includes("defensive|spellblade"), "the stance I am in right now");
+  assert.ok(w.rows.find((r) => r.melee === "defensive")!.damage >= 1000, "with its damage");
+});
+
+test("history chart includes a live encounter, but only once it has a few seconds behind it", () => {
+  let clock = at("01:00:03");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 300, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:02", "You crush an orc for 900 points of damage."),
+  ]);
+  assert.equal(
+    engine.snapshot().encounterHistory.length,
+    0,
+    "a two-second-old burst is noise, and would rescale every other bar",
+  );
+  clock = at("01:00:20");
+  feedInto(engine, [L("01:00:20", "You crush an orc for 100 points of damage.")]);
+  const h = engine.snapshot().encounterHistory;
+  assert.equal(h.length, 1, "past the threshold it earns a bar");
+  assert.equal(h[0]!.damage, 1100);
+});
+
 test("a groupmate charmed away from us becomes the enemy, not our pet", () => {
   let clock = at("01:01:00");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 300, now: () => clock });

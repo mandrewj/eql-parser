@@ -213,7 +213,20 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   swinging earns no tile but its seconds are still real, and dropping them would inflate the headline
   rate. (Which is why `timeShare` need not sum to 100% — the shortfall is silent time.)
 - **Stance overview rows** carry both sides of a combo: `damage`/`dps` from `selfComboLog` (self **outgoing**, tagged with the combo live at each event) and `taken`/`takenPerSec` from `selfTakenComboLog` (its mirror, recorded when I am the *target* and the attacker isn't me — so self-damage never lands in the taken column). `timeShare` is the combo's share of the window's total combat seconds. Both logs share the same merged-window math and are trimmed together as encounters age out. Rates are whole numbers, so a trickle of incoming damage rounds to `0`/sec while the total still records it — the UI shows `<1` for that case.
-- **Self encounter history**: `snapshot().encounterHistory` is the last **50** finished encounters seen from my side — my total damage and damage taken, **each also as a rate over the encounter's own length** (`dps`, `takenPerSec`), its start/end and duration, and the **dominant stance combo** (the combo I spent the most seconds in over the encounter's window, via `dominantComboIn` → `comboSecondsIn`). Cached next to `overviewCache` and invalidated on the same event (a new finished encounter). This is what the overview's history chart plots; `recentEncounters` stays at 5 because it carries full per-combatant tables.
+- **The My DPS panel counts the fight in progress**, not only finished encounters. Both the
+  stance overview and the history chart merge the live encounters' spans in alongside the
+  finished ones. Without that the panel reports the combo you were in when the last mob *died*:
+  on a long fight that is minutes stale, and after a stance change it simply disagrees with the
+  stance pill in the topbar. It got much more visible once encounters stopped spanning idle time
+  — the windows narrowed by ~30% and combos started dropping out of the 10/25 chips entirely.
+  - A live encounter earns a **chart bar** only once it has ≥5s behind it: a rate over one or
+    two seconds is mostly noise, and since each half of the chart is scaled to its own peak, a
+    single early crit would rescale every other bar on the way past. The *overview* has no such
+    threshold — seconds in a combo are seconds however few.
+  - Both caches are therefore bypassed while a fight is open, since the window moves on every
+    blow. Measured at **0.58ms** per `snapshot()` against ~5 pushes/sec, versus a panel that
+    contradicts the topbar.
+- **Self encounter history**: `snapshot().encounterHistory` is the last **50** encounters seen from my side — my total damage and damage taken, **each also as a rate over the encounter's own length** (`dps`, `takenPerSec`), its start/end and duration, and the **dominant stance combo** (the combo I spent the most seconds in over the encounter's window, via `dominantComboIn` → `comboSecondsIn`). Cached next to `overviewCache` and invalidated on the same event (a new finished encounter). This is what the overview's history chart plots; `recentEncounters` stays at 5 because it carries full per-combatant tables.
 - **Progression** splits by frequency, because the two halves are used differently:
   - **`milestones`** — the rare, *markable* kinds only (`level`, `ap`, `ability`, `death`, `zone`),
     chronological, each with a short label and a full-sentence `detail`. These become glyphs on the

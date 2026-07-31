@@ -502,6 +502,22 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 - Log-wide: +27 encounters from transitions that previously merged, no player gained an encounter,
   and the engine stays 0.65% above raw-log ground truth (the summoned-pet folding).
 
+## Post-v1 — The My DPS panel can see the fight you are in  ✅
+- **A regression from the 60s encounter timeout, and a latent bug it exposed.** The stance
+  overview and history chart read only *finished* encounters, so they reported the combo you were
+  in when the last mob died. On a long fight that is minutes stale; after a stance change it
+  disagrees with the stance pill in the topbar. Tightening encounter spans narrowed the merged
+  windows by ~30%, which pushed whole combos out of the 10/25 chips: a real snapshot went from 3
+  combos to **1**, with the combo actually being fought missing.
+- Both now merge the **live** encounters' spans in with the finished ones. On the same log that
+  takes the n=10 window from 1 combo back to **4** — including the one switched to two seconds
+  before the log ends — and the chart's newest bars carry the current combo's colour.
+- A live encounter earns a **chart bar** only past 5s: a rate over one or two seconds is noise,
+  and each half of the chart is scaled to its own peak, so one early crit would rescale every
+  other bar. The overview has no threshold — seconds in a combo are seconds however few.
+- Both caches are bypassed while a fight is open, since the window then moves on every blow.
+  Measured: **0.58ms** per `snapshot()`, unchanged from the cached figure.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

@@ -68,6 +68,11 @@ const DEATH_WINDOW_SEC = 10;
  *  Lady Vox read 669s at 79 dps when the actual fight was a fraction of that. */
 const ENCOUNTER_IDLE_SEC = 60;
 
+/** How much of an encounter must have happened before it earns a bar on the history chart.
+ *  Below this a rate is mostly noise, and each half of the chart is scaled to its own peak,
+ *  so one early crit would rescale every other bar. */
+const LIVE_POINT_MIN_SEC = 5;
+
 /** The key a charmed mob takes when it turns out to share its name with a mob we are
  *  fighting. Entities are keyed by name, so until then the two are one entity; a blow
  *  between them ("A fire giant warrior slashes a fire giant warrior") is the proof that
@@ -483,14 +488,22 @@ export class Engine {
     deaths: DeathReport[];
     stats: LongTermStats;
   } {
+    // Built once and shared: the history chart and the encounter list both want them, and
+    // each view carries a sparkline that is not worth computing twice per push.
+    const live = this.current ? this.buildLiveEncounters(this.current) : [];
     return {
       current: this.current ? this.buildFight(this.current) : null,
       recent: this.finishedSummaries.slice(-20),
-      activeEncounters: this.current ? this.buildLiveEncounters(this.current) : [],
+      activeEncounters: live,
       recentEncounters: this.finishedEncounters.slice(0, 5),
       stance: { ...this.currentStances },
-      stanceOverview: (this.overviewCache ??= this.buildStanceOverviews()),
-      encounterHistory: (this.historyCache ??= this.buildEncounterHistory()),
+      // A fight in progress moves the window on every blow, so the cache only serves the idle
+      // case. Rebuilding costs ~146µs against a ~5/sec push rate — far cheaper than a panel
+      // that disagrees with the stance pill in the topbar.
+      stanceOverview: this.current ? this.buildStanceOverviews() : (this.overviewCache ??= this.buildStanceOverviews()),
+      // Same reasoning as the overview: a fight in progress moves this on every blow, so the
+      // cache only serves the idle case.
+      encounterHistory: this.current ? this.buildEncounterHistory(live) : (this.historyCache ??= this.buildEncounterHistory()),
       milestones: [...this.milestones],
       progressWindows: (this.progressCache ??= this.buildProgressWindows()),
       progress: { ...this.progress },
@@ -661,8 +674,18 @@ export class Engine {
 
   /** My per-encounter damage/tanking for the last 50 finished encounters, newest first,
    *  each tagged with the stance combo I spent the most time in during it. */
-  private buildEncounterHistory(): SelfEncounterPoint[] {
-    return this.finishedEncounters.slice(0, 50).map((e) => {
+  /** @param live encounters still running, newest-first ahead of the finished ones — without
+   *  them the chart cannot show the fight you are in, so a stance changed mid-boss doesn't
+   *  appear until the boss dies. One guard: a live encounter joins only once it has
+   *  `LIVE_POINT_MIN_SEC` behind it. A rate over one or two seconds is mostly noise, and since
+   *  each half of the chart is scaled to its own peak, a single early crit would rescale every
+   *  other bar on the way past. */
+  private buildEncounterHistory(live: EncounterView[] = []): SelfEncounterPoint[] {
+    const pool = [
+      ...live.filter((e) => e.durationSec >= LIVE_POINT_MIN_SEC),
+      ...this.finishedEncounters,
+    ].slice(0, 50);
+    return pool.map((e) => {
       const self = e.cards.find((c) => c.isSelf);
       const { melee, invocation } = this.dominantComboIn(e.startMs, e.endMs);
       const damage = self?.damage.total ?? 0;
@@ -755,10 +778,29 @@ export class Engine {
     return [10, 25, 50].map((n) => this.overviewForWindow(n));
   }
 
-  /** Average self DPS per stance+invocation combo over the last N finished encounters. */
+  /** The spans of the encounters running *right now*, for the overview to include alongside
+   *  the finished ones. Without these the panel cannot see the fight you are in: it would
+   *  report the combo you were in during the last mob that died, which on a long fight is
+   *  minutes out of date and, after a stance change, simply wrong. Each mob's own
+   *  first-contact → last-blow window, so it stays combat time rather than the fight's span. */
+  private liveSpans(): Array<[number, number]> {
+    const f = this.current;
+    if (!f) return [];
+    const out: Array<[number, number]> = [];
+    for (const key of f.perTarget.keys()) {
+      const from = f.firstSeen.get(key);
+      const to = f.lastSeen.get(key);
+      if (from !== undefined && to !== undefined) out.push([from, Math.max(to, from + 1000)]);
+    }
+    return out;
+  }
+
+  /** Average self DPS per stance+invocation combo over the last N encounters, the one in
+   *  progress included. */
   private overviewForWindow(n: number): StanceOverviewWindow {
     const encs = this.finishedEncounters.slice(0, n);
-    if (encs.length === 0) return { n, rows: [], damage: 0, seconds: 0 };
+    const live = this.liveSpans();
+    if (encs.length === 0 && live.length === 0) return { n, rows: [], damage: 0, seconds: 0 };
 
     // Merge the encounters' time windows so simultaneous mobs aren't double-counted. Each is
     // clamped to a second first: a mob I one-shot is first seen and slain within the same log
@@ -766,8 +808,7 @@ export class Engine {
     // with no seconds behind it and inflate every rate divided by them. `durationSec` already
     // credits that encounter one second; this is the same clamp, kept in step with it.
     const merged: Array<[number, number]> = [];
-    for (const iv of encs
-      .map((e): [number, number] => [e.startMs, Math.max(e.endMs, e.startMs + 1000)])
+    for (const iv of [...encs.map((e): [number, number] => [e.startMs, Math.max(e.endMs, e.startMs + 1000)]), ...live]
       .sort((a, b) => a[0] - b[0])) {
       const last = merged[merged.length - 1];
       if (last && iv[0] <= last[1]) last[1] = Math.max(last[1], iv[1]);
