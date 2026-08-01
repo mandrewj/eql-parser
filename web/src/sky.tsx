@@ -176,21 +176,31 @@ function QuestBlock({ quest, held }: { quest: SkyQuest; held: Map<string, number
  *  "I don't have it" and "nobody has told me what you have" look identical, and only one of
  *  those is fixed by playing. */
 function Baseline({ sky }: { sky: SkyStats }) {
-  if (!sky.inventoryPath) {
+  const file = sky.inventoryPath?.split(/[\\/]/).pop() ?? null;
+
+  // No log selected at all — there is no character to name a file after yet.
+  if (!file) {
+    return <div className="skybase warn">Select a log to track a character&apos;s Plane of Sky progress.</div>;
+  }
+
+  // `inventoryMs` rather than the path is the test for "was it read": the path is derived from
+  // the selected log and exists whether or not the file does, which is exactly what lets this
+  // name the file it is waiting for instead of shrugging.
+  if (sky.inventoryMs === null) {
     return (
-      <div className="skybase warn">
-        No inventory export found. In game, run <code>/outputfile inventory</code> — it writes
-        <code> &lt;Character&gt;_&lt;server&gt;-Inventory.txt</code> next to the game folder, and this tab picks it
-        up within a few seconds. Until then only items looted while the parser is running can be counted.
+      <div className="skybase warn" title={sky.inventoryPath ?? undefined}>
+        Waiting for <code>{file}</code>. In game, run <code>/outputfile inventory</code> — this tab
+        picks it up within a few seconds of the game confirming it. Until then only items looted
+        while the parser is running can be counted.
       </div>
     );
   }
-  const file = sky.inventoryPath.split(/[\\/]/).pop();
+
   return (
-    <div className="skybase" title={sky.inventoryPath}>
+    <div className="skybase" title={sky.inventoryPath ?? undefined}>
       <span className="skybasefile">{file}</span>
       <span className="muted">
-        {sky.inventoryItems} items · read {sky.inventoryMs ? time(sky.inventoryMs) : "—"}
+        {sky.inventoryItems} items · read {time(sky.inventoryMs)}
       </span>
       {sky.recentLoot.length > 0 && <span className="skybasenew">+{sky.recentLoot.length} from the log</span>}
     </div>

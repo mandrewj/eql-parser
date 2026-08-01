@@ -1623,3 +1623,20 @@ test("sky: a Dragon Hoard pickup survives an export written after it", () => {
   engine.setInventory(baseline(Date.parse("Sat Jul 18 2026 14:00:00 GMT-0400"), {}));
   assert.equal(engine.snapshot().sky.held.find((h) => h.name === "Grey Damask Cloak")?.count, 1);
 });
+
+/** The panel has to be able to say *which* export it is waiting for, so a missing file still
+ *  reports the path the selected log implies — `inventoryMs` is what says it was read. */
+test("sky: a missing export still names the file the active log implies", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  engine.setInventory(null, "/games/EverQuest Legends/Sanluen_qeynos-Inventory.txt");
+  const sky = engine.snapshot().sky;
+  assert.equal(sky.inventoryPath, "/games/EverQuest Legends/Sanluen_qeynos-Inventory.txt");
+  assert.equal(sky.inventoryMs, null);
+  assert.equal(sky.inventoryItems, 0);
+});
+
+test("sky: with no log selected there is no export to name", () => {
+  const engine = new Engine({ selfName: "You", inactivityTimeoutSec: 20 });
+  engine.setInventory(null, null);
+  assert.equal(engine.snapshot().sky.inventoryPath, null);
+});

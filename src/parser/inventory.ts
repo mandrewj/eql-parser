@@ -87,13 +87,44 @@ export function isUnexportedStorage(storedIn: string | undefined): boolean {
   return storedIn !== undefined && UNEXPORTED_STORAGE.has(storedIn.trim().toLowerCase());
 }
 
-/** Where the export lives for a given log file: same character and server, one directory up
- *  from `logs/`. Returns a path whether or not it exists — the caller reports the absence. */
-export function inventoryPathFor(logPath: string): string | null {
+/** The character and server a log file belongs to, from its name alone.
+ *  `eqlog_<Char>_<server>.txt` — the character cannot contain an underscore, the server can. */
+export function logIdentity(logPath: string): { character: string; server: string } | null {
   const m = /^eqlog_([^_]+)_(.+)\.txt$/i.exec(path.basename(logPath));
-  if (!m) return null;
-  const gameDir = path.dirname(path.dirname(logPath));
-  return path.join(gameDir, `${m[1]}_${m[2]}-Inventory.txt`);
+  return m ? { character: m[1]!, server: m[2]! } : null;
+}
+
+/**
+ * Where the export for a given log lives.
+ *
+ * **The two files are tied together by character and server, and by nothing else** — the game
+ * names them `eqlog_<Char>_<server>.txt` and `<Char>_<server>-Inventory.txt` from the same pair.
+ * So the export is derived from whichever log is *selected*, never configured and never assumed:
+ * change the log picker to another character and this follows, which is what keeps the tracker
+ * honest for anyone who is not the person it was written for.
+ *
+ * Two places are tried, first existing wins:
+ *   1. one directory up from `logs/` — the install layout, where the game actually writes it;
+ *   2. the log's own directory, which is where the pair end up if someone points `EQL_LOG_DIR`
+ *      at a folder they copied both files into.
+ *
+ * When neither exists the first is still returned, because "not written yet" is a normal state
+ * and the UI has to be able to *name* the file it is waiting for.
+ */
+export function inventoryPathFor(logPath: string): string | null {
+  const id = logIdentity(logPath);
+  if (!id) return null;
+  const fileName = `${id.character}_${id.server}-Inventory.txt`;
+  const logDir = path.dirname(logPath);
+  const candidates = [path.join(path.dirname(logDir), fileName), path.join(logDir, fileName)];
+  for (const c of candidates) {
+    try {
+      if (fs.statSync(c).isFile()) return c;
+    } catch {
+      // not there; try the next
+    }
+  }
+  return candidates[0]!;
 }
 
 /** Read and fold an inventory export. Returns null when the file is absent or unreadable —

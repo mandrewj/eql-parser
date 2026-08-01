@@ -17,7 +17,9 @@ export class App {
   private tailer: Tailer | null = null;
   private logDir: string | null; // the actively scanned folder (changeable at runtime)
   private activeLogPath: string | null = null;
-  /** mtime of the inventory export currently loaded, so the poll can skip re-parsing. */
+  /** The export the engine currently holds, and its mtime. Both are the change test — see
+   *  `refreshInventory`. */
+  private inventoryPath: string | null = null;
   private inventoryMs: number | null = null;
   private onUpdate: () => void = () => {};
   private broadcastTimer: NodeJS.Timeout | null = null;
@@ -74,7 +76,9 @@ export class App {
     this.activeLogPath = logPath;
     this.engine = this.newEngine(logPath);
     // Before the backfill, not after: the engine filters Sky pickups against the export's
-    // mtime, so the baseline has to be in place while the log is being replayed.
+    // mtime, so the baseline has to be in place while the log is being replayed. Clearing both
+    // fields first guarantees the push happens — this engine is new and knows nothing.
+    this.inventoryPath = null;
     this.inventoryMs = null;
     this.refreshInventory();
 
@@ -121,18 +125,19 @@ export class App {
   private refreshInventory(): boolean {
     const logPath = this.activeLogPath;
     const invPath = logPath ? inventoryPathFor(logPath) : null;
-    if (!invPath) {
-      if (this.inventoryMs === null) return false;
-      this.inventoryMs = null;
-      this.engine.setInventory(null);
-      return true;
-    }
-    const inv = readInventory(invPath);
-    // mtime is the whole test: the file is rewritten wholesale, so an unchanged mtime is an
-    // unchanged file, and re-parsing 400 lines every 3s to prove it would be pure waste.
-    if ((inv?.modifiedMs ?? null) === this.inventoryMs) return false;
-    this.inventoryMs = inv?.modifiedMs ?? null;
-    this.engine.setInventory(inv);
+    const inv = invPath ? readInventory(invPath) : null;
+    const mtime = inv?.modifiedMs ?? null;
+
+    // **The path is part of the test, not just the mtime.** Selecting a character with no export
+    // leaves the mtime null — which is what it already was — so an mtime-only check returns early
+    // and the newly built engine is never told which file it is waiting for. That is not cosmetic:
+    // `setActiveLog` replaces the engine, so "nothing changed" is never true across a switch.
+    // Comparing both means a log change always propagates, while the 3s poll still costs one
+    // `stat` and pushes nothing when the file genuinely has not moved.
+    if (invPath === this.inventoryPath && mtime === this.inventoryMs) return false;
+    this.inventoryPath = invPath;
+    this.inventoryMs = mtime;
+    this.engine.setInventory(inv, invPath);
     return true;
   }
 

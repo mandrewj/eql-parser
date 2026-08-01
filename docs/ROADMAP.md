@@ -768,6 +768,26 @@ Both halves came from playing with the tracker open, and the first was a silent 
     emptied — which is why the test is "does the file have a section for it", not "is it empty
     today". The previous entry called this one caution; it is now evidence.
 
+## Post-v1 — Tying the export to the selected character  ✅
+- The inventory export is **derived from the active log**, by character and server, for the whole
+  app: the game names `eqlog_<Char>_<server>.txt` and `<Char>_<server>-Inventory.txt` from the
+  same two words, so switching the log picker moves the entire Sky tab with it. Nothing is
+  configured and nothing is character-specific in the code — which is what makes it work for
+  anyone who is not the person it was written for.
+- **A missing export now names the file it is waiting for.** Previously the path was dropped when
+  the file did not exist, so a character with no export got a generic "no export found" that
+  could not say *which* file to write. `inventoryPath` is now always the path the selected log
+  implies; `inventoryMs` is what says whether it was read.
+- **That surfaced a real bug in the change test.** It compared only the mtime, and selecting a
+  character with no export leaves the mtime `null` — which is what it already was — so the check
+  short-circuited and the newly built engine was never handed the path. `setActiveLog` replaces
+  the engine, so "nothing changed" is never true across a switch. The test is now the path *and*
+  the mtime. Found by actually switching characters, not by reading the code.
+- Verified end-to-end against both real logs: `freeport` → its export, 130 items, 14 held;
+  `qeynos` → correctly names `Sanluen_qeynos-Inventory.txt`, reports it unread, 0 held; and back
+  again. Plus a fallback to the log's own folder for a copied pair, and unit cases for a server
+  name containing underscores.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

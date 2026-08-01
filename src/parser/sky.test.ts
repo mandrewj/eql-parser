@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { matchSkyItem, normalizeItemName, skyItemNames } from "./sky.js";
 import { SKY_CLASSES } from "./sky-catalogue.js";
-import { readInventory, inventoryPathFor, isUnexportedStorage } from "./inventory.js";
+import { readInventory, inventoryPathFor, isUnexportedStorage, logIdentity } from "./inventory.js";
 import { parseLine } from "./parser.js";
 
 // --- the fold ----------------------------------------------------------------
@@ -100,9 +100,48 @@ function withFile(body: string, fn: (p: string) => void): void {
   }
 }
 
-test("inventory — path sits one level above the logs folder, same character and server", () => {
-  const p = inventoryPathFor("/games/EverQuest Legends/logs/eqlog_Sanluen_freeport.txt");
-  assert.equal(p, path.join("/games/EverQuest Legends", "Sanluen_freeport-Inventory.txt"));
+/** The two files are tied together by character and server and nothing else, so the export
+ *  follows whichever log is selected. Nothing here may be specific to the character this was
+ *  written for. */
+test("inventory — the export is derived from the selected log's character and server", () => {
+  const cases: Array<[string, string]> = [
+    ["eqlog_Sanluen_freeport.txt", "Sanluen_freeport-Inventory.txt"],
+    ["eqlog_Sanluen_qeynos.txt", "Sanluen_qeynos-Inventory.txt"],
+    ["eqlog_Someoneelse_antonius_bayle.txt", "Someoneelse_antonius_bayle-Inventory.txt"],
+  ];
+  for (const [log, want] of cases) {
+    assert.equal(
+      inventoryPathFor(`/games/EverQuest Legends/logs/${log}`),
+      path.join("/games/EverQuest Legends", want),
+      log,
+    );
+  }
+});
+
+test("inventory — a file that is not an eqlog names no export", () => {
+  assert.equal(inventoryPathFor("/games/EverQuest Legends/logs/dbg.txt"), null);
+});
+
+test("inventory — identity is read from the name; the server may contain underscores", () => {
+  assert.deepEqual(logIdentity("/l/eqlog_Sanluen_antonius_bayle.txt"), {
+    character: "Sanluen",
+    server: "antonius_bayle",
+  });
+  assert.equal(logIdentity("/l/notalog.txt"), null);
+});
+
+/** Falls back to the log's own folder, for someone who pointed EQL_LOG_DIR at a directory they
+ *  copied both files into rather than the install's `logs/`. */
+test("inventory — an export beside the log is found when the install layout has none", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eql-side-"));
+  try {
+    const logPath = path.join(dir, "eqlog_Tester_erollisi.txt");
+    fs.writeFileSync(logPath, "");
+    fs.writeFileSync(path.join(dir, "Tester_erollisi-Inventory.txt"), "Location\tName\tID\tCount\tSlots");
+    assert.equal(inventoryPathFor(logPath), path.join(dir, "Tester_erollisi-Inventory.txt"));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("inventory — Empty slots are placeholders, and stacks sum across slots", () => {

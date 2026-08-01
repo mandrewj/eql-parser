@@ -119,6 +119,21 @@ difficulty) and the Plane of Sky pair below.
 - **[`inventory.ts`](../src/parser/inventory.ts) reads the export** the game writes on
   `/outputfile inventory`: a TSV of every slot the character can see — worn, bags, both banks,
   shared bank. That breadth is what makes it usable as a baseline; an item in the bank is held.
+  - **It is tied to the selected log by character and server, and by nothing else.** The game
+    names the pair `eqlog_<Char>_<server>.txt` and `<Char>_<server>-Inventory.txt` from the same
+    two words, so the export is *derived* from whichever log the picker has active — never
+    configured, never assumed. Change character and the whole tab follows. Two locations are
+    tried, first existing wins: one directory up from `logs/` (where the game writes it), then
+    the log's own folder (where the pair end up if `EQL_LOG_DIR` points at a copy of both).
+  - **A missing export still reports its path**, because "not written yet" is the normal starting
+    state and the panel has to name the file it is waiting for. `inventoryMs` is the field that
+    says whether it was actually read; `inventoryPath` says which file is meant either way.
+    - The change test in `app.ts` is therefore **the path *and* the mtime**. An mtime-only check
+      looks right and is not: selecting a character with no export leaves the mtime `null`, which
+      is what it already was, so the comparison short-circuits and the freshly built engine is
+      never told which file it wants — `setActiveLog` replaces the engine, so "nothing changed"
+      is never true across a switch. Caught by switching to a second character and finding the
+      panel blank instead of waiting.
   - **It has two sections.** After a blank line the file restarts with a `KeyRing / Name / ID`
     header and three-column rows. Those are real holdings — in a real export none of the 17
     keyring ids appears in the main section — so a width check tuned to the main section's five

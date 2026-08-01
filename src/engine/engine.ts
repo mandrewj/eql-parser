@@ -391,6 +391,10 @@ export class Engine {
   // the memory.
   private readonly skyLoot: Array<{ name: string; tsMs: number; from: string; storedIn?: string }> = [];
   private inventory: Inventory | null = null;
+  /** Where the export for the active log *would* be. Held separately from `inventory` because
+   *  a missing file still has an answer, and "waiting for <this file>" is a different message
+   *  from "no character selected". */
+  private inventoryExpectedPath: string | null = null;
   /** Turn-ins the log witnessed, chronological. Never filtered by the export's cut-off: this is
    *  a dated *event*, not a claim about what is currently held. */
   private readonly skyCompleted: SkyCompletion[] = [];
@@ -591,8 +595,9 @@ export class Engine {
   /** Point the Sky tracker at an inventory export (or clear it). The engine does no file IO of
    *  its own — the app reads and re-reads the file — so this is the whole of the baseline's
    *  path into the state, and re-calling it with a newer export is how a re-baseline happens. */
-  setInventory(inv: Inventory | null): void {
+  setInventory(inv: Inventory | null, expectedPath: string | null = null): void {
     this.inventory = inv;
+    this.inventoryExpectedPath = inv?.path ?? expectedPath;
   }
 
   // --- progression --------------------------------------------------------
@@ -817,7 +822,9 @@ export class Engine {
     }));
 
     return {
-      inventoryPath: inv?.path ?? null,
+      // The path is what the *active log* implies, so it is reported whether or not the file
+      // exists; `inventoryMs` is the one that says whether it was actually read.
+      inventoryPath: inv?.path ?? this.inventoryExpectedPath,
       inventoryMs: inv?.modifiedMs ?? null,
       inventoryItems: inv?.itemCount ?? 0,
       held,
