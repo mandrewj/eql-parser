@@ -1438,3 +1438,95 @@ test("damage taken (tanking) aggregates incoming damage per target", () => {
   const hit = self.taken.entries.find((e) => e.name === "hit")!;
   assert.equal(hit.total, 20);
 });
+
+// --- Plane of Sky ------------------------------------------------------------
+
+/** An inventory baseline standing in for a real export, written at `atMs`. */
+function baseline(atMs: number, held: Record<string, number>) {
+  return {
+    path: "/tmp/Test_freeport-Inventory.txt",
+    modifiedMs: atMs,
+    counts: new Map(Object.entries(held)),
+    entries: new Map(),
+    itemCount: Object.keys(held).length,
+  };
+}
+
+const LOOT = (t: string, item: string) =>
+  L(t, `--You have looted a ${item} from a fire giant warrior's corpse.--`);
+
+/** The load-bearing rule: the export already counts everything looted before it was written,
+ *  so replaying the whole log must not add those on top. Getting this wrong doubles every item
+ *  the player already had — and backfill replays the *entire* log on every start, so it would
+ *  be wrong every time rather than occasionally. */
+test("sky: loot from before the inventory export is not counted twice", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const exportedAt = Date.parse("Sat Jul 18 2026 02:00:00 GMT-0400");
+  engine.setInventory(baseline(exportedAt, { "azure ring": 1 }));
+
+  // Looted at 01:00 — an hour before the export, so already in that count of 1.
+  const ev = parseLine(LOOT("01:00:00", "Azure Ring"));
+  assert.ok(ev);
+  engine.handle(ev!);
+
+  const sky = engine.snapshot().sky;
+  const ring = sky.held.find((h) => h.name === "Azure Ring")!;
+  assert.equal(ring.count, 1);
+  assert.equal(ring.source, "inventory");
+  assert.equal(sky.recentLoot.length, 0);
+});
+
+test("sky: loot after the export is added on top of it", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const exportedAt = Date.parse("Sat Jul 18 2026 02:00:00 GMT-0400");
+  engine.setInventory(baseline(exportedAt, { "azure ring": 1 }));
+
+  for (const line of [LOOT("03:00:00", "Azure Ring"), LOOT("03:05:00", "Stone Amulet")]) {
+    const ev = parseLine(line);
+    assert.ok(ev);
+    engine.handle(ev!);
+  }
+
+  const sky = engine.snapshot().sky;
+  assert.equal(sky.held.find((h) => h.name === "Azure Ring")!.count, 2);
+  assert.equal(sky.held.find((h) => h.name === "Azure Ring")!.source, "both");
+  assert.equal(sky.held.find((h) => h.name === "Stone Amulet")!.source, "loot");
+  assert.equal(sky.recentLoot.length, 2);
+  assert.equal(sky.recentLoot[0]!.name, "Stone Amulet"); // newest first
+});
+
+/** A fresh export re-baselines with no replay, because the cut-off is applied when the snapshot
+ *  is built rather than when the line is read. */
+test("sky: a newer export moves the cut-off without replaying the log", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  engine.setInventory(baseline(Date.parse("Sat Jul 18 2026 02:00:00 GMT-0400"), {}));
+  const ev = parseLine(LOOT("03:00:00", "Azure Ring"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  assert.equal(engine.snapshot().sky.held.find((h) => h.name === "Azure Ring")!.count, 1);
+
+  // The player writes a new export at 04:00 that already contains the ring.
+  engine.setInventory(baseline(Date.parse("Sat Jul 18 2026 04:00:00 GMT-0400"), { "azure ring": 1 }));
+  const sky = engine.snapshot().sky;
+  assert.equal(sky.held.find((h) => h.name === "Azure Ring")!.count, 1);
+  assert.equal(sky.recentLoot.length, 0);
+});
+
+test("sky: with no export at all the log supplies everything it has seen", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const ev = parseLine(LOOT("01:00:00", "Azure Ring"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  const sky = engine.snapshot().sky;
+  assert.equal(sky.inventoryPath, null);
+  assert.equal(sky.held.find((h) => h.name === "Azure Ring")!.count, 1);
+});
+
+test("sky: looting is not combat and opens no fight", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const ev = parseLine(LOOT("01:00:00", "Azure Ring"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  assert.equal(engine.fights().length, 0);
+  assert.equal(engine.snapshot().current, null);
+});

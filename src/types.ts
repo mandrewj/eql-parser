@@ -400,6 +400,41 @@ export interface MoteStats {
   recent: MoteLoot[]; // newest first
 }
 
+/** One Plane of Sky item the character holds, and where that knowledge came from.
+ *  Only catalogue names appear here — the rest of the inventory is nobody's business. */
+export interface SkyHolding {
+  /** The catalogue's spelling, not the game's, so the UI can key straight off it. */
+  name: string;
+  count: number;
+  /** `inventory` for the export's own contents, `loot` for something picked up since it was
+   *  written, `both` when the two agree — which is the normal state for a stackable. */
+  source: "inventory" | "loot" | "both";
+}
+
+/** A Sky item picked up after the inventory baseline: the part the log contributes. */
+export interface SkyLoot {
+  name: string;
+  tsMs: number;
+  from: string; // the corpse
+}
+
+/** The Sky tracker's *dynamic* half. The catalogue itself is immutable and is served once from
+ *  `/api/sky-quests` rather than repeated on every push — at 28KB it would have been a third
+ *  again on top of a 90KB snapshot, for data that never changes for the life of the process. */
+export interface SkyStats {
+  /** The export the baseline came from. Null when the character has never run
+   *  `/outputfile inventory`, which is the normal starting state and not an error. */
+  inventoryPath: string | null;
+  /** When the game last wrote that file. Loot after this point is added on top of it;
+   *  loot before it is already counted in it and must not be double-counted. */
+  inventoryMs: number | null;
+  /** Non-empty slots read, so the UI can say the export was understood rather than just found. */
+  inventoryItems: number;
+  held: SkyHolding[];
+  /** Newest first, capped for display. */
+  recentLoot: SkyLoot[];
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;

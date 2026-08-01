@@ -580,3 +580,66 @@ body { margin: 0; }
 /* A panel that failed to render. Deliberately plain and quiet — it replaces one box, and the
    rest of the app is still live and worth reading. */
 .panel-failed { padding: 0.75rem; font-size: 0.75rem; color: var(--muted); border: 1px dashed var(--border); border-radius: 6px; }
+
+/* --- Plane of Sky tracker ---------------------------------------------------
+   A class at a time, so this is a list rather than the grid the Motes tab uses: 95 quests
+   across 16 classes never resolves into a readable table at 540px, and the question is always
+   asked one class at a time. Each quest is a small block — a header line carrying the state,
+   then one row per thing it wants — because the rows only mean anything under their quest. */
+.skypanel { display: flex; flex-direction: column; gap: 0.45rem; }
+
+/* How current the answer is. The distinction this carries — "you don't have it" against
+   "nothing has told me what you have" — is invisible in the rows themselves, and only one of
+   the two is fixed by playing. */
+.skybase {
+  display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap;
+  font-size: 0.72rem; padding: 0.3rem 0.45rem;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 5px;
+}
+.skybase.warn { color: var(--muted); border-color: var(--border-strong); line-height: 1.5; display: block; }
+.skybase.warn code { color: var(--text); background: var(--panel2); padding: 0.05rem 0.2rem; border-radius: 3px; }
+.skybasefile { color: var(--text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skybasenew { color: var(--player); margin-left: auto; font-weight: 600; }
+
+/* 16 three-letter codes wrap to two rows at panel width. The completed-quest badge only
+   appears when there is one, so the common case stays narrow enough for that to hold. */
+.skychips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.skychips .chip { font-variant-numeric: tabular-nums; }
+.skychipn {
+  margin-left: 0.25rem; padding: 0 0.22rem; border-radius: 3px;
+  background: var(--player); color: #08120c; font-size: 0.62rem; font-weight: 700;
+}
+.skyclsdone { margin-left: auto; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* The title's ::after rule would otherwise eat the space this sits in. */
+.section-title:has(.skyclsdone)::after { display: none; }
+
+.skyquest { border-left: 2px solid var(--border); padding-left: 0.4rem; }
+.skyquest.done { border-left-color: var(--player); }
+.skyquest.ready { border-left-color: var(--melee); }
+.skyquest.partial { border-left-color: var(--partial); }
+
+.skyqhead { display: flex; align-items: baseline; gap: 0.35rem; padding: 0.1rem 0; }
+.skyqmark { width: 0.9rem; text-align: center; color: var(--muted); }
+.skyquest.done .skyqmark { color: var(--player); }
+.skyquest.ready .skyqmark { color: var(--melee); }
+.skyquest.partial .skyqmark { color: var(--partial); }
+.skyqname { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skyqcount { color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.skytrigger { margin-left: auto; color: var(--muted); font-size: 0.7rem; font-style: italic; white-space: nowrap; }
+
+/* One line per item. The name is the only part allowed to shrink — an island tag is short and
+   fixed, and the count is the answer the row exists to give. */
+.skyrow {
+  display: flex; align-items: baseline; gap: 0.35rem;
+  font-size: 0.75rem; padding: 0.06rem 0 0.06rem 0.9rem; color: var(--muted);
+}
+.skyrow.held { color: var(--text); }
+.skymark { width: 0.7rem; text-align: center; color: var(--border-strong); }
+.skyrow.held .skymark { color: var(--player); }
+.skyname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skyrow.reward .skyname { color: var(--self); }
+.skyrow.reward.held .skyname { color: var(--player); font-weight: 600; }
+.skyrow.rune .skyname { font-style: italic; }
+.skynote { color: var(--muted); font-size: 0.68rem; white-space: nowrap; }
+.skycount { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.7rem; }
+.skyrow.held .skycount { color: var(--player); }

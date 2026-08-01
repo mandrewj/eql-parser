@@ -12,10 +12,16 @@
 
 import { CHARM_EMOTES, type ClassCode } from "../parser/spells.js";
 import { MOTE_TIERS, moteLabel, moteTier, zoneDifficulty, type MoteTier } from "../parser/motes.js";
+// The inventory's keys are already normalised, and normalising twice is a no-op, so the same
+// lookup serves both the export and the log.
+import { matchSkyItem } from "../parser/sky.js";
+import type { Inventory } from "../parser/inventory.js";
 import type {
   AbilityBreakdown,
   MoteStats,
   MoteTierStat,
+  SkyStats,
+  SkyHolding,
   LongTermStats,
   MilestoneSpan,
   ZoneStance,
@@ -376,6 +382,15 @@ export class Engine {
   }> = [];
   private readonly moteByTier = new Map<MoteTier, { at: number[]; total: number; from: string }>();
 
+  // Plane of Sky. The inventory export is the baseline and the log carries what has happened
+  // since, so this array is deliberately **not** filtered as it is recorded: the cut-off is the
+  // export's mtime, and that moves whenever the player writes a new one. Filtering at snapshot
+  // time means a fresh export re-baselines instantly, with no replay. Uncapped because Sky items
+  // are rare — a full clear of the zone is a few dozen — and an undercount would be worse than
+  // the memory.
+  private readonly skyLoot: Array<{ name: string; tsMs: number; from: string }> = [];
+  private inventory: Inventory | null = null;
+
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
   // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
   // live in `progressLog` and only ever feed the window counters. Both are trimmed with
@@ -442,6 +457,9 @@ export class Engine {
       // Not combat: looting must not open a fight or extend one.
       const tier = moteTier(ev.item);
       if (tier) this.recordMote(tier, ev.from, ev.tsMs);
+      // A Sky item is never also a mote, so this is an independent test rather than an else.
+      const sky = matchSkyItem(ev.item);
+      if (sky) this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: ev.from });
       return;
     }
     if (ev.type === "who") {
@@ -527,6 +545,7 @@ export class Engine {
     deaths: DeathReport[];
     stats: LongTermStats;
     motes: MoteStats;
+    sky: SkyStats;
   } {
     // Built once and shared: the history chart and the encounter list both want them, and
     // each view carries a sparkline that is not worth computing twice per push.
@@ -550,7 +569,15 @@ export class Engine {
       deaths: [...this.deaths],
       stats: this.buildStats(),
       motes: this.buildMoteStats(),
+      sky: this.buildSkyStats(),
     };
+  }
+
+  /** Point the Sky tracker at an inventory export (or clear it). The engine does no file IO of
+   *  its own — the app reads and re-reads the file — so this is the whole of the baseline's
+   *  path into the state, and re-calling it with a newer export is how a re-baseline happens. */
+  setInventory(inv: Inventory | null): void {
+    this.inventory = inv;
   }
 
   // --- progression --------------------------------------------------------
@@ -726,6 +753,58 @@ export class Engine {
         difficulty: m.difficulty,
       }));
     return { tiers, grid, perDifficulty, unknownZone, windowSize: this.moteRecent.length, recent };
+  }
+
+  /** How many recent Sky pickups the panel lists. */
+  private static readonly SKY_RECENT = 10;
+
+  /** Fold the inventory export and the log into one "what do I hold" answer.
+   *
+   *  The two halves meet at the export's mtime and must not overlap: the export already counts
+   *  everything looted before it was written, so replaying the whole log and adding every Sky
+   *  pickup on top would double every item the player already had. Only pickups *after* the
+   *  baseline are added. With no export at all the baseline is empty and the log supplies
+   *  everything it has seen this session, which is the best that can be known. */
+  private buildSkyStats(): SkyStats {
+    const inv = this.inventory;
+    const since = inv?.modifiedMs ?? -Infinity;
+
+    const counts = new Map<string, { count: number; fromInventory: boolean; fromLoot: boolean }>();
+    if (inv) {
+      for (const [key, count] of inv.counts) {
+        const ref = matchSkyItem(key);
+        if (!ref) continue;
+        counts.set(ref.name, { count, fromInventory: true, fromLoot: false });
+      }
+    }
+
+    const recentLoot: SkyStats["recentLoot"] = [];
+    for (const l of this.skyLoot) {
+      if (l.tsMs <= since) continue;
+      const entry = counts.get(l.name);
+      if (entry) {
+        entry.count += 1;
+        entry.fromLoot = true;
+      } else {
+        counts.set(l.name, { count: 1, fromInventory: false, fromLoot: true });
+      }
+      recentLoot.push(l);
+    }
+    recentLoot.reverse();
+
+    const held: SkyHolding[] = [...counts].map(([name, c]) => ({
+      name,
+      count: c.count,
+      source: c.fromInventory && c.fromLoot ? "both" : c.fromInventory ? "inventory" : "loot",
+    }));
+
+    return {
+      inventoryPath: inv?.path ?? null,
+      inventoryMs: inv?.modifiedMs ?? null,
+      inventoryItems: inv?.itemCount ?? 0,
+      held,
+      recentLoot: recentLoot.slice(0, Engine.SKY_RECENT),
+    };
   }
 
   private buildStats(): LongTermStats {

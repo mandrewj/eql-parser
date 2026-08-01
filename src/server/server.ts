@@ -9,6 +9,7 @@ import type { AppConfig } from "../config.js";
 import type { App } from "../app.js";
 import type { ParseMode } from "../types.js";
 import { EMBEDDED_WEB } from "./web-assets.js";
+import { SKY_CLASSES } from "../parser/sky-catalogue.js";
 
 export interface Broadcaster {
   send(event: unknown): void;
@@ -177,6 +178,15 @@ export function startServer(config: AppConfig, app: App): Promise<ServerHandle> 
 
     if (pathname === "/api/config" && req.method === "GET") {
       sendJson(res, 200, config);
+      return;
+    }
+
+    // The Plane of Sky catalogue: 28KB of game facts that never change while the process runs.
+    // Served once and cached hard rather than folded into the snapshot, which would otherwise
+    // carry it again on every push for a third more bytes and no more information.
+    if (pathname === "/api/sky-quests" && req.method === "GET") {
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      sendJson(res, 200, SKY_CLASSES);
       return;
     }
 

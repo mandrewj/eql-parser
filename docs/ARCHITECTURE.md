@@ -79,8 +79,50 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   `parseLine` and ranks what returns `null` by shape. Three unparsed lines in 785k now carry a
   number and a combat word; `LOG_FORMAT.md` lists them so the next pass doesn't re-derive them.
 
+### Reference data and the inventory export
+Three modules beside the parser hold *game facts* rather than parsing rules — [`spells.ts`](../src/parser/spells.ts)
+(charm messages → caster class), [`motes.ts`](../src/parser/motes.ts) (the mote ladder, zone
+difficulty) and the Plane of Sky pair below.
+
+- **[`sky-catalogue.ts`](../src/parser/sky-catalogue.ts) is generated, not written.**
+  `scripts/build-sky-quests.mjs` fetches the wiki's Plane of Sky page and emits the whole table:
+  16 classes, 95 quests, 127 item slots, 113 distinct components. Tables are matched by their
+  header row, and the script **throws** on a class heading it cannot name, an island tag it does
+  not recognise or a reward it cannot parse — a wiki change fails the run rather than silently
+  writing a thinner catalogue. Baked into the binary because the app is offline-first.
+- **[`sky.ts`](../src/parser/sky.ts) owns the matching**, which is where the wiki and the game
+  disagree: the game writes a backtick apostrophe, appends `+N` to an upgraded item and
+  `(Exaltation)` to an exalted copy, and disagrees on capitalisation (`Crown Of Elemental
+  Mastery`). All of it folds to one normalised key. That the suffixes name the *same* item is
+  not an assumption — a real export gives `Foo`, `Foo +4` and `Foo (Exaltation)` the same item id.
+  Components, runes and rewards never collide once folded (a test asserts it), so a single map
+  lookup answers "is this a Sky item, and what kind" for every loot line.
+- **[`inventory.ts`](../src/parser/inventory.ts) reads the export** the game writes on
+  `/outputfile inventory`: a TSV of every slot the character can see — worn, bags, both banks,
+  shared bank. That breadth is what makes it usable as a baseline; an item in the bank is held.
+  - **It has two sections.** After a blank line the file restarts with a `KeyRing / Name / ID`
+    header and three-column rows. Those are real holdings — in a real export none of the 17
+    keyring ids appears in the main section — so a width check tuned to the main section's five
+    columns drops all of them, which is precisely wrong here: a finished quest's reward is just
+    the sort of item that lives there. Rows are identified by their **header** (`Name` in the
+    second column), not by column count, and a section with no `Count` means one of the item.
+  - A missing export is the normal state until the player writes one, so it returns null rather
+    than throwing.
+
 ### Engine
 - **Entity roster** — players, pets, and **NPCs are all first-class**; each can be inspected for outgoing damage.
+- **Plane of Sky holdings are derived, never stored.** There is still no persistence in this app;
+  the export plus the log is enough to re-derive the answer on every start, which is what keeps
+  it that way. The engine does no file IO — the app reads the export and hands it over with
+  `setInventory` — and the two sources meet at the export's mtime.
+  - **They must not overlap.** The export already counts everything looted before it was written,
+    and backfill replays the *whole* log on every start, so adding each Sky pickup on top would
+    double every item already held — not occasionally, but every single run. Only pickups after
+    the mtime are added.
+  - **The cut-off is applied when the snapshot is built, not when the line is read.** That is what
+    lets a freshly written export re-baseline instantly, with no replay: the app notices the new
+    mtime on its 3s tick, hands over the new inventory, and the same recorded loot is simply
+    filtered against a later boundary.
 - **Charmed pets are a *window*, not a fact.** The same mob is an enemy before the charm, an
   ally during it, and an enemy again after it breaks, so the engine closes the books at each
   boundary instead of picking a side: on the charm it banks what the mob did and what was
@@ -328,6 +370,10 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   - `GET  /api/fights` → fight summaries (history).
   - `GET  /api/fights/:id` → full combatant + ability + stance detail for one fight.
   - `GET  /api/config` / `POST /api/config` → inactivityTimeout, etc.
+  - `GET  /api/sky-quests` → the Plane of Sky catalogue, `Cache-Control: max-age=3600`. **The one
+    thing that is fetched rather than pushed**: 28KB of data that cannot change while the process
+    runs, where folding it into the snapshot would add a third to every push and say nothing new.
+    The snapshot carries only the have-state it is joined against.
 - `GET /events` → **SSE**, carrying just `snapshot` and `activeLogChanged` (see [Streaming
   protocol](#streaming-protocol) for why there are no delta events). New snapshot fields are defaulted
   at the `useAppData` ingest boundary, so that is the one place version skew is handled — not in the
@@ -372,6 +418,15 @@ interface Snapshot {                  // everything the UI draws
   progress: { level: number | null; aaUnspent: number | null };
   deaths: DeathReport[];              // last 5, newest first
   stats: LongTermStats;               // since-level / since-AA counters + zone stance split
+  sky: SkyStats;                      // Plane of Sky: what is held, not what is needed
+}
+
+interface SkyStats {                  // the tracker's dynamic half; the catalogue is fetched
+  inventoryPath: string | null;       // the export the baseline came from, null if never written
+  inventoryMs: number | null;         // its mtime — the cut-off the log takes over from
+  inventoryItems: number;
+  held: SkyHolding[];                 // { name, count, source: inventory | loot | both }
+  recentLoot: SkyLoot[];              // Sky pickups after the cut-off, newest first
 }
 
 interface EncounterView {             // one per-mob card
@@ -433,6 +488,23 @@ interface MetricStat {                // every metric group has this one shape
   redesign, and the drill-downs (type split, per-ability, stance split) answer those questions instead.
   A live stance indicator in the topbar shows the active melee stance and invocation.
 - **History pane** — fight list; select a fight to **drill down**: per-combatant rows → expand to damage-type split, per-ability breakdown, and (for self) the stance split active during that fight.
+- **Sky pane** ([`sky.tsx`](../web/src/sky.tsx)) — the Plane of Sky class quests, a class at a
+  time. 95 quests over 16 classes is not a table anyone reads at 540px, and the question is asked
+  one class at a time anyway, so the 16 three-letter codes are a chip row and the body is that
+  class's quests. Each quest is a small block — a header carrying its state, then one row per
+  rune, component and reward — because a row of item names means nothing detached from its quest.
+  - **State is derived from what is held, in four steps**: `done` (every reward held — *every*,
+    since Beastlord's Test of Claw awards a weapon per hand), `ready` (all components, nothing to
+    farm), `partial`, `open`. Carried by a coloured left border and a glyph, so a class's shape is
+    legible without reading a number on each row.
+  - **The baseline strip is not decoration.** "I don't have it" and "nothing has told me what you
+    have" render identically as a row of dashes, and only one of the two is fixed by playing — so
+    the export's name, item count and read-time sit above the table, and its absence is replaced
+    by the `/outputfile inventory` instruction that fixes it.
+  - **A held rune is labelled `rune`, never "started".** The 15 runes are shared across the 16
+    classes, so holding Wind Rune Neza could be for this quest or the Warrior one that also wants
+    it; held is all that can honestly be claimed.
+  - The selected class is remembered in `localStorage` — the same courtesy the log picker extends.
 - **Encounter header** — `<mob> → <n> dps · ENCOUNTER <dur>s · <total> dmg · <n> dps`. The right-hand
   figures are the **whole encounter** (everyone's damage to the mob, and the combined rate against it),
   labelled `encounter` precisely because the rows beneath are per-person and would otherwise be

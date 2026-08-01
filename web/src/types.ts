@@ -188,6 +188,52 @@ export interface MoteStats {
   recent: MoteLoot[]; // newest first
 }
 
+// --- Plane of Sky -------------------------------------------------------------
+// The catalogue is immutable and arrives once from `/api/sky-quests`; only the have-state
+// rides the snapshot. Mirrored from `src/types.ts` + `src/parser/sky-catalogue.ts` by hand,
+// like every other type here — `web/` imports nothing from `src/`.
+
+export interface SkyQuestItem {
+  name: string;
+  island: string | null;
+  dropsFrom: string | null;
+}
+
+export interface SkyQuest {
+  quest: string;
+  trigger: string;
+  rune: string;
+  items: SkyQuestItem[];
+  rewards: string[];
+}
+
+export interface SkyClass {
+  className: string;
+  code: string;
+  giver: string;
+  quests: SkyQuest[];
+}
+
+export interface SkyHolding {
+  name: string;
+  count: number;
+  source: "inventory" | "loot" | "both";
+}
+
+export interface SkyLoot {
+  name: string;
+  tsMs: number;
+  from: string;
+}
+
+export interface SkyStats {
+  inventoryPath: string | null;
+  inventoryMs: number | null;
+  inventoryItems: number;
+  held: SkyHolding[];
+  recentLoot: SkyLoot[];
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -275,6 +321,7 @@ export interface Snapshot {
   deaths: DeathReport[]; // newest first, last 5
   stats: LongTermStats;
   motes: MoteStats;
+  sky: SkyStats;
 }
 
 export interface LogInfo {

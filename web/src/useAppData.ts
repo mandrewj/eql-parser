@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Fight, LogsResponse, MoteStats, Snapshot } from "./types";
+import type { Fight, LogsResponse, MoteStats, SkyClass, SkyStats, Snapshot } from "./types";
 
 export interface AppData {
   snapshot: Snapshot | null;
   logs: LogsResponse | null;
   connected: boolean;
+  /** The Plane of Sky catalogue, fetched once. Null until it arrives, and on an older
+   *  server that has no such route — the tab reports that rather than rendering nothing. */
+  skyQuests: SkyClass[] | null;
   selectLog: (path: string) => Promise<void>;
   setLogDir: (dir: string) => Promise<{ ok: boolean; error?: string }>;
   fetchFight: (id: string) => Promise<Fight | null>;
@@ -31,11 +34,38 @@ function motesOf(m?: Partial<MoteStats>): MoteStats {
   };
 }
 
+/** Same defaulting rule as `motesOf`, for the same reason: a server predating the Sky tracker
+ *  sends no `sky` at all, and the tab must read as "nothing held yet" rather than throw. */
+function skyOf(s?: Partial<SkyStats>): SkyStats {
+  return {
+    inventoryPath: s?.inventoryPath ?? null,
+    inventoryMs: s?.inventoryMs ?? null,
+    inventoryItems: s?.inventoryItems ?? 0,
+    held: s?.held ?? [],
+    recentLoot: s?.recentLoot ?? [],
+  };
+}
+
 export function useAppData(): AppData {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [logs, setLogs] = useState<LogsResponse | null>(null);
   const [connected, setConnected] = useState(false);
+  const [skyQuests, setSkyQuests] = useState<SkyClass[] | null>(null);
   const esRef = useRef<EventSource | null>(null);
+
+  // Once per mount: the catalogue is immutable for the life of the server process.
+  useEffect(() => {
+    let alive = true;
+    void fetch("/api/sky-quests")
+      .then((r) => (r.ok ? (r.json() as Promise<SkyClass[]>) : null))
+      .then((d) => alive && Array.isArray(d) && setSkyQuests(d))
+      .catch(() => {
+        /* older server, or backend not up yet */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const refreshLogs = useCallback(async () => {
     try {
@@ -72,6 +102,7 @@ export function useAppData(): AppData {
             zoneStance: { zone: null, sinceMs: null, melee: [], invocation: [] },
           },
           motes: motesOf(msg.motes),
+          sky: skyOf(msg.sky),
         });
       } else if (msg.t === "activeLogChanged") {
         void refreshLogs();
@@ -112,5 +143,5 @@ export function useAppData(): AppData {
     return (await res.json()) as Fight;
   }, []);
 
-  return { snapshot, logs, connected, selectLog, setLogDir, fetchFight, refreshLogs };
+  return { snapshot, logs, connected, skyQuests, selectLog, setLogDir, fetchFight, refreshLogs };
 }

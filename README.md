@@ -35,6 +35,9 @@ Terminal-only DPS report: `npm run report -- <fightNumber>`.
 - Computes per-fight, per-player DPS with a classic meter breakdown.
 - Counts **pets on your side** — both the one you summon (folded into your row) and any mob
   you or your group **charm**, which gets a row of its own with its charmer named.
+- Tracks the **Plane of Sky class quests** — all 16 classes, what each quest needs and what you
+  already hold. Reads your inventory export (`/outputfile inventory` in game) as a baseline and
+  adds anything looted since, so nothing has to be ticked off by hand.
 - Serves a live-updating web UI on `http://localhost:<port>` — no cloud, no account, everything stays on your machine.
 
 ## Why a local web app (and not a browser-only tool)

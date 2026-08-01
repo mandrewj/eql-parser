@@ -8,6 +8,7 @@ import { listLogs, parseLogFileName } from "./config.js";
 import { parseLine } from "./parser/parser.js";
 import { Engine } from "./engine/engine.js";
 import { Tailer } from "./tailer/tailer.js";
+import { inventoryPathFor, readInventory } from "./parser/inventory.js";
 import type { Fight, FightSummary, LogFileInfo, ParseMode } from "./types.js";
 
 export class App {
@@ -16,6 +17,8 @@ export class App {
   private tailer: Tailer | null = null;
   private logDir: string | null; // the actively scanned folder (changeable at runtime)
   private activeLogPath: string | null = null;
+  /** mtime of the inventory export currently loaded, so the poll can skip re-parsing. */
+  private inventoryMs: number | null = null;
   private onUpdate: () => void = () => {};
   private broadcastTimer: NodeJS.Timeout | null = null;
 
@@ -28,7 +31,8 @@ export class App {
     setInterval(() => {
       const had = this.engine.hasCurrent;
       const closed = this.engine.tick();
-      if (had || closed) this.scheduleBroadcast();
+      if (this.refreshInventory()) this.scheduleBroadcast();
+      else if (had || closed) this.scheduleBroadcast();
     }, 3000).unref?.();
   }
 
@@ -69,6 +73,10 @@ export class App {
     this.tailer?.stop();
     this.activeLogPath = logPath;
     this.engine = this.newEngine(logPath);
+    // Before the backfill, not after: the engine filters Sky pickups against the export's
+    // mtime, so the baseline has to be in place while the log is being replayed.
+    this.inventoryMs = null;
+    this.refreshInventory();
 
     this.tailer = new Tailer({ path: logPath, fromStart: mode === "backfill", pollIntervalMs: 1000 });
     this.tailer.onData((line) => this.handleLine(line));
@@ -100,6 +108,32 @@ export class App {
 
   fight(id: string): Fight | null {
     return this.engine.fights().find((f) => f.id === id) ?? null;
+  }
+
+  /** Re-read the inventory export when the game has rewritten it, and hand it to the engine.
+   *
+   *  Polled on the existing 3s tick rather than watched: it is one `stat` of one file, the
+   *  player writes it by hand with `/outputfile inventory`, and a few seconds of lag on a
+   *  manual action is imperceptible — where an `fs.watch` here would mean a second watcher
+   *  with its own rotation and platform quirks for no gain.
+   *
+   *  Returns whether anything changed, so the caller can push only when it did. */
+  private refreshInventory(): boolean {
+    const logPath = this.activeLogPath;
+    const invPath = logPath ? inventoryPathFor(logPath) : null;
+    if (!invPath) {
+      if (this.inventoryMs === null) return false;
+      this.inventoryMs = null;
+      this.engine.setInventory(null);
+      return true;
+    }
+    const inv = readInventory(invPath);
+    // mtime is the whole test: the file is rewritten wholesale, so an unchanged mtime is an
+    // unchanged file, and re-parsing 400 lines every 3s to prove it would be pure waste.
+    if ((inv?.modifiedMs ?? null) === this.inventoryMs) return false;
+    this.inventoryMs = inv?.modifiedMs ?? null;
+    this.engine.setInventory(inv);
+    return true;
   }
 
   private newEngine(logPath: string | null): Engine {

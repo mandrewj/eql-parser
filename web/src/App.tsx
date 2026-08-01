@@ -10,6 +10,7 @@ import {
   FilterBar,
   StanceOverview,
 } from "./components";
+import { SkyPanel } from "./sky";
 import { metricMeta, rankedCombatants } from "./filters";
 import type { Fight, Filters, FightSummary } from "./types";
 
@@ -33,8 +34,8 @@ function currentSummary(f: Fight): FightSummary {
 }
 
 export default function App() {
-  const { snapshot, logs, connected, selectLog, setLogDir, fetchFight } = useAppData();
-  const [tab, setTab] = useState<"live" | "history">("live");
+  const { snapshot, logs, connected, skyQuests, selectLog, setLogDir, fetchFight } = useAppData();
+  const [tab, setTab] = useState<"live" | "history" | "sky">("live");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -187,9 +188,21 @@ export default function App() {
         <button className={tab === "history" ? "tab on" : "tab"} onClick={() => setTab("history")}>
           History
         </button>
+        <button className={tab === "sky" ? "tab on" : "tab"} onClick={() => setTab("sky")}>
+          Sky
+        </button>
       </nav>
 
-      {tab === "live" ? (
+      {tab === "sky" ? (
+        <main className="pane wide">
+          <PanelBoundary name="Plane of Sky">
+            <SkyPanel
+              catalogue={skyQuests}
+              sky={snapshot?.sky ?? { inventoryPath: null, inventoryMs: null, inventoryItems: 0, held: [], recentLoot: [] }}
+            />
+          </PanelBoundary>
+        </main>
+      ) : tab === "live" ? (
         <main className="pane wide">
           <StanceOverview
             windows={snapshot?.stanceOverview ?? []}

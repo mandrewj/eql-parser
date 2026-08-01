@@ -618,6 +618,45 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   closed over nothing. Hoisted to module scope. The rationale comment above them had also drifted
   onto the wrong subject — it described the merged table, so it moved to the table.
 
+## Post-v1 — The Plane of Sky class-quest tracker  ✅
+- A third top-level tab beside Live and History: all 16 classes' Sky quests, one class at a time,
+  with what each quest needs and whether it is held.
+- **The catalogue is generated, not transcribed.** `scripts/build-sky-quests.mjs` fetches
+  [the wiki page](https://eqlwiki.com/Plane_of_Sky) and writes `src/parser/sky-catalogue.ts` —
+  16 classes, 95 quests, 127 item slots, 113 distinct components. It matches tables by their
+  header row and throws on an unrecognised island tag, a class it cannot name or a reward it
+  cannot parse, so a wiki change fails the run instead of quietly writing a thinner table. Baked
+  into the binary rather than fetched at runtime: the app is offline-first.
+- **Held-state is derived, never stored.** There is still no persistence in this app. The
+  inventory export (`<Char>_<server>-Inventory.txt`, written by `/outputfile inventory`) is the
+  baseline, and the log supplies everything looted after the file's mtime.
+  - **The two halves must not overlap.** The export already counts what was looted before it was
+    written, and backfill replays the *entire* log on every start — so adding every Sky pickup on
+    top would double every item already held, every time. Only pickups after the mtime are added,
+    and the cut-off is applied when the snapshot is built rather than when the line is read, so
+    writing a fresh export re-baselines instantly with no replay. Three engine tests pin this.
+- **The export has a second section, and a width check silently ate it.** After a blank line the
+  file restarts with a `KeyRing / Name / ID` header and three-column rows. In a real export those
+  17 rows share no item id with the main section — they are separate holdings, and high-end gear
+  at that, which is exactly where a finished quest's reward would sit. Rows are now identified by
+  their header (`Name` in column two) rather than by column count.
+- **Upgrade suffixes fold away, and the item ids prove it rather than assume it.** EQL writes
+  `Foo +4` and `Foo (Exaltation)`; both carry the *same* item id as `Foo`, verified across a real
+  export. Matching also unifies the game's backtick apostrophe with the wiki's quote and ignores
+  case (`Crown Of Elemental Mastery`).
+- **The catalogue rides its own endpoint.** `GET /api/sky-quests`, fetched once and cached an
+  hour. At 28KB of data that never changes for the life of the process, folding it into the
+  snapshot would have added a third to every push for no new information.
+- **Validated against the raw log, which is where the honest answer is.** A full replay of
+  1,507,122 lines finds 570 loot lines, 220 distinct items and **zero** Sky items ever looted —
+  correct for a level-15 character in a level-50+ zone. So the have-path is exercised by unit
+  tests and a synthetic snapshot rather than by real holdings; that is a real limit on this
+  work and is worth re-running the scan once the character is in the zone.
+- **Known limit — 31 components have generic names** (`Brass Knuckles`, `Small Shield`,
+  `Large Diamond`, `Golden Hilt`…). Matching is by name, so an ordinary gem of the same name
+  counts. For most of these that is right — the turn-in *is* the common item — but nothing
+  distinguishes the two cases without item ids the wiki does not publish.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now
