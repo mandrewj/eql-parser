@@ -142,6 +142,19 @@ export interface LootEvent extends BaseEvent {
   type: "loot";
   item: string;
   from: string; // the corpse it came off
+  /** The auto-storage the game routed it into — `currency`, `tradeskill depot`, `Dragon Hoard`.
+   *  Absent for an ordinary pickup, which simply lands in a bag. It is not decoration: the
+   *  inventory export does **not** cover every one of these, and for those the log is the only
+   *  witness the item was ever obtained. */
+  storedIn?: string;
+}
+
+/** The game confirming it has written an inventory export:
+ *  `Outputfile Complete: Sanluen_freeport-Inventory.txt`. Not combat, and never reaches the
+ *  engine — the app takes it as the cue to re-read the export immediately. */
+export interface OutputFileEvent extends BaseEvent {
+  type: "outputfile";
+  file: string;
 }
 
 export interface ZoneEvent extends BaseEvent {
@@ -181,6 +194,7 @@ export type CombatEvent =
   | CharmEvent
   | WhoEvent
   | LootEvent
+  | OutputFileEvent
   | ZoneEvent
   | ProgressEvent;
 
@@ -411,11 +425,15 @@ export interface SkyHolding {
   source: "inventory" | "loot" | "both";
 }
 
-/** A Sky item picked up after the inventory baseline: the part the log contributes. */
+/** A Sky item the log contributed. Usually a pickup after the inventory baseline — but an item
+ *  routed to a storage the export does not list appears here whenever it was looted, because
+ *  the log is the only record that it was obtained. */
 export interface SkyLoot {
   name: string;
   tsMs: number;
   from: string; // the corpse
+  /** The auto-storage it was routed into, when the game named one. */
+  storedIn?: string;
 }
 
 /** The Sky tracker's *dynamic* half. The catalogue itself is immutable and is served once from

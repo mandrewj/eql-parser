@@ -147,6 +147,15 @@ export class App {
   private handleLine(line: string): void {
     const ev = parseLine(line);
     if (!ev) return;
+    // The game announcing it has written an export. Not combat and of no interest to the
+    // engine — it is a cue to *this* layer, which owns the file. Acting on it turns a
+    // `/outputfile inventory` into a refresh that is visible by the time the player alt-tabs,
+    // instead of one that lands on whichever 3s tick happens to come next. That poll stays as
+    // the backstop, for an export written while the parser was not running.
+    if (ev.type === "outputfile") {
+      if (this.refreshInventory()) this.scheduleBroadcast();
+      return;
+    }
     this.engine.handle(ev);
     this.scheduleBroadcast();
   }

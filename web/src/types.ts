@@ -224,6 +224,8 @@ export interface SkyLoot {
   name: string;
   tsMs: number;
   from: string;
+  /** The auto-storage it was routed into (`currency`, `tradeskill depot`, `Dragon Hoard`). */
+  storedIn?: string;
 }
 
 export interface SkyStats {

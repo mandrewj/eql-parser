@@ -54,6 +54,33 @@ export interface Inventory {
   itemCount: number;
 }
 
+/**
+ * Auto-storages whose contents the export does **not** list.
+ *
+ * Proven rather than assumed for `currency`: a Wind Rune Azia was routed there at 13:20:57 and
+ * is absent from an export written 51 seconds later, while two runes that went to a bag in the
+ * same minutes are both present. The export has exactly two sections — the main slot dump and
+ * the keyring — and neither has anywhere for it to be.
+ *
+ * The consequence is the whole reason this exists. Pickups are normally discarded when they
+ * predate the export, since the export already counts them; but an item the export *cannot*
+ * count is then discarded by the cut-off and restored by nothing — it becomes permanently
+ * invisible. Plane of Sky wind runes are routed to the currency tab, so that is not a corner
+ * case, it is every rune the character will ever loot.
+ *
+ * `tradeskill depot` and `Dragon Hoard` are deliberately **not** listed. A real export did once
+ * carry a `Personal-Depot` section, so the depot is at least sometimes covered, and exempting a
+ * destination that *is* exported would double-count it. Erring toward the export is the safer
+ * side of that trade for storages no Sky item has been seen to use.
+ */
+const UNEXPORTED_STORAGE = new Set(["currency"]);
+
+/** Whether a pickup's destination is one the export cannot vouch for, making the log the only
+ *  witness that the item was obtained at all. */
+export function isUnexportedStorage(storedIn: string | undefined): boolean {
+  return storedIn !== undefined && UNEXPORTED_STORAGE.has(storedIn.trim().toLowerCase());
+}
+
 /** Where the export lives for a given log file: same character and server, one directory up
  *  from `logs/`. Returns a path whether or not it exists — the caller reports the absence. */
 export function inventoryPathFor(logPath: string): string | null {

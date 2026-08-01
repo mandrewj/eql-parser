@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { matchSkyItem, normalizeItemName, skyItemNames } from "./sky.js";
 import { SKY_CLASSES } from "./sky-catalogue.js";
-import { readInventory, inventoryPathFor } from "./inventory.js";
+import { readInventory, inventoryPathFor, isUnexportedStorage } from "./inventory.js";
+import { parseLine } from "./parser.js";
 
 // --- the fold ----------------------------------------------------------------
 
@@ -143,4 +144,66 @@ test("inventory — the trailing three-column keyring section is read, not dropp
 
 test("inventory — a missing export is an empty baseline, not a throw", () => {
   assert.equal(readInventory("/no/such/inventory.txt"), null);
+});
+
+// --- the second loot form, and the export's blind spot ------------------------
+
+/** Wind runes are routed to the currency tab, and that form of the line shares no punctuation
+ *  with the `--You have looted--` one — no fence, no full stop. Without it every rune the
+ *  character loots is invisible, which is exactly what happened. */
+test("loot — an item routed to a storage is still looted", () => {
+  const ev = parseLine(
+    "[Sat Aug 01 13:20:57 2026] You looted a Wind Rune Azia from a thunder spirit's corpse and stored it in your currency",
+  );
+  assert.equal(ev?.type, "loot");
+  if (ev?.type !== "loot") return;
+  assert.equal(ev.item, "Wind Rune Azia");
+  assert.equal(ev.from, "a thunder spirit");
+  assert.equal(ev.storedIn, "currency");
+  assert.equal(matchSkyItem(ev.item)?.role, "rune");
+});
+
+test("loot — the other two storages parse and name themselves", () => {
+  for (const [line, dest] of [
+    ["You looted a Darkbone Marrow from a dark boned skeleton's corpse and stored it in your tradeskill depot", "tradeskill depot"],
+    ["You looted a Bronze Spear +2 from a rat's corpse and stored it in your Dragon Hoard", "Dragon Hoard"],
+  ] as const) {
+    const ev = parseLine(`[Sat Aug 01 12:14:58 2026] ${line}`);
+    assert.equal(ev?.type, "loot", line);
+    if (ev?.type === "loot") assert.equal(ev.storedIn, dest);
+  }
+});
+
+/** The ~5,400 selling lines share the whole prefix up to the corpse, so only the storage
+ *  clause tells them apart. Reading one as a pickup would credit items that were sold. */
+test("loot — selling an item is not keeping it", () => {
+  const ev = parseLine(
+    "[Sat Aug 01 10:00:00 2026] You looted a Rusty Dagger from a rat's corpse and sold it for 7 copper.",
+  );
+  assert.equal(ev, null);
+});
+
+test("storage — only the currency tab is outside the export's reach", () => {
+  assert.equal(isUnexportedStorage("currency"), true);
+  assert.equal(isUnexportedStorage("Currency"), true);
+  assert.equal(isUnexportedStorage("tradeskill depot"), false);
+  assert.equal(isUnexportedStorage("Dragon Hoard"), false);
+  assert.equal(isUnexportedStorage(undefined), false); // an ordinary bag pickup
+});
+
+// --- the export-written cue ---------------------------------------------------
+
+test("outputfile — the completion line is parsed and names the file", () => {
+  const ev = parseLine("[Sat Aug 01 13:21:48 2026] Outputfile Complete: Sanluen_freeport-Inventory.txt");
+  assert.equal(ev?.type, "outputfile");
+  if (ev?.type === "outputfile") assert.equal(ev.file, "Sanluen_freeport-Inventory.txt");
+});
+
+/** Talking about the command must not be read as running it — a real log contains exactly
+ *  this line. */
+test("outputfile — merely mentioning the command is not a completion", () => {
+  assert.equal(
+    parseLine("[Sat Aug 01 12:34:31 2026] You say to your guild, 'the /outputfile inventory command is kinda cool'"),
+    null,
+  );
 });

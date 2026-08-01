@@ -33,6 +33,7 @@ function main(): void {
     charm: 0,
     who: 0,
     loot: 0,
+    outputfile: 0,
     zone: 0,
     progress: 0,
   };

@@ -685,6 +685,40 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   straight quote, matching being unaffected either way. And a completed quest was still printing
   its component count (`0/1`), which reads as progress lost rather than a quest already done.
 
+## Post-v1 — The loot form nobody had seen, and the export cue  ✅
+Both halves came from playing with the tracker open, and the first was a silent data loss.
+
+- **There is a second "this is yours" loot line, and it shares no punctuation with the first.**
+  An item the game routes into an auto-storage is announced without the `--` fence, without the
+  trailing full stop and in a different tense:
+  `You looted a Wind Rune Azia from a thunder spirit's corpse and stored it in your currency`.
+  Three destinations appear in a real log — `currency` (1), `tradeskill depot` (26) and
+  `Dragon Hoard` (30). **Plane of Sky wind runes are routed to the currency tab**, so this was
+  not a corner case: every rune looted was invisible. The `and stored it in your` literal is what
+  keeps the ~5,400 "and sold it for…" lines out, since they match word for word up to the corpse.
+- **The currency tab is not in the inventory export, which breaks the cut-off's assumption.**
+  Pickups older than the export are normally discarded because the export already counts them.
+  It cannot count what it cannot see: Azia was stored at 13:20:57 and is absent from an export
+  written at 13:21:48, while two runes that went to a *bag* in the same minutes are both in it.
+  So the cut-off was not preventing a double count there, it was deleting the item — permanently,
+  since nothing else would restore it. Pickups into an unexported storage are now exempt.
+  - `tradeskill depot` and `Dragon Hoard` are deliberately **not** exempt. A real export has
+    carried a `Personal-Depot` section, so the depot is at least sometimes covered, and exempting
+    a storage that *is* exported would double-count it. Erring toward the export is the safer
+    side of that trade for storages no Sky item has been seen to use.
+  - Accepted cost: a currency item spent on a turn-in stays on the tracker, because no export will
+    ever contradict the log. That false positive beats the false negative it replaces.
+- **`Outputfile Complete: <file>` is now a parsed event** and the cue to re-read the export. It
+  never reaches the engine — the app owns the file — so `/outputfile inventory` refreshes the tab
+  before you have alt-tabbed back, with the 3s mtime poll left as the backstop for an export
+  written while the parser was not running. Mentioning the command in guild chat does not match,
+  which a real log contains.
+- **Validated by replaying all 1,513,274 lines.** Loot events 570 → 637 (57 of them stored), and
+  Sky items found in the log went from **zero to five**: three wind runes into bags, Azia into the
+  currency tab, and an Efreeti Scimitar — a Druid Test of Nature component — off **Noble Dojorn**,
+  which is exactly the mob the generated catalogue's drop table names for it. That last one is an
+  independent check on the wiki scrape as well as on the parser.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

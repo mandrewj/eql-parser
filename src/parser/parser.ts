@@ -11,6 +11,7 @@ import type {
   DotTickEvent,
   HealEvent,
   LootEvent,
+  OutputFileEvent,
   MeleeDamageEvent,
   MissEvent,
   PetEvent,
@@ -25,7 +26,7 @@ const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
 const RELEVANT_RE =
-  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: |looted/;
+  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: |looted|Outputfile/;
 
 // A `/who` result line — the only place the log states anyone's class:
 //   [42 PAL/MNK/BRD] Sanluen (Wood Elf) <Guild Name> ZONE: Nagafen's Lair (soldungb)
@@ -38,6 +39,26 @@ const WHO_RE = /^\[(\d+) ([A-Z]{3}(?:\/[A-Z]{3})*)\] (\S+) \(/;
 // means "this is yours now" — the others end "and sold it for…" or "to create…". It is also the
 // only form a mote ever appears in. Anchored at `--`, so the other 5,100 fail on two characters.
 const LOOT_RE = /^--You have looted (?:an?|\d+) (.+?) from (.+?)'s corpse\.--$/;
+
+// The **second** keeping form, and it looks nothing like the first: no `--` fence, no trailing
+// full stop, and a different verb tense. An item routed straight into one of the game's
+// auto-storages is announced this way instead:
+//
+//   You looted a Wind Rune Azia from a thunder spirit's corpse and stored it in your currency
+//
+// Three destinations occur in a real log — `currency`, `tradeskill depot` and `Dragon Hoard`.
+// This matters well beyond tidiness: Plane of Sky **wind runes are routed to the currency tab**,
+// so without this pattern every rune the character loots is invisible. The `and stored it in
+// your` literal is what keeps the ~5,400 "and sold it for…" lines out, since they share the
+// whole prefix up to the corpse.
+const LOOT_STORED_RE =
+  /^You looted (?:an?|\d+) (.+?) from (.+?)'s corpse and stored it in your (.+?)\.?$/;
+
+// The game's confirmation that it has written an inventory export:
+//   Outputfile Complete: Sanluen_freeport-Inventory.txt
+// Not combat, and interesting to exactly one consumer — it is the cue to re-read the export
+// rather than wait out the poll that would otherwise notice a few seconds later.
+const OUTPUTFILE_RE = /^Outputfile Complete: (.+?)\s*$/;
 
 // Zoning is a hard fight boundary: "You have entered The Greater Faydark."
 // (guard against the non-zone "You have entered an area where …" warning).
@@ -263,6 +284,18 @@ export function parseLine(raw: string): CombatEvent | null {
   m = LOOT_RE.exec(body);
   if (m) {
     const ev: LootEvent = { type: "loot", tsMs, raw: body, item: m[1]!, from: m[2]! };
+    return ev;
+  }
+
+  m = LOOT_STORED_RE.exec(body);
+  if (m) {
+    const ev: LootEvent = { type: "loot", tsMs, raw: body, item: m[1]!, from: m[2]!, storedIn: m[3]! };
+    return ev;
+  }
+
+  m = OUTPUTFILE_RE.exec(body);
+  if (m) {
+    const ev: OutputFileEvent = { type: "outputfile", tsMs, raw: body, file: m[1]! };
     return ev;
   }
 

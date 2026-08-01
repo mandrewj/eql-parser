@@ -178,7 +178,7 @@ function Baseline({ sky }: { sky: SkyStats }) {
       <span className="muted">
         {sky.inventoryItems} items · read {sky.inventoryMs ? time(sky.inventoryMs) : "—"}
       </span>
-      {sky.recentLoot.length > 0 && <span className="skybasenew">+{sky.recentLoot.length} looted since</span>}
+      {sky.recentLoot.length > 0 && <span className="skybasenew">+{sky.recentLoot.length} from the log</span>}
     </div>
   );
 }
@@ -254,12 +254,15 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
           panel that is live, and it answers the same question whichever way the table is cut. */}
       {sky.recentLoot.length > 0 && (
         <>
-          <div className="section-title">Looted since the export</div>
+          {/* Not "looted since the export": an item routed to the currency tab is counted
+              whenever it was looted, because no export ever lists it. The storage is shown on
+              the row, which is what explains an entry older than the baseline. */}
+          <div className="section-title">Sky pickups from the log</div>
           {sky.recentLoot.map((l, i) => (
             <div className="skyrow held" key={`${l.tsMs}-${l.name}-${i}`}>
               <span className="skymark">✓</span>
               <span className="skyname">{l.name}</span>
-              <span className="skynote">{l.from}</span>
+              <span className="skynote">{l.storedIn ? `${l.from} → ${l.storedIn}` : l.from}</span>
               <span className="skycount">{time(l.tsMs)}</span>
             </div>
           ))}

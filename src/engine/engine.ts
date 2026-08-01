@@ -15,7 +15,7 @@ import { MOTE_TIERS, moteLabel, moteTier, zoneDifficulty, type MoteTier } from "
 // The inventory's keys are already normalised, and normalising twice is a no-op, so the same
 // lookup serves both the export and the log.
 import { matchSkyItem } from "../parser/sky.js";
-import type { Inventory } from "../parser/inventory.js";
+import { isUnexportedStorage, type Inventory } from "../parser/inventory.js";
 import type {
   AbilityBreakdown,
   MoteStats,
@@ -388,7 +388,7 @@ export class Engine {
   // time means a fresh export re-baselines instantly, with no replay. Uncapped because Sky items
   // are rare — a full clear of the zone is a few dozen — and an undercount would be worse than
   // the memory.
-  private readonly skyLoot: Array<{ name: string; tsMs: number; from: string }> = [];
+  private readonly skyLoot: Array<{ name: string; tsMs: number; from: string; storedIn?: string }> = [];
   private inventory: Inventory | null = null;
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
@@ -459,7 +459,7 @@ export class Engine {
       if (tier) this.recordMote(tier, ev.from, ev.tsMs);
       // A Sky item is never also a mote, so this is an independent test rather than an else.
       const sky = matchSkyItem(ev.item);
-      if (sky) this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: ev.from });
+      if (sky) this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: ev.from, storedIn: ev.storedIn });
       return;
     }
     if (ev.type === "who") {
@@ -780,7 +780,10 @@ export class Engine {
 
     const recentLoot: SkyStats["recentLoot"] = [];
     for (const l of this.skyLoot) {
-      if (l.tsMs <= since) continue;
+      // The cut-off exists to stop the export and the log counting the same pickup twice. An
+      // item routed somewhere the export does not list cannot be counted twice, so applying it
+      // there would only lose the item — permanently, since nothing else would ever restore it.
+      if (l.tsMs <= since && !isUnexportedStorage(l.storedIn)) continue;
       const entry = counts.get(l.name);
       if (entry) {
         entry.count += 1;
@@ -788,7 +791,7 @@ export class Engine {
       } else {
         counts.set(l.name, { count: 1, fromInventory: false, fromLoot: true });
       }
-      recentLoot.push(l);
+      recentLoot.push({ name: l.name, tsMs: l.tsMs, from: l.from, storedIn: l.storedIn });
     }
     recentLoot.reverse();
 

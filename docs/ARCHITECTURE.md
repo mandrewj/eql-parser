@@ -65,9 +65,23 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   real log, so the whole block sits behind one token test and is tried after every damage
   pattern; it falls through to `Progress` rather than returning, since an AA can be named
   for a charm spell.
-- **`Loot`** is the "this item is yours" form only (`--You have looted a X from Y's corpse.--`),
-  not the *sold it* or *to create* variants — five loot forms and ~5,600 lines in a real log, and
-  motes only ever use this one. It is not combat and never touches a fight.
+- **`Loot`** is the "this item is yours" family, and it has **two shapes that share no
+  punctuation**. The fenced one (`--You have looted a X from Y's corpse.--`) is what a bag pickup
+  writes, and the only one motes ever use. An item the game routes straight into an auto-storage
+  writes the other, with no `--` fence, no trailing full stop and a different verb tense:
+  `You looted a Wind Rune Azia from a thunder spirit's corpse and stored it in your currency`.
+  Three destinations occur in a real log — `currency`, `tradeskill depot` and `Dragon Hoard` —
+  and the destination is carried on the event because the inventory export does not cover all
+  three (see [Engine](#engine)). This is not an edge case for the Sky tracker: **wind runes are
+  routed to the currency tab**, so without the second shape every rune looted is invisible. The
+  *sold it* and *to create* variants are still excluded; the `and stored it in your` literal is
+  what separates the keeping form from the ~5,400 selling lines it otherwise matches word for
+  word. Not combat, and never touches a fight.
+- **`OutputFile`** is `Outputfile Complete: <file>`, the game confirming it has written an export.
+  It never reaches the engine — the **app** consumes it, because the app owns the file — and it
+  turns `/outputfile inventory` into a refresh that has already happened by the time you alt-tab,
+  instead of one that waits for the next poll. Merely *mentioning* the command in chat does not
+  match, which a real log contains.
 - **`Progress`** covers self progression — level-ups, ability points, AAs bought/ranked, skill
   unlocks, skill-ups and xp ticks. These are orders of magnitude rarer than damage lines, so they
   are tried **last**, behind a single `^You (have )?(gain|become|improved)` prefix test: the hot
@@ -121,8 +135,22 @@ difficulty) and the Plane of Sky pair below.
     the mtime are added.
   - **The cut-off is applied when the snapshot is built, not when the line is read.** That is what
     lets a freshly written export re-baseline instantly, with no replay: the app notices the new
-    mtime on its 3s tick, hands over the new inventory, and the same recorded loot is simply
-    filtered against a later boundary.
+    mtime — on the `Outputfile Complete:` line, or failing that on its 3s tick — hands over the
+    new inventory, and the same recorded loot is filtered against a later boundary.
+  - **One destination is exempt from the cut-off, and it has to be.** The cut-off assumes the
+    export can see everything, which is what makes discarding an older pickup safe. The
+    **currency tab is not in the export at all**: a Wind Rune Azia routed there at 13:20:57 is
+    absent from an export written 51 seconds later, while two runes that went to a bag in the
+    same minutes are both in it. For such an item the cut-off does not prevent a double count —
+    there is nothing to double — it simply deletes the item, and nothing ever restores it. So
+    pickups into an unexported storage count whenever they happened. `tradeskill depot` and
+    `Dragon Hoard` are deliberately *not* exempt: a real export has carried a `Personal-Depot`
+    section, so the depot is at least sometimes covered, and exempting a storage that **is**
+    exported would double-count it. The list lives in
+    [`inventory.ts`](../src/parser/inventory.ts).
+    - The honest cost: a currency item spent on a turn-in stays on the tracker, because no export
+      will ever contradict the log. A false positive there beats the false negative it replaces —
+      the item being invisible from the moment it was looted.
 - **Charmed pets are a *window*, not a fact.** The same mob is an enemy before the charm, an
   ally during it, and an enemy again after it breaks, so the engine closes the books at each
   boundary instead of picking a side: on the charm it banks what the mob did and what was

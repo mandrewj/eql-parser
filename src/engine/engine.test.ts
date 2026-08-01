@@ -1530,3 +1530,45 @@ test("sky: looting is not combat and opens no fight", () => {
   assert.equal(engine.fights().length, 0);
   assert.equal(engine.snapshot().current, null);
 });
+
+const STORED = (t: string, item: string, dest: string) =>
+  L(t, `You looted a ${item} from a thunder spirit's corpse and stored it in your ${dest}`);
+
+/** The cut-off exists to stop the export and the log counting the same pickup twice. An item
+ *  routed to the currency tab is in no export, so the cut-off can only *lose* it — and nothing
+ *  would ever restore it. This is the real case: a Wind Rune Azia stored at 13:20:57 vanished
+ *  from the tracker when the export was written 51 seconds later. */
+test("sky: a currency pickup survives an export written after it", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const ev = parseLine(STORED("13:20:57", "Wind Rune Azia", "currency"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  // The export lands a minute later and, as always, contains no trace of the currency tab.
+  engine.setInventory(baseline(Date.parse("Sat Jul 18 2026 13:21:48 GMT-0400"), {}));
+
+  const sky = engine.snapshot().sky;
+  const rune = sky.held.find((h) => h.name === "Wind Rune Azia");
+  assert.ok(rune, "the rune must survive the cut-off");
+  assert.equal(rune!.count, 1);
+  assert.equal(rune!.source, "loot");
+  assert.equal(sky.recentLoot[0]?.storedIn, "currency");
+});
+
+/** The exemption is per-destination, not a blanket one: the depot has been seen in an export,
+ *  so exempting it would risk counting the same item twice. */
+test("sky: a tradeskill-depot pickup before the export is still discarded", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const ev = parseLine(STORED("13:20:57", "Sphinx Claw", "tradeskill depot"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  engine.setInventory(baseline(Date.parse("Sat Jul 18 2026 13:21:48 GMT-0400"), {}));
+  assert.equal(engine.snapshot().sky.held.length, 0);
+});
+
+test("sky: a stored pickup opens no fight either", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const ev = parseLine(STORED("13:20:57", "Wind Rune Azia", "currency"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  assert.equal(engine.fights().length, 0);
+});
