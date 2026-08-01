@@ -49,8 +49,13 @@ const VIEW_KEY = "eql.sky.view";
 type View = "class" | "island";
 
 function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<string, number> }) {
-  const groups = useMemo(() => buildNeeds(catalogue, held), [catalogue, held]);
-  const total = groups.reduce((n, [, list]) => n + list.length, 0);
+  // Grouped inside the memo, not in the JSX: `groupByMob` was rebuilding a Map per island on
+  // every render, and nothing about it changes between renders that `held` does not.
+  const groups = useMemo(
+    () => buildNeeds(catalogue, held).map(([island, rows]) => ({ island, rows, mobs: groupByMob(rows) })),
+    [catalogue, held],
+  );
+  const total = groups.reduce((n, g) => n + g.rows.length, 0);
 
   if (!total) {
     return <div className="idle">Nothing outstanding — every quest component is either held or already turned in.</div>;
@@ -62,16 +67,16 @@ function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<stri
         {total} components still needed, across {groups.length} locations
       </div>
       <div className="skyislands">
-      {groups.map(([island, list]) => (
+      {groups.map(({ island, rows, mobs }) => (
         <div className="skyisland" key={island ?? "none"}>
           <div className="section-title">
             {island ?? "No island listed"}
-            <span className="skyclsdone">{list.length}</span>
+            <span className="skyclsdone">{rows.length}</span>
           </div>
           {/* Under the mob that drops it, not a flat list: you kill mobs, not islands, and on a
               real island one boss owes you almost everything — Island 5's Spiroc Lord holds 15
               of its 16. The heading is what turns the list into a plan. */}
-          {groupByMob(list).map((g) => (
+          {mobs.map((g) => (
             <div className="skymob" key={g.mob ?? "(unsourced)"}>
               <div className="skymobname">{g.mob ?? "no mob listed"}</div>
               {g.rows.map((r) => (
@@ -376,7 +381,8 @@ function ClassView({
   doneByClass: Map<string, number>;
   onPick: (code: string) => void;
 }) {
-  const done = cls.quests.filter((q) => progressOf(q, held).state === "done").length;
+  // From the same map the chips read, rather than a second pass over the class's quests.
+  const done = doneByClass.get(cls.code) ?? 0;
   return (
     <>
       <nav className="skychips">

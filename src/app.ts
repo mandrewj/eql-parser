@@ -8,7 +8,7 @@ import { listLogs, parseLogFileName } from "./config.js";
 import { parseLine } from "./parser/parser.js";
 import { Engine } from "./engine/engine.js";
 import { Tailer } from "./tailer/tailer.js";
-import { inventoryPathFor, readInventory } from "./parser/inventory.js";
+import { inventoryMtime, inventoryPathFor, readInventory } from "./parser/inventory.js";
 import type { Fight, FightSummary, LogFileInfo, ParseMode } from "./types.js";
 
 export class App {
@@ -121,12 +121,16 @@ export class App {
    *  manual action is imperceptible — where an `fs.watch` here would mean a second watcher
    *  with its own rotation and platform quirks for no gain.
    *
+   *  **The stat comes first and the read only follows a change.** This claimed to be one `stat`
+   *  while actually reading and parsing the whole export on every tick and throwing the result
+   *  away — cheap in absolute terms (0.12ms), but twenty times a minute forever to learn
+   *  nothing.
+   *
    *  Returns whether anything changed, so the caller can push only when it did. */
   private refreshInventory(): boolean {
     const logPath = this.activeLogPath;
     const invPath = logPath ? inventoryPathFor(logPath) : null;
-    const inv = invPath ? readInventory(invPath) : null;
-    const mtime = inv?.modifiedMs ?? null;
+    const mtime = invPath ? inventoryMtime(invPath) : null;
 
     // **The path is part of the test, not just the mtime.** Selecting a character with no export
     // leaves the mtime null — which is what it already was — so an mtime-only check returns early
@@ -135,8 +139,11 @@ export class App {
     // Comparing both means a log change always propagates, while the 3s poll still costs one
     // `stat` and pushes nothing when the file genuinely has not moved.
     if (invPath === this.inventoryPath && mtime === this.inventoryMs) return false;
+    const inv = mtime !== null && invPath ? readInventory(invPath) : null;
     this.inventoryPath = invPath;
-    this.inventoryMs = mtime;
+    // Read from the file we actually parsed, so a rewrite between the stat and the read is
+    // caught by the next tick rather than being recorded as already handled.
+    this.inventoryMs = inv?.modifiedMs ?? mtime;
     this.engine.setInventory(inv, invPath);
     return true;
   }

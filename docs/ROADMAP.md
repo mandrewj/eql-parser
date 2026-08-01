@@ -788,6 +788,35 @@ Both halves came from playing with the tracker open, and the first was a silent 
   again. Plus a fallback to the log's own folder for a copied pair, and unit cases for a server
   name containing underscores.
 
+## Post-v1 — An efficiency audit over the Sky work  ✅
+Measured first, then fixed only what the measurements justified. The headline is that the new
+code is not a performance problem: the numbers below are all small, and two candidate
+optimisations were **rejected** for costing more in complexity than they save.
+
+- **The 3s poll read and parsed the whole export every tick and discarded it** — while its own
+  comment claimed to be "one `stat` … re-parsing 400 lines every 3s would be pure waste". The
+  comment described the intent and the code did the opposite. Now stats first and reads only on
+  a change: **0.1237ms → 0.0015ms** per tick (82×). Small either way; the point is that the code
+  now does what it says.
+- **`logIdentity` duplicated `parseLogFileName`'s regex.** `config.ts` already owned how a log
+  file name splits into character and server, and `inventory.ts` had a second copy — one more
+  place to forget if the game ever renames its files. Collapsed onto the shared function.
+- **`groupByMob` ran per island on every React render**, rebuilding a Map each time, though
+  nothing it depends on changes between renders that `held` does not. Folded into the existing
+  `useMemo` beside `buildNeeds`.
+- **`ClassView` recomputed a count `doneByClass` already held**, walking the class's quests a
+  second time to produce a number the chips had computed. Now reads the map.
+- **Measured and left alone**, so the reasoning is not re-derived:
+  - *The prefilter additions.* `Outputfile` and `been given` took `RELEVANT_RE` from 106.3 to
+    114.2 ns/line — but the prefilter is ~13% of `parseLine`, so this is ~1% overall, about 23ms
+    across a full 1.5M-line backfill. Both tokens are already last in the alternation, which is
+    where the rarest belong.
+  - *Caching the inventory fold.* `buildSkyStats` re-normalises ~100 inventory keys per push, and
+    the whole call costs **0.024ms**. Hoisting it into `setInventory` would add a cache field and
+    an invalidation path to save nothing measurable.
+  - *Pre-serialising the catalogue.* `/api/sky-quests` stringifies 24KB per request, but the
+    browser caches it for an hour, so it runs about once per session.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

@@ -30,6 +30,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { parseLogFileName } from "../config.js";
 import { normalizeItemName } from "./sky.js";
 
 export interface InventoryEntry {
@@ -87,13 +88,6 @@ export function isUnexportedStorage(storedIn: string | undefined): boolean {
   return storedIn !== undefined && UNEXPORTED_STORAGE.has(storedIn.trim().toLowerCase());
 }
 
-/** The character and server a log file belongs to, from its name alone.
- *  `eqlog_<Char>_<server>.txt` — the character cannot contain an underscore, the server can. */
-export function logIdentity(logPath: string): { character: string; server: string } | null {
-  const m = /^eqlog_([^_]+)_(.+)\.txt$/i.exec(path.basename(logPath));
-  return m ? { character: m[1]!, server: m[2]! } : null;
-}
-
 /**
  * Where the export for a given log lives.
  *
@@ -112,9 +106,11 @@ export function logIdentity(logPath: string): { character: string; server: strin
  * and the UI has to be able to *name* the file it is waiting for.
  */
 export function inventoryPathFor(logPath: string): string | null {
-  const id = logIdentity(logPath);
-  if (!id) return null;
-  const fileName = `${id.character}_${id.server}-Inventory.txt`;
+  // `config.ts` already owns how a log file name is read; a second copy of that regex here is
+  // one more place to forget if the game ever renames them.
+  const { character, server } = parseLogFileName(path.basename(logPath));
+  if (!character || !server) return null;
+  const fileName = `${character}_${server}-Inventory.txt`;
   const logDir = path.dirname(logPath);
   const candidates = [path.join(path.dirname(logDir), fileName), path.join(logDir, fileName)];
   for (const c of candidates) {
@@ -125,6 +121,17 @@ export function inventoryPathFor(logPath: string): string | null {
     }
   }
   return candidates[0]!;
+}
+
+/** The export's mtime, or null when it does not exist. Separated from `readInventory` so a
+ *  caller polling for change can ask the cheap question — one `stat` against a 14KB read and a
+ *  436-line parse — without pulling in the contents it is about to discard. */
+export function inventoryMtime(filePath: string): number | null {
+  try {
+    return fs.statSync(filePath).mtimeMs;
+  } catch {
+    return null;
+  }
 }
 
 /** Read and fold an inventory export. Returns null when the file is absent or unreadable —

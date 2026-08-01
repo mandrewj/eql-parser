@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { matchSkyItem, normalizeItemName, skyItemNames } from "./sky.js";
 import { SKY_CLASSES } from "./sky-catalogue.js";
-import { readInventory, inventoryPathFor, isUnexportedStorage, logIdentity } from "./inventory.js";
+import { readInventory, inventoryPathFor, isUnexportedStorage } from "./inventory.js";
+import { parseLogFileName } from "../config.js";
 import { parseLine } from "./parser.js";
 
 // --- the fold ----------------------------------------------------------------
@@ -122,12 +123,14 @@ test("inventory — a file that is not an eqlog names no export", () => {
   assert.equal(inventoryPathFor("/games/EverQuest Legends/logs/dbg.txt"), null);
 });
 
+/** The export path is built from `config.ts`'s reading of the log name rather than a second
+ *  copy of that regex, so this pins the shared behaviour the pair depends on. */
 test("inventory — identity is read from the name; the server may contain underscores", () => {
-  assert.deepEqual(logIdentity("/l/eqlog_Sanluen_antonius_bayle.txt"), {
+  assert.deepEqual(parseLogFileName("eqlog_Sanluen_antonius_bayle.txt"), {
     character: "Sanluen",
     server: "antonius_bayle",
   });
-  assert.equal(logIdentity("/l/notalog.txt"), null);
+  assert.deepEqual(parseLogFileName("notalog.txt"), { character: null, server: null });
 });
 
 /** Falls back to the log's own folder, for someone who pointed EQL_LOG_DIR at a directory they
