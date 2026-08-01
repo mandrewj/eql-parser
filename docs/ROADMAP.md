@@ -579,6 +579,9 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   recency left, distribution right.
 - **The window went 100 → 250** at the same time. Sized to the *sparsest* row that still has to
   be legible, not the densest: at 100 the Major row was two cells and read as noise.
+- **A trailing `all` column** sums each row's difficulty cells, so the line adds up and the grand
+  total lands on the window size. Not the same number as the all-time count beside the tier name,
+  which is the point of keeping both.
 - **Each row is shaded against its own maximum**, not the table's — a table-wide scale flattens
   every rare tier into one pale line (Major's nine drops against Minor's hundred). Per-row
   normalisation is what makes the diagonal legible at a glance.

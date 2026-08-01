@@ -260,6 +260,12 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     difficulty distribution on the right. It was two stacked tables sharing a tier column, which
     left the upper one mostly whitespace and made comparing a tier's rate against where it drops
     a matter of matching names across a gap.
+    - **A trailing `all` column sums the row's own difficulty cells**, so a line's arithmetic is
+      checkable and the bottom row's grand total lands on the window size. It is deliberately not
+      the count beside the tier name: that one is every drop ever seen, this one is the window the
+      split is drawn from, and on a real log they differ (Minor: 109 all-time against 77 in the
+      last 250). Left unshaded — it is a sum, not a share, so a heat ramp would invite comparing
+      it against the cells it is made of.
     - **Each row is shaded against its own maximum**, not the table's. The question a row asks is
       "where does this tier come from"; a table-wide scale would flatten every rare tier into one
       pale line — Major has nine drops against Minor's hundred and would simply vanish. Per-row

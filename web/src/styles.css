@@ -552,7 +552,7 @@ body { margin: 0; }
   display: grid;
   /* Slack goes to the difficulty cells, not the tier name. They carry the shading, so width is
      what turns five numbers into a readable trend; the identity columns only need to fit. */
-  grid-template-columns: minmax(6rem, auto) 6rem minmax(0, 1fr) 4rem repeat(5, minmax(2.6rem, 8.6rem));
+  grid-template-columns: minmax(6rem, auto) 6rem minmax(0, 1fr) 4rem repeat(5, minmax(2.6rem, 8.6rem)) 3.4rem;
   gap: 0.4rem; align-items: baseline; padding: 0.24rem 0;
 }
 .mote-row + .mote-row { border-top: 1px solid var(--hair); }
@@ -572,6 +572,10 @@ body { margin: 0; }
 .mote-row.total { border-top: 1px solid var(--border); margin-top: 0.15rem; padding-top: 0.35rem; }
 .mote-row.total .mote-tier { color: var(--muted); font-weight: 400; font-size: 0.68rem; }
 .mote-row.total .mote-num { color: var(--text); font-weight: 700; }
+/* Never shaded: it is a sum, not a share, so a heat ramp would invite comparing it to the
+   cells it is made of. The rule separates it from the difficulty split it totals. */
+.mote-tot { border-left: 1px solid var(--border); }
+.mote-row:not(.head) .mote-tot.on { color: var(--text); font-weight: 700; }
 
 /* A panel that failed to render. Deliberately plain and quiet — it replaces one box, and the
    rest of the app is still live and worth reading. */

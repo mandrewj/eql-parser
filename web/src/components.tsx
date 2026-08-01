@@ -660,10 +660,14 @@ export function StatTabs({
                   {d}
                 </span>
               ))}
+              <span className="mote-num mote-tot" title={`Every difficulty, over the same window`}>
+                all
+              </span>
             </div>
             {motes.tiers.map((t, i) => {
               const row = motes.grid[i] ?? [0, 0, 0, 0, 0];
               const rowMax = Math.max(...row);
+              const rowSum = row.reduce((n, v) => n + v, 0);
               return (
                 <div key={t.tier} className={`mote-row ${t.total === 0 ? "nil" : ""}`}>
                   <span className="mote-tier">
@@ -696,6 +700,15 @@ export function StatTabs({
                       {v || "·"}
                     </span>
                   ))}
+                  {/* The row's own cells summed, so the arithmetic across a line is checkable.
+                      Deliberately *not* the count beside the tier name: that one is every drop
+                      ever seen, this one is the window the difficulty split is drawn from. */}
+                  <span
+                    className={`mote-num mote-tot ${rowSum ? "on" : ""}`}
+                    title={`${plural(rowSum, `${t.label} mote`)} across every difficulty in the last ${motes.windowSize} loots — the tier's all-time count sits beside its name.`}
+                  >
+                    {rowSum || "·"}
+                  </span>
                 </div>
               );
             })}
@@ -711,6 +724,9 @@ export function StatTabs({
                   {v || "·"}
                 </span>
               ))}
+              <span className="mote-num mote-tot">
+                {motes.perDifficulty.reduce((n, v) => n + v, 0) || "·"}
+              </span>
             </div>
           </div>
         </>
