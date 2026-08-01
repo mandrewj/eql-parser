@@ -545,4 +545,23 @@ interface MetricStat {                // every metric group has this one shape
 
 ## Platform independence
 
-Only the **default log directory** is OS-specific (per-OS lookup table: macOS Wine bottle / Windows `.../Logs` / Linux Wine prefix). The tailer, parser, engine, server, and UI are all OS-agnostic — the "runs on a PC too" goal is essentially free.
+Only the **default log directory** is OS-specific, and even that is one layout with three roots:
+the macOS Wine bottle mirrors Windows exactly (`drive_c/users/Public/…`), so the path below the
+drive root is shared and lives in one constant. The logs sit under the **Public** user on
+Windows, not the current one — an earlier guess used `homedir()` and would never have found them.
+The tailer, parser, engine, server and UI are all OS-agnostic, so "runs on a PC too" is
+essentially free.
+
+**Launchers.** `start.command` (macOS/Linux) and `start.bat` (Windows) are twins: check for Node,
+install on first run, build the UI, open the browser a moment later, then serve in the
+foreground. Keep them in step. Two Windows-specific traps the batch file has to dodge, both of
+which silently half-work otherwise:
+- **every `npm` call needs `call`** — npm is itself a `.cmd`, so without it cmd.exe hands control
+  over and the batch file simply stops after the first one;
+- **`cmd /c "…"` mis-parses nested quotes**, so the delayed browser open leaves the URL unquoted
+  (it has no spaces), and uses `ping` rather than `timeout`, which aborts when stdin is
+  redirected — as it is inside a detached `cmd`.
+
+`.gitattributes` pins `*.bat` to CRLF and the shell scripts to LF: a batch file is meant to be
+double-clicked on a machine that may never see this repo again, and a `.command` with CRLF fails
+on its shebang line.

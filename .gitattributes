@@ -1,0 +1,7 @@
+# Batch files must keep CRLF endings on checkout: cmd.exe tolerates LF for plain commands but
+# not reliably for labels and `goto`, and the file is meant to be double-clicked on a machine
+# that may never see this repo again.
+*.bat text eol=crlf
+# The macOS twin is the mirror case — a shell script with CRLF fails on the shebang line.
+*.command text eol=lf
+*.sh text eol=lf

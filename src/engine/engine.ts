@@ -176,6 +176,19 @@ interface FightState {
   everCharmed: Set<string>;
 }
 
+/** Append a timestamped hit to a per-key log, creating the log on first use. Module level
+ *  rather than a closure inside `recordDamage`: that runs on every damage event in the log. */
+function pushHit(
+  m: Map<string, Array<{ ts: number; amount: number }>>,
+  key: string,
+  ts: number,
+  amount: number,
+): void {
+  const at = m.get(key);
+  if (at) at.push({ ts, amount });
+  else m.set(key, [{ ts, amount }]);
+}
+
 const emptyByType = (): Record<DamageType, number> => ({ melee: 0, spell: 0, dot: 0, unknown: 0 });
 
 /** A metric with only a total + per-second (no per-ability breakdown) — used for healing rows. */
@@ -1296,14 +1309,11 @@ export class Engine {
     addAbility(cell, abilityName, ev.type, ev.amount, crit);
 
     // Every blow, from both ends, so the mob's half of the timeline can show the whole group's
-    // damage rather than only mine. Cleared with the mob's other tracking on reset.
-    const push = (m: Map<string, Array<{ ts: number; amount: number }>>, key: string) => {
-      const at = m.get(key);
-      if (at) at.push({ ts: ev.tsMs, amount: ev.amount });
-      else m.set(key, [{ ts: ev.tsMs, amount: ev.amount }]);
-    };
-    push(f.hitsOn, tKey);
-    push(f.hitsBy, aKey);
+    // damage rather than only mine. Cleared with the mob's other tracking on reset. The self is
+    // skipped: it can never be an encounter's subject, so its logs would only ever grow — and on
+    // a long fight they are the two that grow fastest.
+    if (tKey !== this.selfKey) pushHit(f.hitsOn, tKey, ev.tsMs, ev.amount);
+    if (aKey !== this.selfKey) pushHit(f.hitsBy, aKey, ev.tsMs, ev.amount);
 
     if (aKey === this.selfKey) {
       const c = this.combatant(f, aKey);
@@ -1315,16 +1325,12 @@ export class Engine {
       // Timestamped per *target*, which `selfComboLog` is not: the encounter sparkline has to
       // be my damage to this mob alone, or it would disagree with the row above it whenever
       // two mobs are up. Dropped with the mob's other tracking when it dies.
-      const hits = f.selfHits.get(tKey);
-      if (hits) hits.push({ ts: ev.tsMs, amount: ev.amount });
-      else f.selfHits.set(tKey, [{ ts: ev.tsMs, amount: ev.amount }]);
+      pushHit(f.selfHits, tKey, ev.tsMs, ev.amount);
     }
     if (tKey === this.selfKey && aKey !== this.selfKey) {
       this.selfTakenComboLog.push({ combo: this.combo(), amount: ev.amount, ts: ev.tsMs });
       // Per-mob and timestamped, so an encounter's strip can show what *this* mob did to me.
-      const taken = f.selfTaken.get(aKey);
-      if (taken) taken.push({ ts: ev.tsMs, amount: ev.amount });
-      else f.selfTaken.set(aKey, [{ ts: ev.tsMs, amount: ev.amount }]);
+      pushHit(f.selfTaken, aKey, ev.tsMs, ev.amount);
       // …and once more with the attacker and ability, which the two logs above both drop.
       // Only a death reads this, and only the last few seconds of it.
       this.selfBlows.push({

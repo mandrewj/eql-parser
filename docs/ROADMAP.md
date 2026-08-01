@@ -542,6 +542,26 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   each half is scaled to its own peak so heights never compare across the line or between charts,
   and that the line is zero. None of that is guessable from the bars.
 
+## Post-v1 — A Windows launcher, and an audit pass  ✅
+- **`start.bat`**, twin of `start.command`: check for Node, install on first run, build the UI,
+  open the browser, serve in the foreground. Two Windows traps it has to dodge, both of which
+  silently half-work otherwise — every `npm` call needs `call` (npm is a `.cmd`, so cmd.exe
+  otherwise hands over control and the script just stops), and `cmd /c "…"` mis-parses nested
+  quotes, so the delayed browser open leaves the URL unquoted and uses `ping` rather than
+  `timeout`, which aborts when stdin is redirected as it is inside a detached `cmd`.
+- **The Windows log path was wrong** and would never have found a real install: it used
+  `homedir()`, but the game puts logs under the **Public** user. The macOS Wine bottle spells the
+  right answer out — it mirrors `drive_c/users/Public/…` — so the layout below the drive root is
+  now one shared constant across all three platforms.
+- `.gitattributes` pins `*.bat` to CRLF and the shell launchers to LF.
+- Audit fixes: hoisted a closure that was being allocated **on every damage event**, folded the
+  three copies of "append a timestamped hit" into one helper, stopped recording the self in the
+  group-wide hit logs (it can never be an encounter's subject, so those two entries only grow),
+  and made the stat-tab bodies thunks — all four were being built on every render and three
+  thrown away.
+- **The launcher is untested**: there is no Windows machine here. It is checked statically only —
+  balanced quotes, `call` on every npm invocation, CRLF endings.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

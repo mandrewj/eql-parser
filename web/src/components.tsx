@@ -501,12 +501,20 @@ export function StatTabs({ stats, deaths }: { stats: LongTermStats; deaths: Deat
 
   // A tab earns its place by carrying a figure, not just a noun — the strip is on screen
   // permanently, so each label should be worth reading without opening anything.
-  const tabs: Array<{ key: string; label: string; note?: string; accent?: string; body: React.ReactNode }> = [
+  // `body` is a thunk, not an element: all four were being built on every render and three of
+  // them thrown away. The deaths body alone maps five reports into three rows each.
+  const tabs: Array<{
+    key: string;
+    label: string;
+    note?: string;
+    accent?: string;
+    body: () => React.ReactNode;
+  }> = [
     {
       key: "levels",
       label: "Levels",
       note: levels[0] ? hhmm(levels[0].combatSec) : undefined,
-      body: (
+      body: () => (
         <>
           {levels.length === 0 ? (
             <div className="muted small">No levels yet this session.</div>
@@ -524,7 +532,7 @@ export function StatTabs({ stats, deaths }: { stats: LongTermStats; deaths: Deat
       key: "aa",
       label: "AA",
       note: aa[0] ? hhmm(aa[0].combatSec) : undefined,
-      body: (
+      body: () => (
         <>
           {aa.length === 0 ? (
             <div className="muted small">No Alternate Advancement earned yet this session.</div>
@@ -541,7 +549,7 @@ export function StatTabs({ stats, deaths }: { stats: LongTermStats; deaths: Deat
       key: "stances",
       label: "Stances",
       note: meleeTotal > 0 ? hhmm(meleeTotal) : undefined,
-      body: (
+      body: () => (
         <>
           <div className="lt-row stances">
             <span className="lt-since">⚔ melee</span>
@@ -566,7 +574,7 @@ export function StatTabs({ stats, deaths }: { stats: LongTermStats; deaths: Deat
       label: "Deaths",
       note: String(deaths.length),
       accent: "deaths",
-      body: (
+      body: () => (
         <>
           {deaths.map((d) => (
             <DeathRow key={d.id} d={d} />
@@ -593,7 +601,7 @@ export function StatTabs({ stats, deaths }: { stats: LongTermStats; deaths: Deat
           </button>
         ))}
       </div>
-      {active && <div className="stat-body">{active.body}</div>}
+      {active && <div className="stat-body">{active.body()}</div>}
     </section>
   );
 }

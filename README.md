@@ -9,9 +9,9 @@ live damage meter plus a browsable history of past fights in your web browser.
 
 ## Quick start
 
-**Easiest:** double-click **`start.command`** in Finder. On first run it installs
-dependencies and builds the UI, then it opens `http://localhost:8787` in your browser and
-serves the app. Close the window (or press Ctrl+C) to stop.
+**Easiest:** double-click **`start.command`** (macOS/Linux) or **`start.bat`** (Windows). On
+first run it installs dependencies and builds the UI, then it opens `http://localhost:8787` in
+your browser and serves the app. Close the window (or press Ctrl+C) to stop.
 
 Or from a terminal:
 
@@ -42,9 +42,14 @@ Terminal-only DPS report: `npm run report -- <fightNumber>`.
 The log lives deep in the Wine bottle:
 
 ```
-~/Library/Application Support/osxEQL/prefix/drive_c/users/Public/
-  Daybreak Game Company/Installed Games/EverQuest Legends/logs/eqlog_<Char>_<server>.txt
+macOS    ~/Library/Application Support/osxEQL/prefix/drive_c/users/Public/
+             Daybreak Game Company/Installed Games/EverQuest Legends/logs/eqlog_<Char>_<server>.txt
+Windows  C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest Legends\logs\...
 ```
+
+The Wine bottle mirrors the Windows layout exactly — `drive_c/users/Public/…` — so the same
+path works on both once the drive root is swapped. Note it lives under the **Public** user, not
+yours. Set `EQL_LOG_DIR` to override, or point the app at a folder from its settings.
 
 That path is a perfectly normal macOS file, so a **native process can tail it live**
 with no trouble. A sandboxed browser *cannot* watch an arbitrary filesystem path in

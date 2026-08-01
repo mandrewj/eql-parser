@@ -14,10 +14,20 @@ export interface AppConfig {
   inactivityTimeoutSec: number; // fight-close timeout
 }
 
+/** The install layout below the drive root is identical everywhere — only the root differs.
+ *  The macOS Wine bottle spells the Windows one out for us: it mirrors `drive_c/users/Public`,
+ *  so a real Windows install puts the logs under the **Public** user, not the current one. */
+const GAME_LOGS = path.join(
+  "Daybreak Game Company",
+  "Installed Games",
+  "EverQuest Legends",
+  "logs",
+);
+
 const MACOS_DEFAULT = path.join(
   os.homedir(),
   "Library/Application Support/osxEQL/prefix/drive_c/users/Public",
-  "Daybreak Game Company/Installed Games/EverQuest Legends/logs",
+  GAME_LOGS,
 );
 
 /** Candidate log directories in priority order for the current platform. */
@@ -29,25 +39,17 @@ export function candidateLogDirs(): string[] {
     case "darwin":
       return [MACOS_DEFAULT];
     case "win32":
-      // Best-guess; refined once we see a real Windows install.
       return [
-        path.join(
-          os.homedir(),
-          "Daybreak Game Company",
-          "Installed Games",
-          "EverQuest Legends",
-          "logs",
-        ),
+        // %PUBLIC% is normally C:\Users\Public; the literal is the fallback for the rare
+        // machine where it is unset. The old guess used the *current* user's home, which is
+        // not where the installer puts them.
+        path.join(process.env.PUBLIC ?? "C:\\Users\\Public", GAME_LOGS),
+        // …and the current user's home last, in case of a per-user install.
+        path.join(os.homedir(), GAME_LOGS),
       ];
     default:
-      // Linux/Wine — best-guess prefix layout.
-      return [
-        path.join(
-          os.homedir(),
-          ".wine/drive_c/users/Public/Daybreak Game Company",
-          "Installed Games/EverQuest Legends/logs",
-        ),
-      ];
+      // Linux/Wine — the same bottle layout macOS uses.
+      return [path.join(os.homedir(), ".wine/drive_c/users/Public", GAME_LOGS)];
   }
 }
 
