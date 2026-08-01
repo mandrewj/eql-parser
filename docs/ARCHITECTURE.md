@@ -415,6 +415,17 @@ interface MetricStat {                // every metric group has this one shape
   - Each half of each chart is normalised to **its own peak**, because incoming and outgoing
     routinely differ by an order of magnitude and one scale would flatten the other. Damage
     *out of* a mob is one colour on both charts: it is the mob's doing, not a stance of mine.
+  - **The group chart is deliberately neutral (`--s-other`).** Colour there encodes nothing — it
+    is one series, not six — so it must not compete with the stance palette beside it.
+    `--player`'s green was tried and collides head-on with `--s3` and `--s6`, which are also
+    greens: two of the six stance slots made the two charts read as the same series.
+  - **A rule with a notch separates them.** Whitespace alone read as one wide chart with a
+    stutter in it, which is the one reading that is actively wrong — the halves share a time axis
+    and nothing else, and no bar on the left belongs to the series on the right. The notch sits
+    at the divergence height, tying the two baselines together.
+  - Each chart's `title` spells out the axes, because none of it is guessable from the bars: that
+    height is a **rate** rather than a total, that the two halves are scaled separately, and that
+    the line is zero rather than a floor. The rule between them carries the shared-axis reading.
   - **It does not overlap the table, and that was learned the hard way.** "Fill the card" was
     first taken literally — drawn over the rows at 19% opacity. Bars running across every number
     made the table hard to read, which is the opposite of what a chart beside a table is for.

@@ -832,7 +832,18 @@ function EncounterTimeline({ enc, colors }: { enc: EncounterView; colors: Map<st
       ))}
     </div>
   );
-  const per = `${plural(bucketSec, "second")} per bar`;
+  // Both charts share one description of the axes; only the two directions differ. Spelled out
+  // because none of it is guessable from the bars: that height is a *rate* rather than a total,
+  // that the two halves are scaled separately, and that the line is zero rather than a floor.
+  const axes = (aboveWhat: string, abovePeak: number, belowWhat: string, belowPeak: number) =>
+    `Time runs left to right, ${plural(bucketSec, "second")} per bar over the ${enc.durationSec}s ` +
+    `encounter. Bar height is damage per second, not a total, so a short bar is a slow ` +
+    `${bucketSec > 1 ? `${bucketSec} seconds` : "second"} and an empty one is nothing at all.\n\n` +
+    `Above the line: ${aboveWhat} — peak ${fmtDrill(abovePeak)}/s.\n` +
+    `Below the line: ${belowWhat} — peak ${fmtDrill(belowPeak)}/s.\n\n` +
+    `Each half is scaled to its own peak, so a full-height bar means "the most in this ` +
+    `direction, this fight" — heights are never comparable across the line, or between the two ` +
+    `charts.`;
 
   return (
     <div className="enc-timeline">
@@ -843,19 +854,36 @@ function EncounterTimeline({ enc, colors }: { enc: EncounterView; colors: Map<st
         peaks.atMe,
         (i) => comboColor(combos[i] ?? "", colors),
         "me",
-        `Me — ${per}. Above the line my damage (peak ${fmtDrill(peaks.mine)} dps), below it what ` +
-          `${enc.name} dealt me (peak ${fmtDrill(peaks.atMe)}/s). Colour is the stance combo I was in.`,
+        `ME — just my own damage.\n\n` +
+          axes("my damage to " + enc.name, peaks.mine, `what ${enc.name} dealt me`, peaks.atMe) +
+          `\n\nBar colour is the stance combo I was in for that bar, matching the My DPS panel.`,
       )}
+      <div
+        className="tl-sep"
+        title={
+          `Two charts, one time axis. The bar at any position covers the same ` +
+          `${plural(bucketSec, "second")} on both, so they can be read across: a gap on the left ` +
+          `with a full column on the right is me dropping out while the group kept going, and a ` +
+          `gap on both is the fight itself pausing.`
+        }
+      />
       {half(
         atMob,
         byMob,
         peaks.atMob,
         peaks.byMob,
-        () => "var(--player)",
+        // Neutral, deliberately: colour on this chart encodes nothing — it is one series, not
+        // six — so it must not compete with the stance palette next to it. `--player`'s green
+        // was tried and collides head-on whenever a stance combo lands on a green slot.
+        () => "var(--s-other)",
         "everyone",
-        `${enc.name} — ${per}. Above the line everything the group dealt it (peak ` +
-          `${fmtDrill(peaks.atMob)} dps), below it everything it dealt the group (peak ` +
-          `${fmtDrill(peaks.byMob)}/s). All damage, not just mine.`,
+        `EVERYONE — the whole group, not just me.\n\n` +
+          axes(
+            `everything the group dealt ${enc.name}`,
+            peaks.atMob,
+            `everything ${enc.name} dealt the group`,
+            peaks.byMob,
+          ),
       )}
     </div>
   );

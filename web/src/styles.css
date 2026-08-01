@@ -232,7 +232,22 @@ body { margin: 0; }
    was a mistake — bars washing across every number made the table hard to read. Given its own
    row it runs at full strength instead of hiding at 19%. Heights are px, like the history
    chart's, so shrinking the type never costs the bars their resolution. */
-.enc-timeline { display: flex; gap: 0.5rem; width: 100%; margin: 0 0 0.45rem; }
+.enc-timeline { display: flex; gap: 0.35rem; width: 100%; margin: 0 0 0.45rem; }
+/* A rule between the two charts. Whitespace alone read as one wide chart with a stutter in it,
+   which is the one reading that is actively wrong — the halves share a time axis but nothing
+   else, and no bar on the left belongs to the series on the right. The notch sits at the
+   divergence height, tying the two baselines together. */
+.tl-sep { flex: 0 0 11px; position: relative; align-self: stretch; }
+.tl-sep::before {
+  content: ""; position: absolute; left: 5px; top: 1px; bottom: 1px; width: 1px;
+  background: linear-gradient(180deg, transparent, var(--border-strong) 22%, var(--border-strong) 78%, transparent);
+}
+.tl-sep::after {
+  content: ""; position: absolute; left: 3px; top: 24px; width: 5px; height: 5px;
+  border-radius: 50%; background: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+.enc-table.live .tl-sep::after { box-shadow: 0 0 0 2px #241c1f; }
 /* Equal halves, so the two charts share one time axis bar-for-bar and can be read across. */
 .tl-chart { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: stretch; gap: 1px; }
 /* Sits over the top-left of its own chart, where the bars are shortest — a label row of its

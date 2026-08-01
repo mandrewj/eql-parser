@@ -531,6 +531,16 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   Both are cleared with the mob's other tracking on reset.
 - The `me` / `everyone` labels sit *over* the sparse top-left of their own chart; a label row of
   its own would cost 10px of a panel where vertical space is the scarce resource.
+- **A rule with a notch separates the two.** Whitespace alone read as one wide chart with a
+  stutter in it — the one reading that is actively wrong, since no bar on the left belongs to the
+  series on the right. The notch sits at the divergence height, tying the baselines together.
+- **The group chart went neutral after a colour collision.** It was `--player` green, which is the
+  same family as `--s3` and `--s6` — two of the six stance slots — so whenever a combo landed on
+  a green slot the two charts read as one series. Colour there encodes nothing anyway (one series,
+  not six), so `--s-other` is both safer and more honest.
+- Each chart's tooltip now spells out the axes: that bar height is a **rate** not a total, that
+  each half is scaled to its own peak so heights never compare across the line or between charts,
+  and that the line is zero. None of that is guessable from the bars.
 
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
