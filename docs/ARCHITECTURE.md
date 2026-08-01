@@ -254,7 +254,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   - Difficulty comes from the zone name's suffix at the moment of the drop
     ([`motes.ts`](../src/parser/motes.ts)). A drop before the first zone line has **no** known
     difficulty — counted apart rather than folded into D0, which would be a different claim.
-  - **The five most recent drops come off the same 250-entry buffer**, not a second log — it
+  - **The eight most recent drops come off the same 250-entry buffer**, not a second log — it
     already carries the corpse and the zone per drop, so the recent list is a `slice(-5)` of it.
   - **The tab is one row per tier**: identity and recency on the left (last / from / gap), the
     difficulty distribution on the right. It was two stacked tables sharing a tier column, which

@@ -628,6 +628,9 @@ export function StatTabs({
         <>
           {motes.recent.length > 0 && (
             <div className="mote-recent">
+              {/* Counted rather than hardcoded: the cap is 8, but a fresh log has fewer and a
+                  label promising 8 above 3 rows would be wrong. */}
+              <div className="mote-cap">Last {motes.recent.length} looted</div>
               {motes.recent.map((r) => (
                 <div key={`${r.tsMs}-${r.tier}-${r.from}`} className="mote-recent-row">
                   <span className="mote-when">{time(r.tsMs)}</span>

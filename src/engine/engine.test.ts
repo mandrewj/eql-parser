@@ -275,7 +275,7 @@ test("motes: tiers, the corpse, and the difficulty of the zone it dropped in", (
 
   // The recent list reads newest-first, and carries the zone each drop came from — the tier
   // rows above only keep the latest corpse, so this is the only place a run is visible.
-  assert.equal(m.recent.length, 4, "fewer than five drops so far, so all of them");
+  assert.equal(m.recent.length, 4, "fewer than eight drops so far, so all of them");
   assert.equal(m.recent[0]!.label, "Potential");
   assert.equal(m.recent[0]!.from, "King Gragnar");
   assert.equal(m.recent[0]!.zone, "The Ruins of Old Paineel - Group 3 (Refined)");
@@ -283,21 +283,21 @@ test("motes: tiers, the corpse, and the difficulty of the zone it dropped in", (
   assert.equal(m.recent[3]!.from, "a bat", "oldest last");
 });
 
-test("motes: the recent list keeps the newest five, and the grid a longer tail", () => {
+test("motes: the recent list keeps the newest eight, and the grid a longer tail", () => {
   const lines = [L("01:00:00", "You have entered Nagafen's Lair 2 (Adaptive).")];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 12; i++) {
     const mm = String(10 + i).padStart(2, "0");
     lines.push(L(`01:${mm}:00`, `--You have looted a Mote of Minor Potential from corpse${i}'s corpse.--`));
   }
   const m = feed(lines).snapshot().motes;
-  assert.equal(m.recent.length, 5, "capped at five however many dropped");
+  assert.equal(m.recent.length, 8, "capped at eight however many dropped");
   assert.deepEqual(
     m.recent.map((r) => r.from),
-    ["corpse8", "corpse7", "corpse6", "corpse5", "corpse4"],
+    ["corpse11", "corpse10", "corpse9", "corpse8", "corpse7", "corpse6", "corpse5", "corpse4"],
     "newest first",
   );
-  assert.equal(m.windowSize, 9, "the grid still counts all nine");
-  assert.equal(m.tiers.find((t) => t.tier === "minor")!.total, 9);
+  assert.equal(m.windowSize, 12, "the grid still counts all twelve");
+  assert.equal(m.tiers.find((t) => t.tier === "minor")!.total, 12);
 });
 
 test("motes: a drop before any zone line is counted apart, not called D0", () => {

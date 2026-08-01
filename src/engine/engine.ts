@@ -669,7 +669,7 @@ export class Engine {
    *  at 100 the Major row was two cells and read as noise rather than a distribution. */
   private static readonly MOTE_GRID_WINDOW = 250;
   /** How many recent drops are listed above the table, newest first. */
-  private static readonly MOTE_RECENT = 5;
+  private static readonly MOTE_RECENT = 8;
 
   private recordMote(tier: MoteTier, from: string, tsMs: number): void {
     const zone = this.zone?.name ?? null;

@@ -582,7 +582,7 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 - **Each row is shaded against its own maximum**, not the table's — a table-wide scale flattens
   every rare tier into one pale line (Major's nine drops against Minor's hundred). Per-row
   normalisation is what makes the diagonal legible at a glance.
-- **The last five drops sit above the table**, with timestamp, tier, corpse and zone. They come
+- **The last eight drops sit above the table**, with timestamp, tier, corpse and zone. They come
   off the same 250-entry buffer the grid uses rather than a second log; the tier rows only keep
   the *latest* corpse, so this is the only place a run of drops is visible.
 - The gap is withheld below 5 drops — three drops of a rare tier is not a rate, and printing one
