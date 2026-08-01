@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { time } from "./format";
-import { buildNeeds, progressOf, type QuestState } from "./sky-model";
+import {
+  buildNeeds,
+  groupByMob,
+  progressOf,
+  readyQuests,
+  resolveCompletions,
+  type QuestState,
+} from "./sky-model";
 import type { SkyClass, SkyQuest, SkyStats } from "./types";
 
 /** The Plane of Sky class-quest tracker.
@@ -60,27 +67,29 @@ function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<stri
             {island ?? "No island listed"}
             <span className="skyclsdone">{list.length}</span>
           </div>
-          {list.map((r) => (
-            <div
-              className={r.held > 0 ? "skyrow held" : "skyrow"}
-              key={r.name}
-              title={
-                (r.dropsFrom ? `Drops from ${r.dropsFrom}\n` : "") +
-                r.wants.map((w) => w.quest).join("\n")
-              }
-            >
-              <span className="skymark">{r.held > 0 ? "◐" : "·"}</span>
-              <span className="skyname">{r.name}</span>
-              {/* With no island to locate it by, the mob is the only pointer the row can give —
-                  and the wiki does name one for all but a couple of these. The first source
-                  only: the full list is in the tooltip and is far too long for the row. */}
-              {r.island === null && r.dropsFrom && (
-                <span className="skynote">{r.dropsFrom.split(",")[0]!.trim()}</span>
-              )}
-              <span className="skywants">{[...new Set(r.wants.map((w) => w.code))].join(" ")}</span>
-              <span className="skycount">
-                {r.held > 0 ? `${r.held}/${r.wants.length}` : r.wants.length > 1 ? `×${r.wants.length}` : ""}
-              </span>
+          {/* Under the mob that drops it, not a flat list: you kill mobs, not islands, and on a
+              real island one boss owes you almost everything — Island 5's Spiroc Lord holds 15
+              of its 16. The heading is what turns the list into a plan. */}
+          {groupByMob(list).map((g) => (
+            <div className="skymob" key={g.mob ?? "(unsourced)"}>
+              <div className="skymobname">{g.mob ?? "no mob listed"}</div>
+              {g.rows.map((r) => (
+                <div
+                  className={r.held > 0 ? "skyrow held" : "skyrow"}
+                  key={r.name}
+                  title={
+                    (r.dropsFrom ? `Drops from ${r.dropsFrom}\n` : "") +
+                    r.wants.map((w) => w.quest).join("\n")
+                  }
+                >
+                  <span className="skymark">{r.held > 0 ? "◐" : "·"}</span>
+                  <span className="skyname">{r.name}</span>
+                  <span className="skywants">{[...new Set(r.wants.map((w) => w.code))].join(" ")}</span>
+                  <span className="skycount">
+                    {r.held > 0 ? `${r.held}/${r.wants.length}` : r.wants.length > 1 ? `×${r.wants.length}` : ""}
+                  </span>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -183,6 +192,69 @@ function Baseline({ sky }: { sky: SkyStats }) {
   );
 }
 
+/** What is actionable now, and what has recently been finished.
+ *
+ *  The two belong in one box because they are the same story a step apart: a quest goes ready,
+ *  you walk to the NPC, and it becomes complete. Ready is derived from what is held; complete is
+ *  an *event* the log witnessed (`You have been given: <reward>`), which is the only thing that
+ *  puts a date on a turn-in — holding the reward says a quest is done, never when. A quest
+ *  finished before this log begins is therefore still ✓ in the class view but is not listed here,
+ *  which is what "recently" means.
+ *
+ *  It sits above the view switch because it is true of both views and is the first thing worth
+ *  reading; it renders nothing at all when there is neither. */
+function ProgressBox({
+  catalogue,
+  held,
+  completed,
+}: {
+  catalogue: SkyClass[];
+  held: Map<string, number>;
+  completed: SkyStats["completed"];
+}) {
+  const ready = useMemo(() => readyQuests(catalogue, held), [catalogue, held]);
+  const done = useMemo(() => resolveCompletions(catalogue, completed), [catalogue, completed]);
+  if (!ready.length && !done.length) return null;
+
+  return (
+    <div className="skyprogress">
+      {ready.length > 0 && (
+        <>
+          <div className="skypghead ready">
+            Ready to turn in<span className="skypgn">{ready.length}</span>
+          </div>
+          {ready.map((r) => (
+            <div className="skypgrow" key={`${r.code}-${r.quest.quest}`}>
+              <span className="skymark ready">◆</span>
+              <span className="skyname">{r.quest.quest}</span>
+              <span className="skynote">
+                {r.giver} · say “{r.quest.trigger}”
+              </span>
+              <span className="skypgreward">{r.quest.rewards.join(", ")}</span>
+            </div>
+          ))}
+        </>
+      )}
+      {done.length > 0 && (
+        <>
+          <div className="skypghead done">
+            Recently complete<span className="skypgn">{done.length}</span>
+          </div>
+          {done.map((d) => (
+            <div className="skypgrow" key={`${d.reward}-${d.tsMs}`}>
+              <span className="skymark done">✓</span>
+              <span className="skyname">{d.quest}</span>
+              <span className="skynote">{d.code}</span>
+              <span className="skypgreward">{d.reward}</span>
+              <span className="skycount">{time(d.tsMs)}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky: SkyStats }) {
   const [code, setCode] = useState<string | null>(() => {
     try {
@@ -234,6 +306,8 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
   return (
     <div className="skypanel">
       <Baseline sky={sky} />
+
+      <ProgressBox catalogue={catalogue} held={held} completed={sky.completed} />
 
       <nav className="skyviews">
         <button className={view === "class" ? "tab on" : "tab"} onClick={() => setView("class")}>

@@ -54,7 +54,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   carrying the real ability name. It went unparsed until now — ~15% of the self's damage — and
   `parse:check` reported the log clean throughout, because its own relevance regex shared the
   blind spot; that regex now allows the adjective, which is what makes the check honest.
-- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, **`Charm`**, **`Who`**, **`Loot`**, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
+- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, **`Charm`**, **`Who`**, **`Loot`**, **`Given`**, **`OutputFile`**, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
 - **`Who`** carries a player's level and classes from a `/who` result. It is not combat and
   never touches a fight; it exists solely because that line is the only place the log states
   anyone's class, which is what makes a charm attributable (below).
@@ -77,6 +77,11 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   *sold it* and *to create* variants are still excluded; the `and stored it in your` literal is
   what separates the keeping form from the ~5,400 selling lines it otherwise matches word for
   word. Not combat, and never touches a fight.
+- **`Given`** is `You have been given: <Item>` — an NPC handing something over, which is what the
+  end of a turn-in looks like. It is the **only line that dates a quest completion**: holding the
+  reward says a quest is finished, never when. Three lines in 1.5M, so it is tried late and gated
+  behind `been given` in the prefilter. It stays general — deciding which handovers are Sky
+  rewards is the engine's job, and a real log's three are all something else.
 - **`OutputFile`** is `Outputfile Complete: <file>`, the game confirming it has written an export.
   It never reaches the engine — the **app** consumes it, because the app owns the file — and it
   turns `/outputfile inventory` into a refresh that has already happened by the time you alt-tab,
@@ -455,6 +460,7 @@ interface SkyStats {                  // the tracker's dynamic half; the catalog
   inventoryItems: number;
   held: SkyHolding[];                 // { name, count, source: inventory | loot | both }
   recentLoot: SkyLoot[];              // Sky pickups after the cut-off, newest first
+  completed: SkyCompletion[];         // { reward, tsMs } — turn-ins the log witnessed, newest first
 }
 
 interface EncounterView {             // one per-mob card
@@ -527,6 +533,12 @@ interface MetricStat {                // every metric group has this one shape
     the body is that class's quests. Each quest is a small block — a header carrying its state,
     then one row per rune, component and reward — because a row of item names means nothing
     detached from its quest.
+  - **A box above both**, for what is actionable now and what has just been finished. The two
+    belong together because they are one story a step apart: a quest goes *ready*, you walk to
+    the NPC, it becomes *complete*. Ready is derived from what is held; complete is an **event**
+    (`You have been given:`), which is why a quest finished before this log begins is still ✓ in
+    the class view but is not listed here — that is what "recently" means. The box renders
+    nothing when there is neither.
   - **By island** — "I am standing on Island 5, what do I look for". Every outstanding component
     across all 16 classes, grouped by where it drops and **sorted most-wanted first**, so the item
     two classes need is the one you learn to recognise. Three things are left out, each a rule
@@ -534,8 +546,15 @@ interface MetricStat {                // every metric group has this one shape
     listing them sends you farming for a reward already in the bag), components **held in
     sufficient number** — and sufficient counts the *quests* that want it, not one, because a
     turn-in consumes the item and 14 components are wanted twice — and **runes**, which are asked
-    for rather than found. The 20 components with no island carry their drop mob instead, which
-    the wiki names for all but two of them.
+    for rather than found.
+    - **Rows sit under the mob that drops them**, because you kill mobs, not islands — and on a
+      real island one boss owes you nearly everything (The Spiroc Lord holds 13 of Island 5's 16,
+      Sister of the Spire 15 of Island 7's 16). The wiki lists several mobs per item in no fixed
+      order, so grouping on the whole string fragments one boss across several headings: the
+      Efreeti items alone spread over eight variants of "Noble Dojorn, …". The **first** named is
+      taken as the primary source, with a trailing parenthetical dropped so `Bazzt Zzzt (Island 6
+      Boss)` files with `Bazzt Zzzt`; the full list stays in the tooltip. Mobs are ordered by how
+      much they owe you, and the unsourced group sorts last.
   - **State is derived from what is held, in four steps**: `done` (every reward held — *every*,
     since Beastlord's Test of Claw awards a weapon per hand), `ready` (all components, nothing to
     farm), `partial`, `open`. Carried by a coloured left border and a glyph, so a class's shape is

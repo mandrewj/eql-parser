@@ -3,7 +3,7 @@
 // Same split as `stats.ts` against `components.tsx`: these are the rules that decide what is
 // finished and what is still worth farming, and they are worth testing without a renderer.
 
-import type { SkyClass, SkyQuest } from "./types";
+import type { SkyClass, SkyCompletion, SkyQuest } from "./types";
 
 /** Where a quest stands. Derived rather than stored — there is no persistence in this app, and
  *  the whole state is a function of the inventory export and the log. */
@@ -46,6 +46,89 @@ export function islandOrder(label: string | null): [number, string] {
   if (label === null) return [99, ""]; // no island listed — last
   const n = /^Island (\d+)/.exec(label);
   return [n ? Number(n[1]) : 98, label];
+}
+
+/** The mob a row is filed under. The wiki often lists several, in no fixed order, and grouping
+ *  on the whole string fragments one boss into four headings — the Efreeti items alone spread
+ *  across eight variants of "Noble Dojorn, …". The **first** named is taken as the primary
+ *  source, and a trailing parenthetical is dropped so `Bazzt Zzzt (Island 6 Boss)` files with
+ *  `Bazzt Zzzt`. The full list stays in the row's tooltip. */
+export function primaryMob(dropsFrom: string | null): string | null {
+  if (!dropsFrom) return null;
+  const first = dropsFrom.split(",")[0]!.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return first || null;
+}
+
+/** An island's outstanding rows, gathered under the mob that drops them. */
+export interface MobGroup {
+  mob: string | null; // null → the wiki names no source
+  rows: NeedRow[];
+}
+
+/** Group one island's rows by their primary mob. Mobs are ordered by how much they owe you,
+ *  since that is the order you would kill them in; the unsourced group always sorts last. */
+export function groupByMob(rows: NeedRow[]): MobGroup[] {
+  const byMob = new Map<string | null, NeedRow[]>();
+  for (const r of rows) {
+    const mob = primaryMob(r.dropsFrom);
+    const list = byMob.get(mob);
+    if (list) list.push(r);
+    else byMob.set(mob, [r]);
+  }
+  return [...byMob]
+    .map(([mob, rs]) => ({ mob, rows: rs }))
+    .sort((a, b) => {
+      if (a.mob === null) return 1;
+      if (b.mob === null) return -1;
+      return b.rows.length - a.rows.length || a.mob.localeCompare(b.mob);
+    });
+}
+
+/** A quest whose components are all in hand — go and see the NPC. */
+export interface ReadyQuest {
+  code: string;
+  className: string;
+  giver: string;
+  quest: SkyQuest;
+}
+
+/** Everything ready to turn in, across all 16 classes. */
+export function readyQuests(catalogue: SkyClass[], held: Map<string, number>): ReadyQuest[] {
+  const out: ReadyQuest[] = [];
+  for (const c of catalogue) {
+    for (const q of c.quests) {
+      if (progressOf(q, held).state === "ready") {
+        out.push({ code: c.code, className: c.className, giver: c.giver, quest: q });
+      }
+    }
+  }
+  return out;
+}
+
+/** A dated completion, resolved back to the quest it finished. Reward names are unique across
+ *  the catalogue, so the reward alone identifies it — which is why the snapshot carries only
+ *  the reward and the date. An unrecognised reward is dropped rather than shown bare. */
+export interface ResolvedCompletion {
+  tsMs: number;
+  reward: string;
+  code: string;
+  className: string;
+  quest: string;
+}
+
+export function resolveCompletions(catalogue: SkyClass[], completed: SkyCompletion[]): ResolvedCompletion[] {
+  const byReward = new Map<string, { code: string; className: string; quest: string }>();
+  for (const c of catalogue) {
+    for (const q of c.quests) {
+      for (const r of q.rewards) byReward.set(r, { code: c.code, className: c.className, quest: q.quest });
+    }
+  }
+  const out: ResolvedCompletion[] = [];
+  for (const c of completed) {
+    const hit = byReward.get(c.reward);
+    if (hit) out.push({ tsMs: c.tsMs, reward: c.reward, ...hit });
+  }
+  return out;
 }
 
 /**

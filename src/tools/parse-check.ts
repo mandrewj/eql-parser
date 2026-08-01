@@ -34,6 +34,7 @@ function main(): void {
     who: 0,
     loot: 0,
     outputfile: 0,
+    given: 0,
     zone: 0,
     progress: 0,
   };

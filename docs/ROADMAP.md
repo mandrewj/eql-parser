@@ -719,6 +719,28 @@ Both halves came from playing with the tracker open, and the first was a silent 
   which is exactly the mob the generated catalogue's drop table names for it. That last one is an
   independent check on the wiki scrape as well as on the parser.
 
+## Post-v1 — A progress box, and the island view grouped by mob  ✅
+- **One box above both views**, carrying what is actionable now and what has just been finished.
+  They belong together because they are a single story a step apart: a quest goes *ready*, you walk
+  to the NPC, it becomes *complete*. It renders nothing when there is neither.
+  - **Ready** is derived — every component held, reward not yet — and names the giver and the
+    trigger phrase, so the row is the errand.
+  - **Complete** is an *event*, not a derivation. `You have been given: <reward>` is the only line
+    that **dates** a turn-in; holding the reward says a quest is finished but never when. So a
+    quest completed before this log begins stays ✓ in the class view and is absent here, which is
+    exactly what "recently" should mean. Three such lines exist in a real log and none is a Sky
+    reward, so the parser stays general and the engine decides what counts.
+- **The by-island view now nests rows under the mob that drops them**, because you kill mobs, not
+  islands — and one boss usually owes you nearly everything: The Spiroc Lord holds 13 of Island 5's
+  16, Sister of the Spire 15 of Island 7's 16. The heading is what turns a list into a plan.
+  - **Grouping on the wiki's whole "drops from" string does not work**: it lists several mobs in no
+    fixed order, so one boss fragments across headings — the Efreeti items alone spread over eight
+    variants of "Noble Dojorn, …". The **first** named is the primary source, with a trailing
+    parenthetical dropped so `Bazzt Zzzt (Island 6 Boss)` files with `Bazzt Zzzt`. Full list in the
+    tooltip. Mobs sort by how much they owe you; the unsourced group always last.
+- `parse:check` over 1,518,807 lines: 644 loot, 3 outputfile, 3 given, and **0 unparsed
+  combat-relevant lines**.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

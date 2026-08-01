@@ -207,3 +207,21 @@ test("outputfile — merely mentioning the command is not a completion", () => {
     null,
   );
 });
+
+// --- the turn-in ---------------------------------------------------------------
+
+/** Holding a reward says a quest is done; only this line says *when*. */
+test("given — a reward handed over by an NPC is parsed", () => {
+  const ev = parseLine("[Sat Aug 01 14:02:00 2026] You have been given: Espri");
+  assert.equal(ev?.type, "given");
+  if (ev?.type === "given") assert.equal(ev.item, "Espri");
+  assert.equal(matchSkyItem("Espri")?.role, "reward");
+});
+
+/** A real log has three of these, and none is a Sky quest. The parser reads them; deciding
+ *  they are not completions is the consumer's job, which keeps this pattern general. */
+test("given — a non-Sky handover still parses, and is simply not a Sky reward", () => {
+  const ev = parseLine("[Thu Jul 30 12:13:54 2026] You have been given: Void-Touched Potential");
+  assert.equal(ev?.type, "given");
+  if (ev?.type === "given") assert.equal(matchSkyItem(ev.item), null);
+});

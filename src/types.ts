@@ -157,6 +157,14 @@ export interface OutputFileEvent extends BaseEvent {
   file: string;
 }
 
+/** An item handed over by an NPC: `You have been given: Espri`. This is what a completed
+ *  turn-in writes, and the only line that puts a *date* on a quest completion — holding the
+ *  reward says a quest is done, this says when. */
+export interface GivenEvent extends BaseEvent {
+  type: "given";
+  item: string;
+}
+
 export interface ZoneEvent extends BaseEvent {
   type: "zone";
   /** Destination zone, or null for the unnamed half of a transition (`LOADING, PLEASE
@@ -195,6 +203,7 @@ export type CombatEvent =
   | WhoEvent
   | LootEvent
   | OutputFileEvent
+  | GivenEvent
   | ZoneEvent
   | ProgressEvent;
 
@@ -436,6 +445,14 @@ export interface SkyLoot {
   storedIn?: string;
 }
 
+/** A quest finished, dated. The reward alone identifies the quest — reward names are unique
+ *  across the catalogue — so the UI resolves the quest and class rather than the snapshot
+ *  carrying them. */
+export interface SkyCompletion {
+  reward: string;
+  tsMs: number;
+}
+
 /** The Sky tracker's *dynamic* half. The catalogue itself is immutable and is served once from
  *  `/api/sky-quests` rather than repeated on every push — at 28KB it would have been a third
  *  again on top of a 90KB snapshot, for data that never changes for the life of the process. */
@@ -451,6 +468,10 @@ export interface SkyStats {
   held: SkyHolding[];
   /** Newest first, capped for display. */
   recentLoot: SkyLoot[];
+  /** Turn-ins the log witnessed, newest first. Only ones it actually saw — a quest finished
+   *  before this log begins is still `done` (the reward is held) but is not dated, which is
+   *  why the panel lists these separately rather than every completed quest. */
+  completed: SkyCompletion[];
 }
 
 export interface CombatantStats {

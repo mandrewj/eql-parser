@@ -198,7 +198,7 @@ export default function App() {
           <PanelBoundary name="Plane of Sky">
             <SkyPanel
               catalogue={skyQuests}
-              sky={snapshot?.sky ?? { inventoryPath: null, inventoryMs: null, inventoryItems: 0, held: [], recentLoot: [] }}
+              sky={snapshot?.sky ?? { inventoryPath: null, inventoryMs: null, inventoryItems: 0, held: [], recentLoot: [], completed: [] }}
             />
           </PanelBoundary>
         </main>

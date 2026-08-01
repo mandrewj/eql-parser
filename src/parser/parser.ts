@@ -12,6 +12,7 @@ import type {
   HealEvent,
   LootEvent,
   OutputFileEvent,
+  GivenEvent,
   MeleeDamageEvent,
   MissEvent,
   PetEvent,
@@ -26,7 +27,7 @@ const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
 const RELEVANT_RE =
-  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: |looted|Outputfile/;
+  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: |looted|Outputfile|been given/;
 
 // A `/who` result line — the only place the log states anyone's class:
 //   [42 PAL/MNK/BRD] Sanluen (Wood Elf) <Guild Name> ZONE: Nagafen's Lair (soldungb)
@@ -59,6 +60,12 @@ const LOOT_STORED_RE =
 // Not combat, and interesting to exactly one consumer — it is the cue to re-read the export
 // rather than wait out the poll that would otherwise notice a few seconds later.
 const OUTPUTFILE_RE = /^Outputfile Complete: (.+?)\s*$/;
+
+// An item handed over by an NPC rather than taken from a corpse — what a completed turn-in
+// looks like: `You have been given: Espri`. It is the only line that *dates* a quest
+// completion; holding the reward says a quest is done, this says when. Rare (3 lines in 1.5M)
+// and gated behind `been given` in the prefilter.
+const GIVEN_RE = /^You have been given: (.+?)\s*$/;
 
 // Zoning is a hard fight boundary: "You have entered The Greater Faydark."
 // (guard against the non-zone "You have entered an area where …" warning).
@@ -296,6 +303,12 @@ export function parseLine(raw: string): CombatEvent | null {
   m = OUTPUTFILE_RE.exec(body);
   if (m) {
     const ev: OutputFileEvent = { type: "outputfile", tsMs, raw: body, file: m[1]! };
+    return ev;
+  }
+
+  m = GIVEN_RE.exec(body);
+  if (m) {
+    const ev: GivenEvent = { type: "given", tsMs, raw: body, item: m[1]! };
     return ev;
   }
 

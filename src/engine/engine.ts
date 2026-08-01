@@ -22,6 +22,7 @@ import type {
   MoteTierStat,
   SkyStats,
   SkyHolding,
+  SkyCompletion,
   LongTermStats,
   MilestoneSpan,
   ZoneStance,
@@ -390,6 +391,9 @@ export class Engine {
   // the memory.
   private readonly skyLoot: Array<{ name: string; tsMs: number; from: string; storedIn?: string }> = [];
   private inventory: Inventory | null = null;
+  /** Turn-ins the log witnessed, chronological. Never filtered by the export's cut-off: this is
+   *  a dated *event*, not a claim about what is currently held. */
+  private readonly skyCompleted: SkyCompletion[] = [];
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
   // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
@@ -460,6 +464,17 @@ export class Engine {
       // A Sky item is never also a mote, so this is an independent test rather than an else.
       const sky = matchSkyItem(ev.item);
       if (sky) this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: ev.from, storedIn: ev.storedIn });
+      return;
+    }
+    if (ev.type === "given") {
+      // Not combat. An NPC handing something over is how a turn-in ends, so a Sky **reward**
+      // here dates a completion. The item itself is also now held, and it lands in a bag, so it
+      // goes through the ordinary loot path where the export can vouch for it.
+      const sky = matchSkyItem(ev.item);
+      if (sky) {
+        this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: "quest reward" });
+        if (sky.role === "reward") this.skyCompleted.push({ reward: sky.name, tsMs: ev.tsMs });
+      }
       return;
     }
     if (ev.type === "who") {
@@ -807,6 +822,7 @@ export class Engine {
       inventoryItems: inv?.itemCount ?? 0,
       held,
       recentLoot: recentLoot.slice(0, Engine.SKY_RECENT),
+      completed: [...this.skyCompleted].reverse().slice(0, Engine.SKY_RECENT),
     };
   }
 

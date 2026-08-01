@@ -228,12 +228,21 @@ export interface SkyLoot {
   storedIn?: string;
 }
 
+/** A quest finished, dated by the `You have been given:` line. The reward identifies the
+ *  quest — reward names are unique across the catalogue. */
+export interface SkyCompletion {
+  reward: string;
+  tsMs: number;
+}
+
 export interface SkyStats {
   inventoryPath: string | null;
   inventoryMs: number | null;
   inventoryItems: number;
   held: SkyHolding[];
   recentLoot: SkyLoot[];
+  /** Turn-ins the log witnessed, newest first. */
+  completed: SkyCompletion[];
 }
 
 export interface CombatantStats {

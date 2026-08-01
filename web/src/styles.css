@@ -656,3 +656,35 @@ body { margin: 0; }
   white-space: nowrap; margin-left: auto;
 }
 .skyrow .skywants + .skycount { margin-left: 0.4rem; }
+
+/* Ready-to-turn-in and recently-finished, in one box above the view switch. The two are the
+   same story a step apart, so they share a frame and are separated by their headings rather
+   than by being two boxes — which at this width would cost two rules and a gap to say less. */
+.skyprogress {
+  border: 1px solid var(--border-strong); border-radius: 5px;
+  padding: 0.3rem 0.45rem; background: var(--panel);
+  display: flex; flex-direction: column; gap: 0.1rem;
+}
+.skypghead {
+  display: flex; align-items: baseline; gap: 0.3rem;
+  font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+}
+.skypghead.ready { color: var(--melee); }
+.skypghead.done { color: var(--player); }
+.skypghead:not(:first-child) { margin-top: 0.35rem; padding-top: 0.3rem; border-top: 1px solid var(--hair); }
+.skypgn { color: var(--muted); font-variant-numeric: tabular-nums; }
+.skypgrow { display: flex; align-items: baseline; gap: 0.35rem; font-size: 0.75rem; }
+.skypgrow .skyname { font-weight: 600; }
+.skymark.ready { color: var(--melee); }
+.skymark.done { color: var(--player); }
+/* The reward is the point of the row, so it takes the accent and the free space. */
+.skypgreward { margin-left: auto; color: var(--self); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* A mob's worth of an island. Indented under its name so the heading reads as the owner of the
+   rows rather than another row. */
+.skymob { margin-bottom: 0.15rem; }
+.skymobname {
+  font-size: 0.68rem; color: var(--muted); letter-spacing: 0.03em;
+  padding-left: 0.35rem; border-left: 2px solid var(--border);
+}
+.skymob .skyrow { padding-left: 1.15rem; }

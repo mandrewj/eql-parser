@@ -1572,3 +1572,42 @@ test("sky: a stored pickup opens no fight either", () => {
   engine.handle(ev!);
   assert.equal(engine.fights().length, 0);
 });
+
+/** The turn-in is the only dated evidence a quest finished — the reward sitting in an export
+ *  says it is done but never when. */
+test("sky: a reward handed over is dated, and counts as held", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const ev = parseLine(L("14:02:00", "You have been given: Espri"));
+  assert.ok(ev);
+  engine.handle(ev!);
+
+  const sky = engine.snapshot().sky;
+  assert.equal(sky.completed.length, 1);
+  assert.equal(sky.completed[0]!.reward, "Espri");
+  assert.equal(sky.held.find((h) => h.name === "Espri")?.count, 1);
+});
+
+test("sky: being handed something that is not a Sky reward completes nothing", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const ev = parseLine(L("12:13:54", "You have been given: Void-Touched Potential"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  const sky = engine.snapshot().sky;
+  assert.equal(sky.completed.length, 0);
+  assert.equal(sky.held.length, 0);
+});
+
+/** A completion is an event, not a claim about the present, so an export written afterwards
+ *  must not erase the record of it. */
+test("sky: a later export does not erase a completion the log witnessed", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const ev = parseLine(L("10:00:00", "You have been given: Espri"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  engine.setInventory(baseline(Date.parse("Sat Jul 18 2026 12:00:00 GMT-0400"), { espri: 1 }));
+
+  const sky = engine.snapshot().sky;
+  assert.equal(sky.completed.length, 1);
+  // Held once, from the export — the pre-cut-off handover must not add a second.
+  assert.equal(sky.held.find((h) => h.name === "Espri")!.count, 1);
+});

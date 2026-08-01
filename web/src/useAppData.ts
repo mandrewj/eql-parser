@@ -43,6 +43,7 @@ function skyOf(s?: Partial<SkyStats>): SkyStats {
     inventoryItems: s?.inventoryItems ?? 0,
     held: s?.held ?? [],
     recentLoot: s?.recentLoot ?? [],
+    completed: s?.completed ?? [],
   };
 }
 
