@@ -367,7 +367,13 @@ export class Engine {
   // Mote drops. Two windows, because the two readings want different ones: the grid wants the
   // last 100 loots whatever their tier, and each tier's gap wants that tier's own last 10 — a
   // rare tier would otherwise fall out of a shared window entirely and never show a rate.
-  private readonly moteRecent: Array<{ tier: MoteTier; tsMs: number; difficulty: number | null }> = [];
+  private readonly moteRecent: Array<{
+    tier: MoteTier;
+    tsMs: number;
+    from: string;
+    zone: string | null;
+    difficulty: number | null;
+  }> = [];
   private readonly moteByTier = new Map<MoteTier, { at: number[]; total: number; from: string }>();
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
@@ -659,11 +665,15 @@ export class Engine {
    *  drops of a rare tier is not a rate, and printing one would invite reading it as one. */
   private static readonly MOTE_GAP_WINDOW = 10;
   private static readonly MOTE_GAP_MIN = 5;
-  /** Loots the difficulty grid covers. */
-  private static readonly MOTE_GRID_WINDOW = 100;
+  /** Loots the difficulty grid covers. Wide enough that a rare tier still has a shape in it —
+   *  at 100 the Major row was two cells and read as noise rather than a distribution. */
+  private static readonly MOTE_GRID_WINDOW = 250;
+  /** How many recent drops are listed above the table, newest first. */
+  private static readonly MOTE_RECENT = 5;
 
   private recordMote(tier: MoteTier, from: string, tsMs: number): void {
-    this.moteRecent.push({ tier, tsMs, difficulty: zoneDifficulty(this.zone?.name ?? null) });
+    const zone = this.zone?.name ?? null;
+    this.moteRecent.push({ tier, tsMs, from, zone, difficulty: zoneDifficulty(zone) });
     if (this.moteRecent.length > Engine.MOTE_GRID_WINDOW) this.moteRecent.shift();
 
     const at = this.moteByTier.get(tier) ?? { at: [], total: 0, from };
@@ -702,7 +712,20 @@ export class Engine {
       grid[MOTE_TIERS.indexOf(m.tier)]![m.difficulty]! += 1;
       perDifficulty[m.difficulty]! += 1;
     }
-    return { tiers, grid, perDifficulty, unknownZone, windowSize: this.moteRecent.length };
+    // Newest first, and off the same buffer the grid uses — a separate log would be a second
+    // thing to keep in step for five rows.
+    const recent = this.moteRecent
+      .slice(-Engine.MOTE_RECENT)
+      .reverse()
+      .map((m) => ({
+        tier: m.tier,
+        label: moteLabel(m.tier),
+        tsMs: m.tsMs,
+        from: m.from,
+        zone: m.zone,
+        difficulty: m.difficulty,
+      }));
+    return { tiers, grid, perDifficulty, unknownZone, windowSize: this.moteRecent.length, recent };
   }
 
   private buildStats(): LongTermStats {

@@ -532,28 +532,41 @@ body { margin: 0; }
 .death-stance { margin-left: auto; opacity: 0.8; white-space: nowrap; }
 
 /* ---- motes ---- */
-/* Two blocks sharing a first column: what each tier last did, then where the tiers come from.
-   Both are grids rather than tables so the numeric columns line up between them. */
+/* The five most recent drops, above the ladder: the one thing you check without reading a table. */
+/* Deliberately not full-bleed: it is a short list, and stretching five rows across 1250px
+   strands the difficulty badge a hand's width from the zone it belongs to. */
+.mote-recent { display: flex; flex-direction: column; font-size: 0.72rem; max-width: 46rem; padding-bottom: 0.45rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.mote-recent-row { display: grid; grid-template-columns: 5.6rem 6.2rem minmax(0, 1fr) minmax(0, 1.1fr) 2.2rem; gap: 0.5rem; align-items: baseline; padding: 0.16rem 0; }
+.mote-recent-row + .mote-recent-row { border-top: 1px solid var(--hair); }
+.mote-when { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mote-zone { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.mote-d { text-align: right; font-weight: 700; color: var(--s1); font-variant-numeric: tabular-nums; }
+
+/* One row per tier: what it last did, then where it comes from. Previously two stacked blocks
+   sharing a first column, which left the upper one mostly empty and made you match tier names
+   across a gap to compare them. */
 .mote-table { display: flex; flex-direction: column; font-size: 0.74rem; }
-.mote-row { display: grid; grid-template-columns: 1fr 5.4rem minmax(0, 6.5rem) 3.4rem; gap: 0.4rem; align-items: baseline; padding: 0.22rem 0; }
-/* The clock is 12-hour with an AM/PM, so it needs a column that won't fold it onto two lines. */
-.mote-row > span:nth-child(2) { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mote-row {
+  display: grid;
+  /* Slack goes to the difficulty cells, not the tier name. They carry the shading, so width is
+     what turns five numbers into a readable trend; the identity columns only need to fit. */
+  grid-template-columns: minmax(6rem, auto) 6rem minmax(0, 1fr) 4rem repeat(5, minmax(2.6rem, 8.6rem));
+  gap: 0.4rem; align-items: baseline; padding: 0.24rem 0;
+}
 .mote-row + .mote-row { border-top: 1px solid var(--hair); }
 .mote-row.head { color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; }
 /* A tier never seen still gets a row — the table is a ladder, not a list of what happened to drop. */
-.mote-row.nil, .mote-grow.nil { opacity: 0.35; }
+.mote-row.nil { opacity: 0.35; }
 .mote-tier { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mote-count { color: var(--muted); font-weight: 400; margin-left: 0.3rem; font-variant-numeric: tabular-nums; }
+.mote-count { color: var(--muted); font-weight: 400; margin-left: 0.35rem; font-variant-numeric: tabular-nums; }
 .mote-from { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
-.mote-gap { text-align: right; font-variant-numeric: tabular-nums; }
-.mote-row:not(.head) .mote-gap { color: var(--text); }
-
-.mote-grid-head { padding: 0.5rem 0 0.25rem; }
-.mote-grid { display: flex; flex-direction: column; font-size: 0.74rem; }
-/* One column per difficulty, equal width, so a row reads as a distribution at a glance. */
-.mote-grow { display: grid; grid-template-columns: 1fr repeat(5, 2.1rem); gap: 0.3rem; align-items: baseline; padding: 0.18rem 0; }
-.mote-grow > span:not(.mote-tier) { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
-.mote-grow > span.on { color: var(--text); font-weight: 600; }
-.mote-grow.head > span { color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.mote-grow.total { border-top: 1px solid var(--border); margin-top: 0.15rem; padding-top: 0.3rem; }
-.mote-grow.total > span { color: var(--text); font-weight: 700; }
+.mote-row > span:nth-child(2) { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mote-gap { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mote-row:not(.head):not(.total) .mote-gap { color: var(--text); }
+/* The distribution cells. Shading is applied inline, per row against that row's own maximum —
+   the trend is where a tier's mass sits, which a table-wide scale would flatten for rare tiers. */
+.mote-num { text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); border-radius: 3px; padding: 0.08rem 0; }
+.mote-num.on { color: var(--text); font-weight: 700; }
+.mote-row.total { border-top: 1px solid var(--border); margin-top: 0.15rem; padding-top: 0.35rem; }
+.mote-row.total .mote-tier { color: var(--muted); font-weight: 400; font-size: 0.68rem; }
+.mote-row.total .mote-num { color: var(--text); font-weight: 700; }

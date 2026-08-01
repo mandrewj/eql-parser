@@ -379,6 +379,16 @@ export interface MoteTierStat {
   samples: number;
 }
 
+/** A single drop, for the short "just looted" list above the table. */
+export interface MoteLoot {
+  tier: string;
+  label: string;
+  tsMs: number;
+  from: string; // the corpse
+  zone: string | null;
+  difficulty: number | null; // 0–4, or null before the first zone line
+}
+
 export interface MoteStats {
   tiers: MoteTierStat[];
   /** Counts over the last 100 loots: `grid[tier][difficulty]`, difficulty 0–4. */
@@ -386,7 +396,8 @@ export interface MoteStats {
   /** Column totals, and how many of the 100 had no known zone (before the first zone line). */
   perDifficulty: number[];
   unknownZone: number;
-  windowSize: number; // how many loots the grid actually covers (≤ 100)
+  windowSize: number; // how many loots the grid actually covers (≤ 250)
+  recent: MoteLoot[]; // newest first
 }
 
 export interface CombatantStats {

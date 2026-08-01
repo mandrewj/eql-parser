@@ -242,15 +242,29 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   - A `Progress` event never opens, extends, or closes a fight; it only annotates the timeline.
     A level-up fires immediately after a kill, so it lands on the boundary *between* two encounters.
 - **Mote tracking keeps two windows, because the two readings want different ones.** The
-  difficulty grid wants the last **100 loots whatever their tier**; each tier's gap wants that
+  difficulty grid wants the last **250 loots whatever their tier**; each tier's gap wants that
   tier's own last **10**. A shared window can't serve both — a rare tier would fall out of a
-  100-loot window entirely and never show a rate at all.
+  250-loot window entirely and never show a rate at all.
+  - **250, not 100**, because the grid's job is showing which difficulty feeds which tier. At 100
+    the rarer rungs were down to two or three cells and the shape read as noise; the window is
+    sized to the *sparsest* row that still has to be legible, not the densest.
   - The gap is a **mean over the last 10 drops of that tier**, so moving somewhere better shows
     up quickly, and it is withheld below 5 drops: three drops of a rare tier is not a rate, and
     printing one invites reading it as one. The sample count shows instead.
   - Difficulty comes from the zone name's suffix at the moment of the drop
     ([`motes.ts`](../src/parser/motes.ts)). A drop before the first zone line has **no** known
     difficulty — counted apart rather than folded into D0, which would be a different claim.
+  - **The five most recent drops come off the same 250-entry buffer**, not a second log — it
+    already carries the corpse and the zone per drop, so the recent list is a `slice(-5)` of it.
+  - **The tab is one row per tier**: identity and recency on the left (last / from / gap), the
+    difficulty distribution on the right. It was two stacked tables sharing a tier column, which
+    left the upper one mostly whitespace and made comparing a tier's rate against where it drops
+    a matter of matching names across a gap.
+    - **Each row is shaded against its own maximum**, not the table's. The question a row asks is
+      "where does this tier come from"; a table-wide scale would flatten every rare tier into one
+      pale line — Major has nine drops against Minor's hundred and would simply vanish. Per-row
+      normalisation is what makes the diagonal (low tiers from D0, high tiers from D3/D4) visible
+      at a glance.
 - **Long-term counters are snapshots, not scans.** `kills`, `zones` and `combatMs` run as
   monotonic session totals; when a level or an ability point lands, the engine records the
   totals *at that moment* as an **anchor**. Every figure the stats boxes show is then a

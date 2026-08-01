@@ -170,12 +170,22 @@ export interface MoteTierStat {
   samples: number;
 }
 
+export interface MoteLoot {
+  tier: string;
+  label: string;
+  tsMs: number;
+  from: string;
+  zone: string | null;
+  difficulty: number | null;
+}
+
 export interface MoteStats {
   tiers: MoteTierStat[];
   grid: number[][]; // [tier][difficulty] over the last 100 loots
   perDifficulty: number[];
   unknownZone: number;
   windowSize: number;
+  recent: MoteLoot[]; // newest first
 }
 
 export interface CombatantStats {

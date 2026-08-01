@@ -576,74 +576,105 @@ export function StatTabs({
       ),
     },
   ];
-  const seenTiers = motes.tiers.filter((t) => t.total > 0);
+  // One row per tier: what it last did on the left, where it comes from on the right. They were
+  // two stacked blocks sharing a first column, which left the top one mostly empty space and
+  // made the reader match tier names across a gap to compare them.
+  const D_LABELS = ["D0", "D1", "D2", "D3", "D4"];
+  const D_NAMES = ["normal", "Awakened", "Adaptive", "Fused", "Refined"];
+  /** Each row is shaded against **its own** maximum, not the table's. The question a row asks is
+   *  "where does this tier come from", and a shared scale would flatten every rare tier into one
+   *  pale line — Major has nine drops against Minor's hundred and would simply disappear. */
+  const heat = (v: number, rowMax: number) =>
+    v === 0 || rowMax === 0 ? undefined : `rgba(57, 135, 229, ${(0.1 + 0.5 * (v / rowMax)).toFixed(3)})`;
+
   if (motes.tiers.length > 0) {
     tabs.push({
       key: "motes",
       label: "Motes",
-      note: seenTiers.length > 0 ? String(motes.tiers.reduce((n, t) => n + t.total, 0)) : undefined,
+      note: String(motes.tiers.reduce((n, t) => n + t.total, 0)),
       body: () => (
         <>
+          {motes.recent.length > 0 && (
+            <div className="mote-recent">
+              {motes.recent.map((r) => (
+                <div key={`${r.tsMs}-${r.tier}-${r.from}`} className="mote-recent-row">
+                  <span className="mote-when">{time(r.tsMs)}</span>
+                  <span className="mote-tier">{r.label}</span>
+                  <span className="mote-from" title={r.from}>
+                    {r.from}
+                  </span>
+                  <span className="mote-zone" title={r.zone ?? "no zone seen yet"}>
+                    {r.zone ?? "—"}
+                  </span>
+                  <span className="mote-d" title={r.difficulty === null ? "no zone seen yet" : D_NAMES[r.difficulty]}>
+                    {r.difficulty === null ? "—" : D_LABELS[r.difficulty]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="mote-table">
             <div className="mote-row head">
               <span>tier</span>
               <span>last</span>
               <span className="mote-from">from</span>
               <span className="mote-gap">gap</span>
-            </div>
-            {motes.tiers.map((t) => (
-              <div key={t.tier} className={`mote-row ${t.total === 0 ? "nil" : ""}`}>
-                <span className="mote-tier">
-                  {t.label}
-                  {t.total > 0 && <span className="mote-count">{t.total}</span>}
-                </span>
-                <span>{t.lastMs === null ? "—" : time(t.lastMs)}</span>
-                <span className="mote-from" title={t.lastFrom ?? undefined}>
-                  {t.lastFrom ?? "—"}
-                </span>
-                <span
-                  className="mote-gap"
-                  title={
-                    t.avgGapSec === null
-                      ? `Only ${plural(t.samples, "drop")} so far — too few for a rate, and printing ` +
-                        `one would invite reading it as one.`
-                      : `Mean gap over the last ${plural(t.samples, "drop")} of this tier. A recent ` +
-                        `rate rather than a session average, so moving somewhere better shows up quickly.`
-                  }
-                >
-                  {t.avgGapSec === null ? (t.total > 0 ? `· ${t.samples}` : "—") : hhmm(t.avgGapSec)}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className="mote-grid-head muted small">
-            Last {plural(motes.windowSize, "loot")} by zone difficulty
-            {motes.unknownZone > 0 && ` · ${motes.unknownZone} before the first zone line`}
-          </div>
-          <div className="mote-grid">
-            <div className="mote-grow head">
-              <span />
-              {["D0", "D1", "D2", "D3", "D4"].map((d, i) => (
-                <span key={d} title={`${d} — ${["normal", "Awakened", "Adaptive", "Fused", "Refined"][i]}`}>
+              {D_LABELS.map((d, i) => (
+                <span key={d} className="mote-num" title={`${d} — ${D_NAMES[i]}`}>
                   {d}
                 </span>
               ))}
             </div>
-            {motes.tiers.map((t, i) => (
-              <div key={t.tier} className={`mote-grow ${(motes.grid[i] ?? []).every((v) => v === 0) ? "nil" : ""}`}>
-                <span className="mote-tier">{t.label}</span>
-                {(motes.grid[i] ?? [0, 0, 0, 0, 0]).map((v, d) => (
-                  <span key={d} className={v ? "on" : ""}>
-                    {v || "·"}
+            {motes.tiers.map((t, i) => {
+              const row = motes.grid[i] ?? [0, 0, 0, 0, 0];
+              const rowMax = Math.max(...row);
+              return (
+                <div key={t.tier} className={`mote-row ${t.total === 0 ? "nil" : ""}`}>
+                  <span className="mote-tier">
+                    {t.label}
+                    {t.total > 0 && <span className="mote-count">{t.total}</span>}
                   </span>
-                ))}
-              </div>
-            ))}
-            <div className="mote-grow total">
-              <span className="mote-tier">total</span>
+                  <span>{t.lastMs === null ? "—" : time(t.lastMs)}</span>
+                  <span className="mote-from" title={t.lastFrom ?? undefined}>
+                    {t.lastFrom ?? "—"}
+                  </span>
+                  <span
+                    className="mote-gap"
+                    title={
+                      t.avgGapSec === null
+                        ? `Only ${plural(t.samples, "drop")} so far — too few for a rate, and printing ` +
+                          `one would invite reading it as one.`
+                        : `Mean gap over the last ${plural(t.samples, "drop")} of this tier. A recent ` +
+                          `rate rather than a session average, so moving somewhere better shows up quickly.`
+                    }
+                  >
+                    {t.avgGapSec === null ? (t.total > 0 ? `· ${t.samples}` : "—") : hhmm(t.avgGapSec)}
+                  </span>
+                  {row.map((v, d) => (
+                    <span
+                      key={d}
+                      className={`mote-num ${v ? "on" : ""}`}
+                      style={{ background: heat(v, rowMax) }}
+                      title={`${plural(v, `${t.label} mote`)} from ${D_LABELS[d]} (${D_NAMES[d]}) in the last ${motes.windowSize}`}
+                    >
+                      {v || "·"}
+                    </span>
+                  ))}
+                </div>
+              );
+            })}
+            <div className="mote-row total">
+              <span className="mote-tier">last {motes.windowSize} loots</span>
+              <span />
+              <span className="mote-from" />
+              <span className="mote-gap">
+                {motes.unknownZone > 0 && <span className="muted small">+{motes.unknownZone} ?</span>}
+              </span>
               {motes.perDifficulty.map((v, d) => (
-                <span key={d}>{v || "·"}</span>
+                <span key={d} className="mote-num">
+                  {v || "·"}
+                </span>
               ))}
             </div>
           </div>

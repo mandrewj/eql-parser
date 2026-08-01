@@ -565,13 +565,26 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 ## Post-v1 — Mote tracking  ✅
 - A fifth tab: what each rung of the mote ladder last dropped, off which corpse, how often it is
   coming, and where the tiers come from.
-- **The grid is the point.** Over the last 100 loots, tier against zone difficulty (D0 normal,
+- **The grid is the point.** Over the last 250 loots, tier against zone difficulty (D0 normal,
   D1 Awakened, D2 Adaptive, D3 Fused, D4 Refined). On a real log the ladder tracks the difficulty
   almost cleanly — D0 gives Infinitesimal and Minor, D3/D4 give Potential and Major — which is
   exactly the question "is it worth farming a harder instance" asks.
-- **Two windows, because the two readings need different ones**: the grid wants the last 100
+- **Two windows, because the two readings need different ones**: the grid wants the last 250
   loots whatever their tier; each tier's gap wants that tier's own last 10. A rare tier would
-  fall out of a shared 100-loot window entirely and never show a rate.
+  fall out of a shared window entirely and never show a rate.
+- **One row per tier, not two stacked tables.** The first cut put recency (last / from / gap) in
+  one block and the difficulty grid in another, sharing only a tier column. The upper block was
+  mostly whitespace at the real panel width, and comparing a tier's rate against where it drops
+  meant matching names across a gap. Merged into a single underlined row per rung: identity and
+  recency left, distribution right.
+- **The window went 100 → 250** at the same time. Sized to the *sparsest* row that still has to
+  be legible, not the densest: at 100 the Major row was two cells and read as noise.
+- **Each row is shaded against its own maximum**, not the table's — a table-wide scale flattens
+  every rare tier into one pale line (Major's nine drops against Minor's hundred). Per-row
+  normalisation is what makes the diagonal legible at a glance.
+- **The last five drops sit above the table**, with timestamp, tier, corpse and zone. They come
+  off the same 250-entry buffer the grid uses rather than a second log; the tier rows only keep
+  the *latest* corpse, so this is the only place a run of drops is visible.
 - The gap is withheld below 5 drops — three drops of a rare tier is not a rate, and printing one
   invites reading it as one. The sample count shows instead.
 - Every rung appears including ones never seen, so the table reads as a ladder rather than a list
