@@ -80,6 +80,12 @@ function cells(rowHtml) {
   return out;
 }
 
+/** The wiki is inconsistent about apostrophes — `Spiritualist\`s Ring` and `Al\`Kabor's Cap`
+ *  against `Griffon's Beak` — and a panel showing both spellings looks like a bug. Display is
+ *  settled on the straight quote here; matching is unaffected, since `sky.ts` folds all three
+ *  forms to the same key anyway. */
+const tidyName = (s) => s.replace(/[`‘’ʼ]/g, "'").replace(/\s+/g, " ").trim();
+
 /** The wiki renders an item as its own name twice (tooltip title + body) followed by its stats.
  *  Halving the doubled prefix is what recovers the plain name. */
 function undouble(text) {
@@ -145,12 +151,12 @@ async function main() {
         const name = (tagged ? tagged[1] : item).trim();
         const tag = tagged ? tagged[2].trim() : null;
         if (tag && !(tag in ISLANDS)) unknownTags.add(tag);
-        items.push({ name, island: tag ? ISLANDS[tag] ?? null : null, dropsFrom: dropsFrom.get(name) ?? null });
+        items.push({ name: tidyName(name), island: tag ? ISLANDS[tag] ?? null : null, dropsFrom: dropsFrom.get(name) ?? null });
       }
       // A quest awarding two items writes them as one cell joined by ", ".
-      const rewards = c[5].split(/\|\|,\s*/).map(undouble).filter(Boolean);
+      const rewards = c[5].split(/\|\|,\s*/).map(undouble).map(tidyName).filter(Boolean);
       if (!rewards.length) throw new Error(`no reward parsed: ${className} / ${c[0]}`);
-      quests.push({ quest: c[0], trigger: c[2], rune: c[3], items, rewards });
+      quests.push({ quest: tidyName(c[0]), trigger: c[2], rune: tidyName(c[3]), items, rewards });
     }
     if (!quests.length) throw new Error(`no quests parsed for ${className}`);
     classes.push({ className, code, giver, quests });
@@ -169,9 +175,10 @@ async function main() {
   const body = `// Plane of Sky class quests — generated from ${SOURCE}
 // by scripts/build-sky-quests.mjs on ${new Date().toISOString().slice(0, 10)}. Do not edit by hand.
 //
-// ${classes.length} classes, ${questCount} quests, ${itemCount} required-item slots. The reward and item
-// names are the wiki's verbatim; matching them against what the game writes is \`sky.ts\`'s job,
-// because the two disagree on apostrophes and capitalisation.
+// ${classes.length} classes, ${questCount} quests, ${itemCount} required-item slots. Names are the wiki's, with
+// its mixed apostrophes settled on the straight quote so the panel does not show two spellings
+// of the same punctuation. Matching them against what the game writes is \`sky.ts\`'s job — the
+// game adds \`+N\`/\`(Exaltation)\` suffixes and disagrees on capitalisation.
 
 import type { ClassCode } from "./spells.js";
 

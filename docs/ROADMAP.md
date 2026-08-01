@@ -657,6 +657,34 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   counts. For most of these that is right — the turn-in *is* the common item — but nothing
   distinguishes the two cases without item ids the wiki does not publish.
 
+## Post-v1 — The Sky tracker gains a by-island view  ✅
+- A second view over the same data: every outstanding component across all 16 classes, grouped by
+  where it drops. **By class** answers "how far along is my Bard"; **by island** answers "I am
+  standing on Island 5, what do I look for" — and neither is a filter of the other, so they are
+  views rather than a toggle on one table. On a fresh character that is 113 components over 9
+  locations.
+- **Sorted most-wanted first within each island.** Fourteen components are wanted by two different
+  classes, and those are the ones worth learning to recognise on sight.
+- **What is left out is the interesting part**, and each exclusion is a rule:
+  - components of a **finished** quest — the turn-in consumed them, and listing them sends you
+    farming for a reward already in the bag;
+  - components **held in sufficient number** — where sufficient counts the *quests* that want it
+    rather than one, because a turn-in consumes the item. One Leather Cord against a Beastlord and
+    a Shaman quest reads `1/2` and stays on the list;
+  - **runes**, which the quest giver hands over rather than dropping.
+- **All 16 classes matter here, and that is a game mechanic rather than a preference.** EQL
+  characters hold a *trio* of classes and can change the loadout at will, with the character's
+  level being the lowest in the trio — which is why one log shows Sanluen as both `[44 PAL/MNK/BRD]`
+  and `[17 WAR/DRU/MNK]`. Any class can become the current one, so a view that filtered to "my
+  class" would be answering the wrong question.
+- **The pure logic moved to [`web/src/sky-model.ts`](../web/src/sky-model.ts)**, apart from the
+  panel — the `stats.ts` / `components.tsx` split. Nine tests cover the state machine and the
+  three exclusions, including the two-reward Beastlord case and the wanted-twice case.
+- **Two display fixes the screenshots caught.** The wiki mixes apostrophes (`Spiritualist\`s Ring`
+  beside `Griffon's Beak`), which reads as a bug in a list — the generator now settles them on the
+  straight quote, matching being unaffected either way. And a completed quest was still printing
+  its component count (`0/1`), which reads as progress lost rather than a quest already done.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

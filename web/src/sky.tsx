@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { time } from "./format";
+import { buildNeeds, progressOf, type QuestState } from "./sky-model";
 import type { SkyClass, SkyQuest, SkyStats } from "./types";
 
 /** The Plane of Sky class-quest tracker.
@@ -10,11 +11,10 @@ import type { SkyClass, SkyQuest, SkyStats } from "./types";
  *
  *  A class at a time, because 95 quests over 16 classes is not a table anyone reads at 540px, and
  *  the question is always asked one class at a time anyway.
+ *
+ *  The arithmetic — what counts as finished, what is still worth farming — lives in
+ *  [`sky-model.ts`](./sky-model.ts); this file is what draws it.
  */
-
-/** Where a quest stands. Derived rather than stored — there is no persistence in this app, and
- *  the whole state is a function of the export and the log. */
-type QuestState = "done" | "ready" | "partial" | "open";
 
 const STATE_GLYPH: Record<QuestState, string> = {
   done: "✓",
@@ -30,26 +30,63 @@ const STATE_TITLE: Record<QuestState, string> = {
   open: "nothing held yet",
 };
 
-/** The last class looked at, so the tab opens where it was left. Same courtesy the log picker
+/** The last class and view, so the tab opens where it was left. Same courtesy the log picker
  *  extends; a 16-way selector that resets to Bard on every reload is a small daily annoyance. */
 const STORE_KEY = "eql.sky.class";
+const VIEW_KEY = "eql.sky.view";
 
-interface QuestProgress {
-  state: QuestState;
-  /** Components held / needed. Excludes the rune, which is asked for rather than found. */
-  have: number;
-  need: number;
-  runeHeld: boolean;
-}
+/** The two questions this data answers, which want opposite arrangements. **By class** is
+ *  "how far along is my Bard" — the catalogue's own shape. **By island** is "I am standing on
+ *  Island 5, what do I look for" — which cuts across all 16 classes at once and is the view you
+ *  actually keep open while playing. Neither is a filter of the other. */
+type View = "class" | "island";
 
-function progressOf(quest: SkyQuest, held: Map<string, number>): QuestProgress {
-  const have = quest.items.filter((i) => held.has(i.name)).length;
-  const need = quest.items.length;
-  // Every reward, not any: Beastlord's Test of Claw hands over a weapon for each hand, and
-  // holding one of the two is not a finished quest.
-  const done = quest.rewards.length > 0 && quest.rewards.every((r) => held.has(r));
-  const state: QuestState = done ? "done" : have === need && need > 0 ? "ready" : have > 0 ? "partial" : "open";
-  return { state, have, need, runeHeld: held.has(quest.rune) };
+function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<string, number> }) {
+  const groups = useMemo(() => buildNeeds(catalogue, held), [catalogue, held]);
+  const total = groups.reduce((n, [, list]) => n + list.length, 0);
+
+  if (!total) {
+    return <div className="idle">Nothing outstanding — every quest component is either held or already turned in.</div>;
+  }
+
+  return (
+    <>
+      <div className="skyneedtotal">
+        {total} components still needed, across {groups.length} locations
+      </div>
+      {groups.map(([island, list]) => (
+        <div key={island ?? "none"}>
+          <div className="section-title">
+            {island ?? "No island listed"}
+            <span className="skyclsdone">{list.length}</span>
+          </div>
+          {list.map((r) => (
+            <div
+              className={r.held > 0 ? "skyrow held" : "skyrow"}
+              key={r.name}
+              title={
+                (r.dropsFrom ? `Drops from ${r.dropsFrom}\n` : "") +
+                r.wants.map((w) => w.quest).join("\n")
+              }
+            >
+              <span className="skymark">{r.held > 0 ? "◐" : "·"}</span>
+              <span className="skyname">{r.name}</span>
+              {/* With no island to locate it by, the mob is the only pointer the row can give —
+                  and the wiki does name one for all but a couple of these. The first source
+                  only: the full list is in the tooltip and is far too long for the row. */}
+              {r.island === null && r.dropsFrom && (
+                <span className="skynote">{r.dropsFrom.split(",")[0]!.trim()}</span>
+              )}
+              <span className="skywants">{[...new Set(r.wants.map((w) => w.code))].join(" ")}</span>
+              <span className="skycount">
+                {r.held > 0 ? `${r.held}/${r.wants.length}` : r.wants.length > 1 ? `×${r.wants.length}` : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  );
 }
 
 function ItemRow({
@@ -83,9 +120,13 @@ function QuestBlock({ quest, held }: { quest: SkyQuest; held: Map<string, number
       <div className="skyqhead" title={STATE_TITLE[p.state]}>
         <span className="skyqmark">{STATE_GLYPH[p.state]}</span>
         <span className="skyqname">{quest.quest}</span>
-        <span className="skyqcount">
-          {p.have}/{p.need}
-        </span>
+        {/* Not on a finished quest: the turn-in consumed the components, so "0/1" there reads as
+            progress lost rather than as a quest already done. The glyph and colour say done. */}
+        {p.state !== "done" && (
+          <span className="skyqcount">
+            {p.have}/{p.need}
+          </span>
+        )}
         <span className="skytrigger" title="say this to the quest giver to be handed the rune">
           “{quest.trigger}”
         </span>
@@ -150,14 +191,22 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
       return null; // private mode, or storage disabled
     }
   });
+  const [view, setView] = useState<View>(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === "island" ? "island" : "class";
+    } catch {
+      return "class";
+    }
+  });
 
   useEffect(() => {
     try {
       if (code) localStorage.setItem(STORE_KEY, code);
+      localStorage.setItem(VIEW_KEY, view);
     } catch {
       /* not worth failing a render over */
     }
-  }, [code]);
+  }, [code, view]);
 
   // name → count. The catalogue's spelling is the key on both sides, which is what the
   // server's normalisation exists to guarantee.
@@ -181,12 +230,61 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
   }
 
   const cls = catalogue.find((c) => c.code === code) ?? catalogue[0]!;
-  const done = cls.quests.filter((q) => progressOf(q, held).state === "done").length;
 
   return (
     <div className="skypanel">
       <Baseline sky={sky} />
 
+      <nav className="skyviews">
+        <button className={view === "class" ? "tab on" : "tab"} onClick={() => setView("class")}>
+          By class
+        </button>
+        <button className={view === "island" ? "tab on" : "tab"} onClick={() => setView("island")}>
+          By island
+        </button>
+      </nav>
+
+      {view === "island" ? (
+        <IslandView catalogue={catalogue} held={held} />
+      ) : (
+        <ClassView catalogue={catalogue} cls={cls} held={held} doneByClass={doneByClass} onPick={setCode} />
+      )}
+
+      {/* Shared by both views: what the log has added since the export is the one part of this
+          panel that is live, and it answers the same question whichever way the table is cut. */}
+      {sky.recentLoot.length > 0 && (
+        <>
+          <div className="section-title">Looted since the export</div>
+          {sky.recentLoot.map((l, i) => (
+            <div className="skyrow held" key={`${l.tsMs}-${l.name}-${i}`}>
+              <span className="skymark">✓</span>
+              <span className="skyname">{l.name}</span>
+              <span className="skynote">{l.from}</span>
+              <span className="skycount">{time(l.tsMs)}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ClassView({
+  catalogue,
+  cls,
+  held,
+  doneByClass,
+  onPick,
+}: {
+  catalogue: SkyClass[];
+  cls: SkyClass;
+  held: Map<string, number>;
+  doneByClass: Map<string, number>;
+  onPick: (code: string) => void;
+}) {
+  const done = cls.quests.filter((q) => progressOf(q, held).state === "done").length;
+  return (
+    <>
       <nav className="skychips">
         {catalogue.map((c) => {
           const n = doneByClass.get(c.code) ?? 0;
@@ -194,7 +292,7 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
             <button
               key={c.code}
               className={c.code === cls.code ? "chip on" : "chip"}
-              onClick={() => setCode(c.code)}
+              onClick={() => onPick(c.code)}
               title={`${c.className} — ${c.giver}`}
             >
               {c.code}
@@ -214,20 +312,6 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
       {cls.quests.map((q) => (
         <QuestBlock key={q.quest} quest={q} held={held} />
       ))}
-
-      {sky.recentLoot.length > 0 && (
-        <>
-          <div className="section-title">Looted since the export</div>
-          {sky.recentLoot.map((l, i) => (
-            <div className="skyrow held" key={`${l.tsMs}-${l.name}-${i}`}>
-              <span className="skymark">✓</span>
-              <span className="skyname">{l.name}</span>
-              <span className="skynote">{l.from}</span>
-              <span className="skycount">{time(l.tsMs)}</span>
-            </div>
-          ))}
-        </>
-      )}
-    </div>
+    </>
   );
 }

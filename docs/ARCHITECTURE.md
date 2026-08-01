@@ -488,11 +488,26 @@ interface MetricStat {                // every metric group has this one shape
   redesign, and the drill-downs (type split, per-ability, stance split) answer those questions instead.
   A live stance indicator in the topbar shows the active melee stance and invocation.
 - **History pane** — fight list; select a fight to **drill down**: per-combatant rows → expand to damage-type split, per-ability breakdown, and (for self) the stance split active during that fight.
-- **Sky pane** ([`sky.tsx`](../web/src/sky.tsx)) — the Plane of Sky class quests, a class at a
-  time. 95 quests over 16 classes is not a table anyone reads at 540px, and the question is asked
-  one class at a time anyway, so the 16 three-letter codes are a chip row and the body is that
-  class's quests. Each quest is a small block — a header carrying its state, then one row per
-  rune, component and reward — because a row of item names means nothing detached from its quest.
+- **Sky pane** ([`sky.tsx`](../web/src/sky.tsx)) — the Plane of Sky class quests, in **two views
+  over the same data**, because the tab answers two questions that want opposite arrangements and
+  neither is a filter of the other. The arithmetic behind both lives in
+  [`sky-model.ts`](../web/src/sky-model.ts), apart from the panel that draws it — the same split
+  as `stats.ts` against `components.tsx`, and for the same reason: these rules are worth testing
+  without a renderer.
+  - **By class** — "how far along is my Bard", the catalogue's own shape. 95 quests over 16
+    classes is not a table anyone reads at 540px, so the 16 three-letter codes are a chip row and
+    the body is that class's quests. Each quest is a small block — a header carrying its state,
+    then one row per rune, component and reward — because a row of item names means nothing
+    detached from its quest.
+  - **By island** — "I am standing on Island 5, what do I look for". Every outstanding component
+    across all 16 classes, grouped by where it drops and **sorted most-wanted first**, so the item
+    two classes need is the one you learn to recognise. Three things are left out, each a rule
+    rather than a tidy-up: components of a **finished** quest (the turn-in consumed them, and
+    listing them sends you farming for a reward already in the bag), components **held in
+    sufficient number** — and sufficient counts the *quests* that want it, not one, because a
+    turn-in consumes the item and 14 components are wanted twice — and **runes**, which are asked
+    for rather than found. The 20 components with no island carry their drop mob instead, which
+    the wiki names for all but two of them.
   - **State is derived from what is held, in four steps**: `done` (every reward held — *every*,
     since Beastlord's Test of Claw awards a weapon per hand), `ready` (all components, nothing to
     farm), `partial`, `open`. Carried by a coloured left border and a glyph, so a class's shape is

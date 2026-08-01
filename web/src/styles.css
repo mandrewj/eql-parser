@@ -643,3 +643,16 @@ body { margin: 0; }
 .skynote { color: var(--muted); font-size: 0.68rem; white-space: nowrap; }
 .skycount { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.7rem; }
 .skyrow.held .skycount { color: var(--player); }
+
+/* The two views. A row of two rather than chips, because these are modes of the same data
+   and not a 16-way choice like the class row beneath them. */
+.skyviews { display: flex; gap: 0.3rem; }
+.skyviews .tab { font-size: 0.72rem; padding: 0.18rem 0.55rem; }
+.skyneedtotal { font-size: 0.72rem; color: var(--muted); }
+/* Which classes want the row. Codes rather than names: at three letters a pair still fits
+   beside the item name, and this column is scanned rather than read. */
+.skywants {
+  color: var(--muted); font-size: 0.65rem; letter-spacing: 0.04em;
+  white-space: nowrap; margin-left: auto;
+}
+.skyrow .skywants + .skycount { margin-left: 0.4rem; }

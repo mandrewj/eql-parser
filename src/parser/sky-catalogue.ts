@@ -1483,7 +1483,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
             "dropsFrom": "Bazzzazzt, Bizazzzt, Bzzzt"
           },
           {
-            "name": "Spiritualist`s Ring",
+            "name": "Spiritualist's Ring",
             "island": "Island 7 — Drake",
             "dropsFrom": "Sister of the Spire"
           }
@@ -1658,7 +1658,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           }
         ],
         "rewards": [
-          "Al`Kabor's Cap of Binding"
+          "Al'Kabor's Cap of Binding"
         ]
       },
       {
