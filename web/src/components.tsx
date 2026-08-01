@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Component, type ReactNode, useState } from "react";
 import type {
   CombatantStats,
   DeathReport,
@@ -454,6 +454,38 @@ const hhmm = (sec: number) => {
  *  scarce resource here, and these are all things you consult occasionally rather than watch.
  *  As tabs the closed state is a single row, and only the selected panel is ever mounted.
  *  Clicking the open tab closes it, so "all closed" stays reachable in one click. */
+/** Keeps a render failure inside the panel that caused it.
+ *
+ *  The snapshot crosses a process boundary, so the shape the UI expects and the shape it gets can
+ *  disagree — and React's default on a throw during render is to unmount the *entire* tree. One
+ *  missing array in the Motes tab blanked the whole app, meter and all. A panel that cannot render
+ *  should cost you that panel, not the page.
+ */
+export class PanelBoundary extends Component<
+  { children: ReactNode; name: string },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  override componentDidCatch(err: unknown): void {
+    // The panel is gone from the screen either way; without this the reason is gone too.
+    console.error("panel failed to render:", this.props.name, err);
+  }
+
+  override render(): ReactNode {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="panel-failed">
+        {this.props.name} could not be displayed. If the server was updated, restart it and reload.
+      </div>
+    );
+  }
+}
+
 export function StatTabs({
   stats,
   deaths,

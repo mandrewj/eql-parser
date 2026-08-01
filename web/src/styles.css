@@ -570,3 +570,7 @@ body { margin: 0; }
 .mote-row.total { border-top: 1px solid var(--border); margin-top: 0.15rem; padding-top: 0.35rem; }
 .mote-row.total .mote-tier { color: var(--muted); font-weight: 400; font-size: 0.68rem; }
 .mote-row.total .mote-num { color: var(--text); font-weight: 700; }
+
+/* A panel that failed to render. Deliberately plain and quiet — it replaces one box, and the
+   rest of the app is still live and worth reading. */
+.panel-failed { padding: 0.75rem; font-size: 0.75rem; color: var(--muted); border: 1px dashed var(--border); border-radius: 6px; }
