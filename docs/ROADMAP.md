@@ -562,6 +562,25 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 - **The launcher is untested**: there is no Windows machine here. It is checked statically only —
   balanced quotes, `call` on every npm invocation, CRLF endings.
 
+## Post-v1 — Mote tracking  ✅
+- A fifth tab: what each rung of the mote ladder last dropped, off which corpse, how often it is
+  coming, and where the tiers come from.
+- **The grid is the point.** Over the last 100 loots, tier against zone difficulty (D0 normal,
+  D1 Awakened, D2 Adaptive, D3 Fused, D4 Refined). On a real log the ladder tracks the difficulty
+  almost cleanly — D0 gives Infinitesimal and Minor, D3/D4 give Potential and Major — which is
+  exactly the question "is it worth farming a harder instance" asks.
+- **Two windows, because the two readings need different ones**: the grid wants the last 100
+  loots whatever their tier; each tier's gap wants that tier's own last 10. A rare tier would
+  fall out of a shared 100-loot window entirely and never show a rate.
+- The gap is withheld below 5 drops — three drops of a rare tier is not a rate, and printing one
+  invites reading it as one. The sample count shows instead.
+- Every rung appears including ones never seen, so the table reads as a ladder rather than a list
+  of whatever happened to drop. A drop from before the first zone line is counted apart rather
+  than called D0, which would be a different claim.
+- Parsing needed one new event: the `--You have looted…--` form only, which is the "this is yours"
+  one and the only form a mote uses. Anchored at `--` so the other ~5,100 loot lines fail on two
+  characters.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

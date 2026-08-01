@@ -328,6 +328,20 @@ test("typed ability damage — a plain melee swing is still melee", () => {
   assert.equal(e?.type, "melee", "no type adjective, so this stays a swing");
 });
 
+test("loot — only the 'kept it' form parses, and it names the corpse", () => {
+  const e = parseLine(TS + "--You have looted a Mote of Minor Potential from a fire giant warrior's corpse.--");
+  assert.equal(e?.type, "loot");
+  if (e?.type !== "loot") return;
+  assert.equal(e.item, "Mote of Minor Potential");
+  assert.equal(e.from, "a fire giant warrior");
+  // The other four loot forms mean sold or merged, not kept, and motes never use them.
+  assert.equal(parseLine(TS + "You looted a Bone Chips from an orc's corpse and sold it for 7 copper."), null);
+  assert.equal(
+    parseLine(TS + "You looted a Throwing Boulder from a fire giant warrior's corpse to create a Throwing Boulder +6"),
+    null,
+  );
+});
+
 test("charm — both landing messages name the mob and no caster", () => {
   for (const [line, mob] of [
     ["a lava beetle's eyes glaze over.", "a lava beetle"],

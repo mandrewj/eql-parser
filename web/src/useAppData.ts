@@ -51,6 +51,7 @@ export function useAppData(): AppData {
             aa: [],
             zoneStance: { zone: null, sinceMs: null, melee: [], invocation: [] },
           },
+          motes: msg.motes ?? { tiers: [], grid: [], perDifficulty: [], unknownZone: 0, windowSize: 0 },
         });
       } else if (msg.t === "activeLogChanged") {
         void refreshLogs();

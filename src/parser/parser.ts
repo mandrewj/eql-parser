@@ -10,6 +10,7 @@ import type {
   DeathEvent,
   DotTickEvent,
   HealEvent,
+  LootEvent,
   MeleeDamageEvent,
   MissEvent,
   PetEvent,
@@ -24,7 +25,7 @@ const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
 const RELEVANT_RE =
-  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: /;
+  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: |looted/;
 
 // A `/who` result line — the only place the log states anyone's class:
 //   [42 PAL/MNK/BRD] Sanluen (Wood Elf) <Guild Name> ZONE: Nagafen's Lair (soldungb)
@@ -32,6 +33,11 @@ const RELEVANT_RE =
 // that token in a 785k-line log are who-lines. Characters here hold up to three classes, and
 // a charm emote can only have come from one of them — which is the whole point of reading it.
 const WHO_RE = /^\[(\d+) ([A-Z]{3}(?:\/[A-Z]{3})*)\] (\S+) \(/;
+
+// An item kept from a corpse. The log has five loot forms and ~5,600 loot lines; only this one
+// means "this is yours now" — the others end "and sold it for…" or "to create…". It is also the
+// only form a mote ever appears in. Anchored at `--`, so the other 5,100 fail on two characters.
+const LOOT_RE = /^--You have looted (?:an?|\d+) (.+?) from (.+?)'s corpse\.--$/;
 
 // Zoning is a hard fight boundary: "You have entered The Greater Faydark."
 // (guard against the non-zone "You have entered an area where …" warning).
@@ -251,6 +257,12 @@ export function parseLine(raw: string): CombatEvent | null {
   m = INVOKE_RE.exec(body);
   if (m) {
     const ev: StanceEvent = { type: "stance", tsMs, raw: body, dim: "invocation", stance: m[1]! };
+    return ev;
+  }
+
+  m = LOOT_RE.exec(body);
+  if (m) {
+    const ev: LootEvent = { type: "loot", tsMs, raw: body, item: m[1]!, from: m[2]! };
     return ev;
   }
 

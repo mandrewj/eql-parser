@@ -11,8 +11,11 @@
 // NPC, and heals connect same-faction pairs.
 
 import { CHARM_EMOTES, type ClassCode } from "../parser/spells.js";
+import { MOTE_TIERS, moteLabel, moteTier, zoneDifficulty, type MoteTier } from "../parser/motes.js";
 import type {
   AbilityBreakdown,
+  MoteStats,
+  MoteTierStat,
   LongTermStats,
   MilestoneSpan,
   ZoneStance,
@@ -361,6 +364,11 @@ export class Engine {
   private readonly levelAnchors: Anchor[] = [];
   private readonly aaAnchors: Anchor[] = [];
   private zone: { name: string; sinceMs: number } | null = null;
+  // Mote drops. Two windows, because the two readings want different ones: the grid wants the
+  // last 100 loots whatever their tier, and each tier's gap wants that tier's own last 10 — a
+  // rare tier would otherwise fall out of a shared window entirely and never show a rate.
+  private readonly moteRecent: Array<{ tier: MoteTier; tsMs: number; difficulty: number | null }> = [];
+  private readonly moteByTier = new Map<MoteTier, { at: number[]; total: number; from: string }>();
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
   // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
@@ -422,6 +430,12 @@ export class Engine {
       const charmKey = this.charmed.has(pk) ? pk : this.charmed.has(twinKey(pk)) ? twinKey(pk) : null;
       if (charmKey) this.charmed.get(charmKey)!.ownerKey = ownerKey;
       else this.petOwners.set(pk, ownerKey);
+      return;
+    }
+    if (ev.type === "loot") {
+      // Not combat: looting must not open a fight or extend one.
+      const tier = moteTier(ev.item);
+      if (tier) this.recordMote(tier, ev.from, ev.tsMs);
       return;
     }
     if (ev.type === "who") {
@@ -506,6 +520,7 @@ export class Engine {
     progress: ProgressState;
     deaths: DeathReport[];
     stats: LongTermStats;
+    motes: MoteStats;
   } {
     // Built once and shared: the history chart and the encounter list both want them, and
     // each view carries a sparkline that is not worth computing twice per push.
@@ -528,6 +543,7 @@ export class Engine {
       progress: { ...this.progress },
       deaths: [...this.deaths],
       stats: this.buildStats(),
+      motes: this.buildMoteStats(),
     };
   }
 
@@ -636,6 +652,57 @@ export class Engine {
         .sort((a, b) => b.seconds - a.seconds);
     };
     return { zone: this.zone?.name ?? null, sinceMs: from, melee: forDim("melee"), invocation: forDim("invocation") };
+  }
+
+  /** How many of a tier's most recent drops the gap is averaged over, and the fewest it will
+   *  report a number from. Below the floor the table shows the sample count instead: three
+   *  drops of a rare tier is not a rate, and printing one would invite reading it as one. */
+  private static readonly MOTE_GAP_WINDOW = 10;
+  private static readonly MOTE_GAP_MIN = 5;
+  /** Loots the difficulty grid covers. */
+  private static readonly MOTE_GRID_WINDOW = 100;
+
+  private recordMote(tier: MoteTier, from: string, tsMs: number): void {
+    this.moteRecent.push({ tier, tsMs, difficulty: zoneDifficulty(this.zone?.name ?? null) });
+    if (this.moteRecent.length > Engine.MOTE_GRID_WINDOW) this.moteRecent.shift();
+
+    const at = this.moteByTier.get(tier) ?? { at: [], total: 0, from };
+    at.at.push(tsMs);
+    if (at.at.length > Engine.MOTE_GAP_WINDOW) at.at.shift();
+    at.total++;
+    at.from = from;
+    this.moteByTier.set(tier, at);
+  }
+
+  private buildMoteStats(): MoteStats {
+    const tiers: MoteTierStat[] = MOTE_TIERS.map((tier) => {
+      const at = this.moteByTier.get(tier);
+      // n drops give n-1 gaps, so the mean is simply the span divided by the gap count.
+      const span = at && at.at.length > 1 ? at.at[at.at.length - 1]! - at.at[0]! : 0;
+      const gaps = at ? at.at.length - 1 : 0;
+      return {
+        tier,
+        label: moteLabel(tier),
+        total: at?.total ?? 0,
+        lastMs: at ? at.at[at.at.length - 1]! : null,
+        lastFrom: at?.from ?? null,
+        avgGapSec: at && at.at.length >= Engine.MOTE_GAP_MIN ? Math.round(span / gaps / 1000) : null,
+        samples: at?.at.length ?? 0,
+      };
+    });
+
+    const grid = MOTE_TIERS.map(() => [0, 0, 0, 0, 0]);
+    const perDifficulty = [0, 0, 0, 0, 0];
+    let unknownZone = 0;
+    for (const m of this.moteRecent) {
+      if (m.difficulty === null) {
+        unknownZone++;
+        continue;
+      }
+      grid[MOTE_TIERS.indexOf(m.tier)]![m.difficulty]! += 1;
+      perDifficulty[m.difficulty]! += 1;
+    }
+    return { tiers, grid, perDifficulty, unknownZone, windowSize: this.moteRecent.length };
   }
 
   private buildStats(): LongTermStats {

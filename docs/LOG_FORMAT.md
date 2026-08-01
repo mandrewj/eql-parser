@@ -435,6 +435,42 @@ one-for-one. Both end the fight — an encounter can never cross a zone line —
 one moves the current zone, counts a zone change, or marks the timeline. Treating `LOADING` as a
 full zone event would double-count a single transition; ignoring it lets an encounter span one.
 
+## Looting, and the mote ladder
+
+The log has five loot forms and ~5,600 loot lines. Only one means *the item is yours* — the
+others end `and sold it for…` or `to create…` — and it is the only form a mote ever uses:
+
+```
+[..] --You have looted a Mote of Minor Potential from a fire giant warrior's corpse.--
+```
+```
+^--You have looted (?:an?|\d+) (?<item>.+?) from (?<from>.+?)'s corpse\.--$
+```
+Anchored at `--`, so the other ~5,100 loot lines fail on two characters.
+
+**The mote ladder**, weakest first — `Mote of <Tier> Potential`, except the middle rung, which
+the game names bare:
+
+| tier | item name |
+|---|---|
+| infinitesimal | `Mote of Infinitesimal Potential` |
+| minor | `Mote of Minor Potential` |
+| lesser | `Mote of Lesser Potential` |
+| potential | **`Mote of Potential`** — no tier word |
+| major | `Mote of Major Potential` |
+| greater / superior / ascendant | …`Potential` (not yet seen in a real log) |
+
+**Zone difficulty** is the suffix the game appends to an instanced zone name
+(`Nagafen's Lair 2 (Adaptive)`). Verified against every zone line in a real log — these four
+are the only suffixes that appear, and no suffix means the plain zone:
+
+| suffix | — | `(Awakened)` | `(Adaptive)` | `(Fused)` | `(Refined)` |
+|---|---|---|---|---|---|
+| difficulty | D0 | D1 | D2 | D3 | D4 |
+
+A drop before the first zone line has **no** known difficulty, which is not the same as D0, and
+is counted apart rather than quietly folded into the normal column.
+
 ## `/who` results — the only place a class is stated
 
 ```

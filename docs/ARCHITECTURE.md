@@ -54,7 +54,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   carrying the real ability name. It went unparsed until now — ~15% of the self's damage — and
   `parse:check` reported the log clean throughout, because its own relevance regex shared the
   blind spot; that regex now allows the adjective, which is what makes the check honest.
-- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, **`Charm`**, **`Who`**, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
+- Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, **`Charm`**, **`Who`**, **`Loot`**, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
 - **`Who`** carries a player's level and classes from a `/who` result. It is not combat and
   never touches a fight; it exists solely because that line is the only place the log states
   anyone's class, which is what makes a charm attributable (below).
@@ -65,6 +65,9 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   real log, so the whole block sits behind one token test and is tried after every damage
   pattern; it falls through to `Progress` rather than returning, since an AA can be named
   for a charm spell.
+- **`Loot`** is the "this item is yours" form only (`--You have looted a X from Y's corpse.--`),
+  not the *sold it* or *to create* variants — five loot forms and ~5,600 lines in a real log, and
+  motes only ever use this one. It is not combat and never touches a fight.
 - **`Progress`** covers self progression — level-ups, ability points, AAs bought/ranked, skill
   unlocks, skill-ups and xp ticks. These are orders of magnitude rarer than damage lines, so they
   are tried **last**, behind a single `^You (have )?(gain|become|improved)` prefix test: the hot
@@ -238,6 +241,16 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     invalidated on the same events. `progress` carries the latest level + unspent AA.
   - A `Progress` event never opens, extends, or closes a fight; it only annotates the timeline.
     A level-up fires immediately after a kill, so it lands on the boundary *between* two encounters.
+- **Mote tracking keeps two windows, because the two readings want different ones.** The
+  difficulty grid wants the last **100 loots whatever their tier**; each tier's gap wants that
+  tier's own last **10**. A shared window can't serve both — a rare tier would fall out of a
+  100-loot window entirely and never show a rate at all.
+  - The gap is a **mean over the last 10 drops of that tier**, so moving somewhere better shows
+    up quickly, and it is withheld below 5 drops: three drops of a rare tier is not a rate, and
+    printing one invites reading it as one. The sample count shows instead.
+  - Difficulty comes from the zone name's suffix at the moment of the drop
+    ([`motes.ts`](../src/parser/motes.ts)). A drop before the first zone line has **no** known
+    difficulty — counted apart rather than folded into D0, which would be a different claim.
 - **Long-term counters are snapshots, not scans.** `kills`, `zones` and `combatMs` run as
   monotonic session totals; when a level or an ability point lands, the engine records the
   totals *at that moment* as an **anchor**. Every figure the stats boxes show is then a

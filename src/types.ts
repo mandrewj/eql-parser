@@ -135,6 +135,15 @@ export interface WhoEvent extends BaseEvent {
   classes: string[]; // e.g. ["PAL", "MNK", "BRD"]
 }
 
+/** An item kept from a corpse: `--You have looted a Mote of Minor Potential from a fire giant
+ *  warrior's corpse.--`. Only this form is parsed, not the "and sold it for…" or "to create…"
+ *  variants — it is the one that means the item is yours, and the only one motes ever use. */
+export interface LootEvent extends BaseEvent {
+  type: "loot";
+  item: string;
+  from: string; // the corpse it came off
+}
+
 export interface ZoneEvent extends BaseEvent {
   type: "zone";
   /** Destination zone, or null for the unnamed half of a transition (`LOADING, PLEASE
@@ -171,6 +180,7 @@ export type CombatEvent =
   | PetEvent
   | CharmEvent
   | WhoEvent
+  | LootEvent
   | ZoneEvent
   | ProgressEvent;
 
@@ -353,6 +363,31 @@ export interface LongTermStats {
   zoneStance: ZoneStance;
 }
 
+
+/** One rung of the mote ladder. Present for every tier, including ones never seen, so the
+ *  table reads as a ladder rather than a list of whatever happened to drop. */
+export interface MoteTierStat {
+  tier: string;
+  label: string;
+  total: number; // this session
+  lastMs: number | null;
+  lastFrom: string | null; // the corpse it came off
+  /** Mean gap over the **last 10** drops of this tier — a recent rate, not a session average,
+   *  so moving somewhere better shows up quickly. Null until there are enough to mean
+   *  anything; `samples` says how many there were either way. */
+  avgGapSec: number | null;
+  samples: number;
+}
+
+export interface MoteStats {
+  tiers: MoteTierStat[];
+  /** Counts over the last 100 loots: `grid[tier][difficulty]`, difficulty 0–4. */
+  grid: number[][];
+  /** Column totals, and how many of the 100 had no known zone (before the first zone line). */
+  perDifficulty: number[];
+  unknownZone: number;
+  windowSize: number; // how many loots the grid actually covers (≤ 100)
+}
 
 export interface CombatantStats {
   name: string;

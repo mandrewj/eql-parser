@@ -241,6 +241,51 @@ test("history chart includes a live encounter, but only once it has a few second
   assert.equal(h[0]!.damage, 1100);
 });
 
+test("motes: tiers, the corpse, and the difficulty of the zone it dropped in", () => {
+  const L2 = (t: string, item: string, from: string) =>
+    L(t, `--You have looted a ${item} from ${from}'s corpse.--`);
+  const engine = feed([
+    L("01:00:00", "You have entered Nagafen's Lair."), // no suffix — D0
+    L2("01:00:10", "Mote of Infinitesimal Potential", "a bat"),
+    L("01:05:00", "You have entered Nagafen's Lair 2 (Adaptive)."), // D2
+    L2("01:05:10", "Mote of Lesser Potential", "orc legionnaire"),
+    L2("01:06:10", "Mote of Lesser Potential", "orc centurion"),
+    L("01:10:00", "You have entered The Ruins of Old Paineel - Group 3 (Refined)."), // D4
+    L2("01:10:10", "Mote of Potential", "King Gragnar"),
+  ]);
+  const m = engine.snapshot().motes;
+  assert.equal(m.tiers.length, 8, "every rung shows, including ones never seen");
+
+  const lesser = m.tiers.find((t) => t.tier === "lesser")!;
+  assert.equal(lesser.total, 2);
+  assert.equal(lesser.lastFrom, "orc centurion", "the most recent corpse");
+  assert.equal(lesser.avgGapSec, null, "two drops is not a rate");
+  assert.equal(lesser.samples, 2);
+
+  // The bare "Mote of Potential" is the middle rung, not an unparsed name.
+  assert.equal(m.tiers.find((t) => t.tier === "potential")!.total, 1);
+  assert.equal(m.tiers.find((t) => t.tier === "greater")!.total, 0);
+
+  const at = (tier: string, d: number) => m.grid[m.tiers.findIndex((t) => t.tier === tier)]![d];
+  assert.equal(at("infinitesimal", 0), 1, "no suffix is D0");
+  assert.equal(at("lesser", 2), 2, "(Adaptive) is D2");
+  assert.equal(at("potential", 4), 1, "(Refined) is D4");
+  assert.deepEqual(m.perDifficulty, [1, 0, 2, 0, 1]);
+  assert.equal(m.windowSize, 4);
+});
+
+test("motes: a drop before any zone line is counted apart, not called D0", () => {
+  const engine = feed([
+    L("01:00:00", "--You have looted a Mote of Minor Potential from a bat's corpse.--"),
+    L("01:00:01", "You have entered Nagafen's Lair."),
+    L("01:00:10", "--You have looted a Mote of Minor Potential from a rat's corpse.--"),
+  ]);
+  const m = engine.snapshot().motes;
+  assert.equal(m.unknownZone, 1, "we did not know where we were, which is not the same as D0");
+  assert.deepEqual(m.perDifficulty, [1, 0, 0, 0, 0]);
+  assert.equal(m.tiers.find((t) => t.tier === "minor")!.total, 2, "both still count toward the tier");
+});
+
 test("a groupmate charmed away from us becomes the enemy, not our pet", () => {
   let clock = at("01:01:00");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 300, now: () => clock });

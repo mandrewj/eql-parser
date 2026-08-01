@@ -198,7 +198,7 @@ export default function App() {
             progressWindows={snapshot?.progressWindows ?? []}
             progress={snapshot?.progress ?? { level: null, aaUnspent: null }}
           />
-          {snapshot?.stats && <StatTabs stats={snapshot.stats} deaths={snapshot.deaths ?? []} />}
+          {snapshot?.stats && <StatTabs stats={snapshot.stats} deaths={snapshot.deaths ?? []} motes={snapshot.motes} />}
           {activeEncounters.length > 0 && (
             <section className="block">
               <div className="section-title live">

@@ -32,6 +32,7 @@ function main(): void {
     pet: 0,
     charm: 0,
     who: 0,
+    loot: 0,
     zone: 0,
     progress: 0,
   };

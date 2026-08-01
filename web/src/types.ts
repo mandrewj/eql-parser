@@ -159,6 +159,25 @@ export interface LongTermStats {
 }
 
 
+export interface MoteTierStat {
+  tier: string;
+  label: string;
+  total: number;
+  lastMs: number | null;
+  lastFrom: string | null;
+  /** Mean gap over the last 10 drops of this tier; null until there are enough to mean anything. */
+  avgGapSec: number | null;
+  samples: number;
+}
+
+export interface MoteStats {
+  tiers: MoteTierStat[];
+  grid: number[][]; // [tier][difficulty] over the last 100 loots
+  perDifficulty: number[];
+  unknownZone: number;
+  windowSize: number;
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -245,6 +264,7 @@ export interface Snapshot {
   progress: ProgressState;
   deaths: DeathReport[]; // newest first, last 5
   stats: LongTermStats;
+  motes: MoteStats;
 }
 
 export interface LogInfo {

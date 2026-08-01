@@ -3,6 +3,7 @@ import type {
   CombatantStats,
   DeathReport,
   LongTermStats,
+  MoteStats,
   MilestoneSpan,
   EncounterCard as EncounterCardData,
   EncounterView,
@@ -453,7 +454,15 @@ const hhmm = (sec: number) => {
  *  scarce resource here, and these are all things you consult occasionally rather than watch.
  *  As tabs the closed state is a single row, and only the selected panel is ever mounted.
  *  Clicking the open tab closes it, so "all closed" stays reachable in one click. */
-export function StatTabs({ stats, deaths }: { stats: LongTermStats; deaths: DeathReport[] }) {
+export function StatTabs({
+  stats,
+  deaths,
+  motes,
+}: {
+  stats: LongTermStats;
+  deaths: DeathReport[];
+  motes: MoteStats;
+}) {
   const [open, setOpen] = useState<string | null>(null);
   const { levels, aa, zoneStance } = stats;
 
@@ -567,6 +576,82 @@ export function StatTabs({ stats, deaths }: { stats: LongTermStats; deaths: Deat
       ),
     },
   ];
+  const seenTiers = motes.tiers.filter((t) => t.total > 0);
+  if (motes.tiers.length > 0) {
+    tabs.push({
+      key: "motes",
+      label: "Motes",
+      note: seenTiers.length > 0 ? String(motes.tiers.reduce((n, t) => n + t.total, 0)) : undefined,
+      body: () => (
+        <>
+          <div className="mote-table">
+            <div className="mote-row head">
+              <span>tier</span>
+              <span>last</span>
+              <span className="mote-from">from</span>
+              <span className="mote-gap">gap</span>
+            </div>
+            {motes.tiers.map((t) => (
+              <div key={t.tier} className={`mote-row ${t.total === 0 ? "nil" : ""}`}>
+                <span className="mote-tier">
+                  {t.label}
+                  {t.total > 0 && <span className="mote-count">{t.total}</span>}
+                </span>
+                <span>{t.lastMs === null ? "—" : time(t.lastMs)}</span>
+                <span className="mote-from" title={t.lastFrom ?? undefined}>
+                  {t.lastFrom ?? "—"}
+                </span>
+                <span
+                  className="mote-gap"
+                  title={
+                    t.avgGapSec === null
+                      ? `Only ${plural(t.samples, "drop")} so far — too few for a rate, and printing ` +
+                        `one would invite reading it as one.`
+                      : `Mean gap over the last ${plural(t.samples, "drop")} of this tier. A recent ` +
+                        `rate rather than a session average, so moving somewhere better shows up quickly.`
+                  }
+                >
+                  {t.avgGapSec === null ? (t.total > 0 ? `· ${t.samples}` : "—") : hhmm(t.avgGapSec)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mote-grid-head muted small">
+            Last {plural(motes.windowSize, "loot")} by zone difficulty
+            {motes.unknownZone > 0 && ` · ${motes.unknownZone} before the first zone line`}
+          </div>
+          <div className="mote-grid">
+            <div className="mote-grow head">
+              <span />
+              {["D0", "D1", "D2", "D3", "D4"].map((d, i) => (
+                <span key={d} title={`${d} — ${["normal", "Awakened", "Adaptive", "Fused", "Refined"][i]}`}>
+                  {d}
+                </span>
+              ))}
+            </div>
+            {motes.tiers.map((t, i) => (
+              <div key={t.tier} className={`mote-grow ${(motes.grid[i] ?? []).every((v) => v === 0) ? "nil" : ""}`}>
+                <span className="mote-tier">{t.label}</span>
+                {(motes.grid[i] ?? [0, 0, 0, 0, 0]).map((v, d) => (
+                  <span key={d} className={v ? "on" : ""}>
+                    {v || "·"}
+                  </span>
+                ))}
+              </div>
+            ))}
+            <div className="mote-grow total">
+              <span className="mote-tier">total</span>
+              {motes.perDifficulty.map((v, d) => (
+                <span key={d}>{v || "·"}</span>
+              ))}
+            </div>
+          </div>
+        </>
+      ),
+    });
+  }
+
   // Deaths only earn a tab once there are some.
   if (deaths.length > 0) {
     tabs.push({
