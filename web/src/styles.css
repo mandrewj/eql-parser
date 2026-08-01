@@ -688,3 +688,38 @@ body { margin: 0; }
   padding-left: 0.35rem; border-left: 2px solid var(--border);
 }
 .skymob .skyrow { padding-left: 1.15rem; }
+
+/* --- Sky: density, and using the width ---------------------------------------
+   The rest of the app is built for a ~540px side panel, where one column is the only option.
+   This tab is the one people open wide, and at 800px+ a single column stopped adding
+   information and started adding distance: an item name on the left and its count pinned to
+   the far right, with 400px of nothing between them.
+
+   So the lists become responsive grids. `auto-fit` rather than `auto-fill` — with two quests
+   left over, `auto-fill` holds open empty tracks and strands half the width (the same trap the
+   stance tiles hit). The 300px floor is set by the longest realistic row: a reward name like
+   "Mantle of the Songweaver" beside its label and count. Below ~640px it collapses to the one
+   column the panel was designed for, so nothing is lost at side-panel width. */
+.skyquests,
+.skyislands,
+.skypickups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0.1rem 1.1rem;
+  align-items: start; /* cells differ wildly in height — 2 items against 16 */
+}
+/* A quest is a unit: never split its rows across two columns. */
+.skyquest,
+.skyisland { break-inside: avoid; }
+
+/* Vertical rhythm. Every one of these was a shade looser than it needed to be, and the tab is
+   long enough that a fraction of a line per row is several rows of scrolling. */
+.skypanel { gap: 0.3rem; }
+.skyrow { padding: 0.02rem 0 0.02rem 0.9rem; }
+.skyqhead { padding: 0.06rem 0; }
+.skyquest { margin-bottom: 0.18rem; }
+.skyislands .section-title { margin-top: 0.3rem; }
+
+/* Chips: the 16 codes are a fixed set and read as a keyboard, so they can be tighter than a
+   general-purpose chip and still be comfortable targets. Two rows at panel width, one at ~900px. */
+.skychips .chip { padding: 0.1rem 0.4rem; font-size: 0.72rem; }

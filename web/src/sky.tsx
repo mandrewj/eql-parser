@@ -61,8 +61,9 @@ function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<stri
       <div className="skyneedtotal">
         {total} components still needed, across {groups.length} locations
       </div>
+      <div className="skyislands">
       {groups.map(([island, list]) => (
-        <div key={island ?? "none"}>
+        <div className="skyisland" key={island ?? "none"}>
           <div className="section-title">
             {island ?? "No island listed"}
             <span className="skyclsdone">{list.length}</span>
@@ -94,6 +95,7 @@ function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<stri
           ))}
         </div>
       ))}
+      </div>
     </>
   );
 }
@@ -117,7 +119,10 @@ function ItemRow({
       <span className="skymark">{held ? "✓" : "·"}</span>
       <span className="skyname">{name}</span>
       {note && <span className="skynote">{note}</span>}
-      <span className="skycount">{count !== undefined && count > 1 ? `×${count}` : held ? "have" : "—"}</span>
+      {/* Always the number, never the word. Runes stack into one slot with a quantity beside
+          them, and several quests want the same one — so "have" hid the only figure that says
+          whether one rune covers one quest or three. */}
+      <span className="skycount">{held ? `×${count}` : "—"}</span>
     </div>
   );
 }
@@ -332,6 +337,7 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
               whenever it was looted, because no export ever lists it. The storage is shown on
               the row, which is what explains an entry older than the baseline. */}
           <div className="section-title">Sky pickups from the log</div>
+          <div className="skypickups">
           {sky.recentLoot.map((l, i) => (
             <div className="skyrow held" key={`${l.tsMs}-${l.name}-${i}`}>
               <span className="skymark">✓</span>
@@ -340,6 +346,7 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
               <span className="skycount">{time(l.tsMs)}</span>
             </div>
           ))}
+          </div>
         </>
       )}
     </div>
@@ -386,9 +393,11 @@ function ClassView({
         </span>
       </div>
 
-      {cls.quests.map((q) => (
-        <QuestBlock key={q.quest} quest={q} held={held} />
-      ))}
+      <div className="skyquests">
+        {cls.quests.map((q) => (
+          <QuestBlock key={q.quest} quest={q} held={held} />
+        ))}
+      </div>
     </>
   );
 }

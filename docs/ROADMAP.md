@@ -741,6 +741,33 @@ Both halves came from playing with the tracker open, and the first was a silent 
 - `parse:check` over 1,518,807 lines: 644 loot, 3 outputfile, 3 given, and **0 unparsed
   combat-relevant lines**.
 
+## Post-v1 — Quantities, density, and a second unexported storage  ✅
+- **Every held row prints `×N`.** Runes stack into one slot with a quantity beside them, and
+  several classes want the same rune — so the old "have" hid the only figure that says whether
+  one rune covers one quest or three. The `Count` column was already being read and summed
+  across slots; this was purely a display that declined to show it.
+- **The lists became responsive grids** — `repeat(auto-fit, minmax(300px, 1fr))` over quest
+  blocks, islands and the pickup list, plus a tighter vertical rhythm and smaller class chips.
+  The rest of the app is built for a ~540px side panel, but this is the tab you open wide, and
+  past ~800px one column stopped adding information and started adding distance: a name at the
+  left edge, its count pinned 400px away. At 830px the Bard's six quests now take three rows
+  instead of six and all 16 class chips fit on one line; below ~640px it collapses back to the
+  single column the panel was designed for. `auto-fit` rather than `auto-fill`, for the reason
+  the stance tiles found — leftover tracks would strand half the width.
+- **The Dragon Hoard turned out to be a second unexported storage**, found while screenshotting
+  the density work: a Grey Damask Cloak — the Wizard's Test of Concentration component — had been
+  routed there, which prompted running the same measurement used for the currency tab.
+  - Of 19 distinct items stored in the hoard before an export, **12 appear nowhere in it**, and
+    the 7 that do are in `Equipment` or a `Bank` slot — separate copies, not the hoard's
+    contents. The file has no `Dragon Hoard` location at all. So it joins `currency` as exempt
+    from the export cut-off; without this the cloak would have vanished on the next
+    `/outputfile inventory`, exactly as Wind Rune Azia did.
+  - The **tradeskill depot stays non-exempt, and that is now measured too**: an export carried a
+    `Personal-Depot` section holding exactly the Black Sapphire, Blue Diamond and Darkbone Marrow
+    the log had stored there. A later export shows none of them only because the depot had been
+    emptied — which is why the test is "does the file have a section for it", not "is it empty
+    today". The previous entry called this one caution; it is now evidence.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

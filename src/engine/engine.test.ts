@@ -1554,8 +1554,8 @@ test("sky: a currency pickup survives an export written after it", () => {
   assert.equal(sky.recentLoot[0]?.storedIn, "currency");
 });
 
-/** The exemption is per-destination, not a blanket one: the depot has been seen in an export,
- *  so exempting it would risk counting the same item twice. */
+/** The exemption is per-destination, not a blanket one: the depot *does* have a section in the
+ *  export (`Personal-Depot`), so exempting it would count the same item twice. */
 test("sky: a tradeskill-depot pickup before the export is still discarded", () => {
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
   const ev = parseLine(STORED("13:20:57", "Sphinx Claw", "tradeskill depot"));
@@ -1610,4 +1610,16 @@ test("sky: a later export does not erase a completion the log witnessed", () => 
   assert.equal(sky.completed.length, 1);
   // Held once, from the export — the pre-cut-off handover must not add a second.
   assert.equal(sky.held.find((h) => h.name === "Espri")!.count, 1);
+});
+
+/** Measured, not assumed: 12 of 19 items stored in the Dragon Hoard before an export appear
+ *  nowhere in it, and the file has no such location. A Wizard's Test of Concentration component
+ *  was routed there, so this is the same silent loss the currency tab caused. */
+test("sky: a Dragon Hoard pickup survives an export written after it", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  const ev = parseLine(STORED("13:51:22", "Grey Damask Cloak", "Dragon Hoard"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  engine.setInventory(baseline(Date.parse("Sat Jul 18 2026 14:00:00 GMT-0400"), {}));
+  assert.equal(engine.snapshot().sky.held.find((h) => h.name === "Grey Damask Cloak")?.count, 1);
 });

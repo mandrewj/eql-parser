@@ -68,12 +68,18 @@ export interface Inventory {
  * invisible. Plane of Sky wind runes are routed to the currency tab, so that is not a corner
  * case, it is every rune the character will ever loot.
  *
- * `tradeskill depot` and `Dragon Hoard` are deliberately **not** listed. A real export did once
- * carry a `Personal-Depot` section, so the depot is at least sometimes covered, and exempting a
- * destination that *is* exported would double-count it. Erring toward the export is the safer
- * side of that trade for storages no Sky item has been seen to use.
+ * `Dragon Hoard` was measured the same way and is also absent. Of 19 distinct items stored there
+ * before an export, 12 appear nowhere in it; the 7 that do are all in `Equipment` or a `Bank`
+ * slot — separate copies of the same item, not the hoard's contents — and the file has no
+ * `Dragon Hoard` location at all. This is not hypothetical either: a Grey Damask Cloak, the
+ * Wizard's Test of Concentration component, was routed there.
+ *
+ * `tradeskill depot` is **not** listed, and that is a measurement too rather than caution: an
+ * export carried a `Personal-Depot` section holding exactly the Black Sapphire, Blue Diamond and
+ * Darkbone Marrow the log had stored there. The depot is covered, so exempting it would
+ * double-count. A later export shows none of them only because the depot had been emptied.
  */
-const UNEXPORTED_STORAGE = new Set(["currency"]);
+const UNEXPORTED_STORAGE = new Set(["currency", "dragon hoard"]);
 
 /** Whether a pickup's destination is one the export cannot vouch for, making the log the only
  *  witness that the item was obtained at all. */

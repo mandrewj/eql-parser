@@ -148,14 +148,19 @@ difficulty) and the Plane of Sky pair below.
     absent from an export written 51 seconds later, while two runes that went to a bag in the
     same minutes are both in it. For such an item the cut-off does not prevent a double count —
     there is nothing to double — it simply deletes the item, and nothing ever restores it. So
-    pickups into an unexported storage count whenever they happened. `tradeskill depot` and
-    `Dragon Hoard` are deliberately *not* exempt: a real export has carried a `Personal-Depot`
-    section, so the depot is at least sometimes covered, and exempting a storage that **is**
-    exported would double-count it. The list lives in
-    [`inventory.ts`](../src/parser/inventory.ts).
-    - The honest cost: a currency item spent on a turn-in stays on the tracker, because no export
-      will ever contradict the log. A false positive there beats the false negative it replaces —
-      the item being invisible from the moment it was looted.
+    pickups into an unexported storage count whenever they happened.
+    - **Which storages those are was measured, not guessed**, by replaying every stored pickup
+      that predates an export and looking for it in that export. `currency` and `Dragon Hoard`
+      are absent: of 19 distinct Dragon Hoard items, 12 appear nowhere, and the 7 that do are in
+      `Equipment` or a `Bank` slot — separate copies, not the hoard. The `tradeskill depot`
+      **is** covered: an export carried a `Personal-Depot` section holding exactly the items the
+      log had stored there, so exempting it would double-count. (A later export shows none of
+      them only because the depot had been emptied — which is why the test is "is there a
+      section for it", not "is it empty today".) The list lives in
+      [`inventory.ts`](../src/parser/inventory.ts).
+    - The honest cost: an item from an unexported storage that is spent on a turn-in stays on the
+      tracker, because no export will ever contradict the log. A false positive there beats the
+      false negative it replaces — the item being invisible from the moment it was looted.
 - **Charmed pets are a *window*, not a fact.** The same mob is an enemy before the charm, an
   ally during it, and an enemy again after it breaks, so the engine closes the books at each
   boundary instead of picking a side: on the charm it banks what the mob did and what was
@@ -566,6 +571,17 @@ interface MetricStat {                // every metric group has this one shape
   - **A held rune is labelled `rune`, never "started".** The 15 runes are shared across the 16
     classes, so holding Wind Rune Neza could be for this quest or the Warrior one that also wants
     it; held is all that can honestly be claimed.
+  - **Counts are printed, never spelled.** Runes stack into a single slot with a quantity beside
+    them, and several classes want the same rune, so a row saying "have" hid the only figure that
+    answers whether one covers one quest or three. Every held row shows `×N`.
+  - **The lists are responsive grids**, which is a departure from the rest of the app. Everything
+    else is built for a ~540px side panel where one column is the only option; this is the tab
+    people open wide, and past ~800px a single column stopped adding information and started
+    adding distance — an item name at the left edge and its count pinned 400px away. Quest
+    blocks, islands and the pickup list all use `repeat(auto-fit, minmax(300px, 1fr))`, so they
+    collapse to that one column below ~640px and nothing is lost at panel width. `auto-fit`, not
+    `auto-fill`, for the reason the stance tiles found: with two quests left over, `auto-fill`
+    holds open empty tracks and strands half the width. A quest never splits across columns.
   - The selected class is remembered in `localStorage` — the same courtesy the log picker extends.
 - **Encounter header** — `<mob> → <n> dps · ENCOUNTER <dur>s · <total> dmg · <n> dps`. The right-hand
   figures are the **whole encounter** (everyone's damage to the mob, and the combined rate against it),

@@ -183,11 +183,15 @@ test("loot — selling an item is not keeping it", () => {
   assert.equal(ev, null);
 });
 
-test("storage — only the currency tab is outside the export's reach", () => {
+/** Which storages the export can vouch for was measured against a real export, not guessed.
+ *  The currency tab and the Dragon Hoard have no section in the file; the tradeskill depot has
+ *  one (`Personal-Depot`), so exempting it would double-count. */
+test("storage — currency and the Dragon Hoard are outside the export's reach; the depot is not", () => {
   assert.equal(isUnexportedStorage("currency"), true);
   assert.equal(isUnexportedStorage("Currency"), true);
+  assert.equal(isUnexportedStorage("Dragon Hoard"), true);
+  assert.equal(isUnexportedStorage("dragon hoard"), true);
   assert.equal(isUnexportedStorage("tradeskill depot"), false);
-  assert.equal(isUnexportedStorage("Dragon Hoard"), false);
   assert.equal(isUnexportedStorage(undefined), false); // an ordinary bag pickup
 });
 
