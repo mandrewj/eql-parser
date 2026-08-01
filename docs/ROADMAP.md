@@ -518,6 +518,20 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
 - Both caches are bypassed while a fight is open, since the window then moves on every blow.
   Measured: **0.58ms** per `snapshot()`, unchanged from the cached figure.
 
+## Post-v1 — The encounter timeline becomes two charts  ✅
+- Half the panel each, over **one shared time axis**. Left is me, unchanged: my damage above, what
+  the mob dealt me below, coloured by the stance combo of each bucket. Right is **the mob**, and
+  deliberately not filtered to me — everything the whole group dealt it above, everything it dealt
+  the whole group below.
+- The pair answers what neither half can alone: whether a lull was the mob surviving, the group
+  stopping, or *me* dropping out while everyone else kept going.
+- Needed two new engine series, `hitsOn` and `hitsBy` — every blow timestamped by target and by
+  attacker. The existing self logs stay separate rather than being derived from them: the left
+  chart is specifically mine, and filtering the wider logs per bucket would cost a scan per bar.
+  Both are cleared with the mob's other tracking on reset.
+- The `me` / `everyone` labels sit *over* the sparse top-left of their own chart; a label row of
+  its own would cost 10px of a panel where vertical space is the scarce resource.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

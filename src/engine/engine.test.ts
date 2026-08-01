@@ -1047,6 +1047,30 @@ test("encounter timeline: both halves share buckets, and each bucket carries its
   );
 });
 
+test("encounter timeline: the mob's half counts everyone, mine counts only me", () => {
+  let clock = at("01:00:20");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:01", "Mirad crushes an orc for 400 points of damage."),
+    L("01:00:02", "Ranshi crushes an orc for 200 points of damage."),
+    L("01:00:03", "An orc hits YOU for 30 points of damage."),
+    L("01:00:04", "An orc hits Mirad for 70 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "an orc")!;
+  const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+
+  // Left chart — me only.
+  assert.equal(sum(enc.selfSpark), 100, "my damage");
+  assert.equal(sum(enc.selfTakenSpark), 30, "what it dealt me");
+  // Right chart — the whole group, which is the point of having it.
+  assert.equal(sum(enc.mobTakenSpark), 700, "everyone's damage to it: 100 + 400 + 200");
+  assert.equal(sum(enc.mobDealtSpark), 100, "everything it dealt out: 30 + 70");
+  // Both charts must share one axis, or they cannot be read across.
+  assert.equal(enc.mobTakenSpark.length, enc.selfSpark.length);
+  assert.equal(enc.mobDealtSpark.length, enc.selfSpark.length);
+});
+
 test("encounter timeline: damage taken is per-mob, not the whole pull", () => {
   let clock = at("01:00:20");
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });

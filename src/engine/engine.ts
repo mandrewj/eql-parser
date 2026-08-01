@@ -157,6 +157,12 @@ interface FightState {
    *  the same reason: `selfTakenComboLog` is per-session, so during a two-mob pull it would
    *  draw a strip that disagreed with the row above it. */
   selfTaken: Map<string, Array<{ ts: number; amount: number }>>;
+  /** The same two series widened to *everyone*, for the mob's own half of the timeline:
+   *  `hitsOn[mob]` is what the whole group did to it, `hitsBy[mob]` what it did to the whole
+   *  group. The self logs above stay separate rather than being derived from these — the left
+   *  chart is specifically mine, and filtering these per render would cost a scan per bucket. */
+  hitsOn: Map<string, Array<{ ts: number; amount: number }>>;
+  hitsBy: Map<string, Array<{ ts: number; amount: number }>>;
   pairFirst: Map<string, number>; // "attackerKey>targetKey" → first contact ms (per-person start)
   firstSeen: Map<string, number>; // entityKey → first event ms (encounter start)
   lastSeen: Map<string, number>; // entityKey → last event ms (for per-NPC staleness)
@@ -1137,6 +1143,8 @@ export class Engine {
       perTarget: new Map(),
       selfHits: new Map(),
       selfTaken: new Map(),
+      hitsOn: new Map(),
+      hitsBy: new Map(),
       pairFirst: new Map(),
       firstSeen: new Map(),
       lastSeen: new Map(),
@@ -1286,6 +1294,16 @@ export class Engine {
       byAttacker.set(aKey, cell);
     }
     addAbility(cell, abilityName, ev.type, ev.amount, crit);
+
+    // Every blow, from both ends, so the mob's half of the timeline can show the whole group's
+    // damage rather than only mine. Cleared with the mob's other tracking on reset.
+    const push = (m: Map<string, Array<{ ts: number; amount: number }>>, key: string) => {
+      const at = m.get(key);
+      if (at) at.push({ ts: ev.tsMs, amount: ev.amount });
+      else m.set(key, [{ ts: ev.tsMs, amount: ev.amount }]);
+    };
+    push(f.hitsOn, tKey);
+    push(f.hitsBy, aKey);
 
     if (aKey === this.selfKey) {
       const c = this.combatant(f, aKey);
@@ -1472,6 +1490,8 @@ export class Engine {
     f.perTarget.delete(npcKey);
     f.selfHits.delete(npcKey);
     f.selfTaken.delete(npcKey);
+    f.hitsOn.delete(npcKey);
+    f.hitsBy.delete(npcKey);
     // What it dealt *out* is cleared from **friendly victims only**, so a same-named respawn's
     // `taken` on our cards starts at zero. Damage it dealt to another *mob* is pet damage,
     // banked in that mob's still-running encounter, and has to survive — this reset fires on
@@ -1619,6 +1639,10 @@ export class Engine {
     const { spark, bucketSec } = sparkline(f.selfHits.get(npcKey) ?? [], startMs, spanSec);
     // The mirror half of the strip, on the same buckets so the two line up bar for bar.
     const { spark: takenSpark } = sparkline(f.selfTaken.get(npcKey) ?? [], startMs, spanSec);
+    // …and the mob's own pair, on those same buckets again: everything the group did to it,
+    // and everything it did back to the group.
+    const { spark: mobTakenSpark } = sparkline(f.hitsOn.get(npcKey) ?? [], startMs, spanSec);
+    const { spark: mobDealtSpark } = sparkline(f.hitsBy.get(npcKey) ?? [], startMs, spanSec);
     // …and the combo I was in for each bucket, so the strip can be coloured by stance. A
     // bucket can straddle a stance change; the combo holding the most of it wins, which is
     // the same rule `dominantComboIn` applies to a whole encounter.
@@ -1636,6 +1660,8 @@ export class Engine {
       npcDamage: rateStat(npcOut, spanSec),
       selfSpark: spark,
       selfTakenSpark: takenSpark,
+      mobTakenSpark,
+      mobDealtSpark,
       sparkCombos,
       sparkBucketSec: bucketSec,
       cards,

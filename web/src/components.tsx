@@ -774,62 +774,89 @@ function EncounterRow({
   );
 }
 
-/** The encounter's own timeline: a band of its own, full card width, above the table.
+/** The encounter's own timeline: two charts side by side over one shared time axis, in a band
+ *  of its own above the table.
  *
- *  Same grammar as the My DPS chart at a different scale: my damage above the baseline, what
- *  the mob dealt me below it, each half normalised to its own peak so neither flattens the
- *  other (they routinely differ by an order of magnitude). Colour is the stance combo I was
- *  in for that bucket, from the same map the My DPS panel uses, so a combo means one colour
- *  everywhere and a mid-fight stance change reads as a change of colour.
+ *  **Left is me**, on the same grammar as the My DPS chart: my damage above the baseline, what
+ *  the mob dealt me below it. Bars take the colour of the stance combo I was in for that
+ *  bucket, so a mid-fight stance change reads as a change of colour.
  *
- *  It briefly overlapped the table, to "fill the card" literally. That was wrong: bars
- *  running across every number made the table hard to read, which is the opposite of what a
- *  chart beside a table is for. Separated, it can also run at full strength rather than
- *  hiding at 19% opacity to stay out of the way of the text.
+ *  **Right is the mob**, and deliberately *not* filtered to me: everything the whole group dealt
+ *  it above, everything it dealt the whole group below. Side by side the pair answers a question
+ *  neither half can alone — whether a lull was the mob surviving, the group stopping, or me
+ *  personally dropping out while everyone else kept going.
  *
- *  Hidden when there is nothing to show — a fight too short to have a shape, or one where I
- *  neither dealt nor took anything. */
+ *  Each half of each chart is normalised to its own peak, because incoming and outgoing
+ *  routinely differ by an order of magnitude and one scale would flatten the other. Heights are
+ *  in px like the history chart's, so shrinking the type never costs the bars their resolution.
+ *
+ *  Hidden when there is nothing to show — a fight too short to have a shape, or one where
+ *  nothing landed either way. */
 function EncounterTimeline({ enc, colors }: { enc: EncounterView; colors: Map<string, number> }) {
-  const dealt = enc.selfSpark ?? [];
-  const taken = enc.selfTakenSpark ?? [];
+  const mine = enc.selfSpark ?? [];
+  const atMe = enc.selfTakenSpark ?? [];
+  const atMob = enc.mobTakenSpark ?? [];
+  const byMob = enc.mobDealtSpark ?? [];
   const combos = enc.sparkCombos ?? [];
-  const n = Math.max(dealt.length, taken.length);
-  const upPeak = Math.max(0, ...dealt);
-  const downPeak = Math.max(0, ...taken);
-  if (n < 4 || (upPeak === 0 && downPeak === 0)) return null;
+  const n = Math.max(mine.length, atMe.length, atMob.length, byMob.length);
+  const peak = (a: number[]) => Math.max(0, ...a);
+  const peaks = { mine: peak(mine), atMe: peak(atMe), atMob: peak(atMob), byMob: peak(byMob) };
+  if (n < 4 || Object.values(peaks).every((p) => p === 0)) return null;
 
   const bucketSec = enc.sparkBucketSec;
-  return (
-    <div
-      className="enc-timeline"
-      title={
-        `This encounter, ${plural(bucketSec, "second")} per bar. Above the line my damage ` +
-        `(peak ${fmtDrill(upPeak)} dps), below it what ${enc.name} dealt me ` +
-        `(peak ${fmtDrill(downPeak)}/s). Each half is scaled to its own peak, so heights are ` +
-        `never compared across the line. Colour is the stance combo I was in.`
-      }
-    >
-      {Array.from({ length: n }, (_, i) => {
-        const up = dealt[i] ?? 0;
-        const down = taken[i] ?? 0;
-        const color = comboColor(combos[i] ?? "", colors);
-        return (
-          <div key={i} className="tl-col">
-            <div className="tl-half up">
-              <div
-                className="tl-bar"
-                style={{ height: upPeak ? `${(up / upPeak) * 100}%` : 0, background: color }}
-              />
-            </div>
-            <div className="tl-half down">
-              <div
-                className="tl-bar taken"
-                style={{ height: downPeak ? `${(down / downPeak) * 100}%` : 0 }}
-              />
-            </div>
+  const half = (
+    up: number[],
+    down: number[],
+    upPeak: number,
+    downPeak: number,
+    upColor: (i: number) => string,
+    label: string,
+    title: string,
+  ) => (
+    <div className="tl-chart" title={title}>
+      {/* Which chart is which isn't self-evident from the bars, and the colours only carry it
+          once you know the convention — one muted word each is cheaper than guessing. */}
+      <span className="tl-label">{label}</span>
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className="tl-col">
+          <div className="tl-half up">
+            <div
+              className="tl-bar"
+              style={{ height: upPeak ? `${((up[i] ?? 0) / upPeak) * 100}%` : 0, background: upColor(i) }}
+            />
           </div>
-        );
-      })}
+          <div className="tl-half down">
+            <div className="tl-bar taken" style={{ height: downPeak ? `${((down[i] ?? 0) / downPeak) * 100}%` : 0 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+  const per = `${plural(bucketSec, "second")} per bar`;
+
+  return (
+    <div className="enc-timeline">
+      {half(
+        mine,
+        atMe,
+        peaks.mine,
+        peaks.atMe,
+        (i) => comboColor(combos[i] ?? "", colors),
+        "me",
+        `Me — ${per}. Above the line my damage (peak ${fmtDrill(peaks.mine)} dps), below it what ` +
+          `${enc.name} dealt me (peak ${fmtDrill(peaks.atMe)}/s). Colour is the stance combo I was in.`,
+      )}
+      {half(
+        atMob,
+        byMob,
+        peaks.atMob,
+        peaks.byMob,
+        () => "var(--player)",
+        "everyone",
+        `${enc.name} — ${per}. Above the line everything the group dealt it (peak ` +
+          `${fmtDrill(peaks.atMob)} dps), below it everything it dealt the group (peak ` +
+          `${fmtDrill(peaks.byMob)}/s). All damage, not just mine.`,
+      )}
     </div>
   );
 }

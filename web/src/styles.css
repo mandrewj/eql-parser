@@ -227,28 +227,34 @@ body { margin: 0; }
 .enc-out { flex: none; font-size: 0.74rem; font-weight: 600; color: var(--npc); font-variant-numeric: tabular-nums; }
 .enc-tot { flex: none; margin-left: auto; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .enc-scope { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
-/* The encounter's own timeline: a band of its own between the header and the table. It was
-   briefly drawn *over* the table to "fill the card" and that was a mistake — bars washing
-   across every number made the table hard to read, which is the opposite of the point. Given
-   its own row it can run at full strength and full width instead of hiding at 19%.
-   Heights are in px, like the history chart's, so shrinking the type never costs the bars
-   their resolution. */
-.enc-timeline {
-  display: flex; align-items: stretch; gap: 1px;
-  width: 100%; margin: 0 0 0.45rem;
+/* The encounter's own timeline: two charts over one shared time axis, in a band of its own
+   between the header and the table. It briefly overlapped the table to "fill the card" and that
+   was a mistake — bars washing across every number made the table hard to read. Given its own
+   row it runs at full strength instead of hiding at 19%. Heights are px, like the history
+   chart's, so shrinking the type never costs the bars their resolution. */
+.enc-timeline { display: flex; gap: 0.5rem; width: 100%; margin: 0 0 0.45rem; }
+/* Equal halves, so the two charts share one time axis bar-for-bar and can be read across. */
+.tl-chart { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: stretch; gap: 1px; }
+/* Sits over the top-left of its own chart, where the bars are shortest — a label row of its
+   own would cost 10px of a panel where vertical space is the scarce resource. */
+.tl-label {
+  position: absolute; top: -1px; left: 0; z-index: 1; pointer-events: none;
+  font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); opacity: 0.75;
 }
 .tl-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
-/* Two mirrored panels over one time axis, each scaled to its own peak — my damage and what
-   the mob dealt me differ by an order of magnitude, so a shared scale would flatten one.
-   The upper half gets the greater share: it is the one being read. */
+/* Two mirrored panels, each scaled to its own peak — incoming and outgoing routinely differ by
+   an order of magnitude, so a shared scale would flatten one. The upper half gets the greater
+   share: it is the one being read. */
 .tl-half { display: flex; min-height: 0; }
 .tl-half.up { flex: 0 0 26px; align-items: flex-end; }
-.tl-half.down { flex: 0 0 14px; align-items: flex-start; border-top: 1px solid var(--hair); }
+/* The divergence line. Brightened because it has to read at this size against the panel. */
+.tl-half.down { flex: 0 0 14px; align-items: flex-start; border-top: 1px solid #ffffff33; }
 .tl-bar { width: 100%; min-height: 0; background: var(--s-other); }
 .tl-half.up .tl-bar { border-radius: 1px 1px 0 0; }
-/* Damage taken is one colour throughout — it is the mob's doing, not a stance of mine, so
-   colouring it by combo would imply an authorship it doesn't have. */
-.tl-half.down .tl-bar { border-radius: 0 0 1px 1px; background: var(--npc) !important; opacity: 0.75; }
+/* Damage *out of* a mob is one colour on both charts — it is the mob's doing, not a stance of
+   mine, so colouring it by combo would imply an authorship it doesn't have. */
+.tl-half.down .tl-bar { border-radius: 0 0 1px 1px; background: var(--npc) !important; opacity: 0.8; }
 .etable { display: flex; flex-direction: column; }
 .erow { display: grid; grid-template-columns: 1fr 2.9rem 2.9rem 2.9rem 2.2rem; align-items: center; gap: 0.3rem; cursor: pointer; padding: 1px 0; }
 .erow.ehead { cursor: default; padding-bottom: 3px; }
