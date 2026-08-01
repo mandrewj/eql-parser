@@ -817,6 +817,26 @@ optimisations were **rejected** for costing more in complexity than they save.
   - *Pre-serialising the catalogue.* `/api/sky-quests` stringifies 24KB per request, but the
     browser caches it for an hour, so it runs about once per session.
 
+## Post-v1 — The island view shows what is settled, not just what is missing  ✅
+- **Components you already hold, or have already turned in, now stay on their island** and sort
+  to the foot of it under a `have / turned in` heading, dimmed. The header carries both figures —
+  `ISLAND 3 — HARPY  13 +1`.
+- **Why the earlier cut was wrong.** Dropping a component the moment it was answered kept the list
+  tight as a plan, but made an island unreadable as a *place*: "Island 5 wants nothing more from
+  me" and "Island 5 was never in this list" rendered identically, and only one of those is worth
+  knowing when you are standing on it.
+- **Three states, and the arithmetic behind them.** `need` counts only the **unfinished** quests
+  wanting an item, because a turn-in consumes its components — so finishing one of two quests
+  that share a component drops what it asks for from two to one. `need === 0` is `done`,
+  `held >= need` is `held`, anything else is `needed`.
+- **The settled block is deliberately not grouped by mob.** The mob heading answers "where would I
+  farm this", which is the one question a row you have already settled does not raise. The
+  outstanding rows keep their mob grouping, since that is still a plan.
+- `buildNeeds` became `buildIslands` and returns an island at a time — outstanding rows grouped by
+  mob, settled rows flat, and both counts — rather than a bare list with the answered rows
+  filtered out. Eight model tests cover the states, the shared-component arithmetic and the
+  ordering.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

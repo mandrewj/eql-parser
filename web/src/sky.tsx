@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { time } from "./format";
 import {
-  buildNeeds,
-  groupByMob,
+  buildIslands,
   progressOf,
   readyQuests,
   resolveCompletions,
+  type NeedRow,
   type QuestState,
 } from "./sky-model";
 import type { SkyClass, SkyQuest, SkyStats } from "./types";
@@ -48,58 +48,83 @@ const VIEW_KEY = "eql.sky.view";
  *  actually keep open while playing. Neither is a filter of the other. */
 type View = "class" | "island";
 
-function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<string, number> }) {
-  // Grouped inside the memo, not in the JSX: `groupByMob` was rebuilding a Map per island on
-  // every render, and nothing about it changes between renders that `held` does not.
-  const groups = useMemo(
-    () => buildNeeds(catalogue, held).map(([island, rows]) => ({ island, rows, mobs: groupByMob(rows) })),
-    [catalogue, held],
+/** One component of an island. The right-hand columns say who wants it and how far off it is;
+ *  a settled row keeps both, because "BST SHM · 2/2" is the answer, not clutter. */
+function NeedRowLine({ r }: { r: NeedRow }) {
+  const codes = [...new Set(r.wants.map((w) => w.code))].join(" ");
+  const mark = r.state === "done" ? "✓" : r.state === "held" ? "✓" : r.held > 0 ? "◐" : "·";
+  return (
+    <div
+      className={`skyrow need-${r.state}`}
+      title={
+        (r.dropsFrom ? `Drops from ${r.dropsFrom}\n` : "") +
+        r.wants.map((w) => `${w.done ? "✓ " : ""}${w.quest}`).join("\n")
+      }
+    >
+      <span className="skymark">{mark}</span>
+      <span className="skyname">{r.name}</span>
+      <span className="skywants">{codes}</span>
+      <span className="skycount">
+        {r.state === "done"
+          ? "turned in"
+          : r.state === "held"
+            ? `×${r.held}`
+            : r.held > 0
+              ? `${r.held}/${r.need}`
+              : r.need > 1
+                ? `×${r.need}`
+                : ""}
+      </span>
+    </div>
   );
-  const total = groups.reduce((n, g) => n + g.rows.length, 0);
+}
 
-  if (!total) {
-    return <div className="idle">Nothing outstanding — every quest component is either held or already turned in.</div>;
-  }
+function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<string, number> }) {
+  const islands = useMemo(() => buildIslands(catalogue, held), [catalogue, held]);
+  const total = islands.reduce((n, i) => n + i.needCount, 0);
+  const places = islands.filter((i) => i.needCount > 0).length;
 
   return (
     <>
       <div className="skyneedtotal">
-        {total} components still needed, across {groups.length} locations
+        {total > 0
+          ? `${total} components still needed, across ${places} locations`
+          : "Nothing outstanding — every component is either held or already turned in."}
       </div>
       <div className="skyislands">
-      {groups.map(({ island, rows, mobs }) => (
-        <div className="skyisland" key={island ?? "none"}>
-          <div className="section-title">
-            {island ?? "No island listed"}
-            <span className="skyclsdone">{rows.length}</span>
-          </div>
-          {/* Under the mob that drops it, not a flat list: you kill mobs, not islands, and on a
-              real island one boss owes you almost everything — Island 5's Spiroc Lord holds 15
-              of its 16. The heading is what turns the list into a plan. */}
-          {mobs.map((g) => (
-            <div className="skymob" key={g.mob ?? "(unsourced)"}>
-              <div className="skymobname">{g.mob ?? "no mob listed"}</div>
-              {g.rows.map((r) => (
-                <div
-                  className={r.held > 0 ? "skyrow held" : "skyrow"}
-                  key={r.name}
-                  title={
-                    (r.dropsFrom ? `Drops from ${r.dropsFrom}\n` : "") +
-                    r.wants.map((w) => w.quest).join("\n")
-                  }
-                >
-                  <span className="skymark">{r.held > 0 ? "◐" : "·"}</span>
-                  <span className="skyname">{r.name}</span>
-                  <span className="skywants">{[...new Set(r.wants.map((w) => w.code))].join(" ")}</span>
-                  <span className="skycount">
-                    {r.held > 0 ? `${r.held}/${r.wants.length}` : r.wants.length > 1 ? `×${r.wants.length}` : ""}
-                  </span>
-                </div>
-              ))}
+        {islands.map((isl) => (
+          <div className="skyisland" key={isl.island ?? "none"}>
+            <div className="section-title">
+              {isl.island ?? "No island listed"}
+              <span className="skyclsdone">
+                {isl.needCount}
+                {isl.settledCount > 0 && <span className="skyisldone"> +{isl.settledCount}</span>}
+              </span>
             </div>
-          ))}
-        </div>
-      ))}
+            {/* Under the mob that drops it, not a flat list: you kill mobs, not islands, and on a
+                real island one boss owes you almost everything — Island 5's Spiroc Lord holds 15
+                of its 16. The heading is what turns the list into a plan. */}
+            {isl.outstanding.map((g) => (
+              <div className="skymob" key={g.mob ?? "(unsourced)"}>
+                <div className="skymobname">{g.mob ?? "no mob listed"}</div>
+                {g.rows.map((r) => (
+                  <NeedRowLine key={r.name} r={r} />
+                ))}
+              </div>
+            ))}
+            {/* Settled rows, flat and dimmed, at the foot of their island. Not grouped by mob:
+                that heading answers "where would I farm this", which is the one question these
+                rows do not raise. */}
+            {isl.settled.length > 0 && (
+              <div className="skysettled">
+                <div className="skymobname">have / turned in</div>
+                {isl.settled.map((r) => (
+                  <NeedRowLine key={r.name} r={r} />
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </>
   );

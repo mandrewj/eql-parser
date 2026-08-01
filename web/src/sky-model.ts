@@ -27,16 +27,26 @@ export function progressOf(quest: SkyQuest, held: Map<string, number>): QuestPro
   return { state, have, need, runeHeld: held.has(quest.rune) };
 }
 
-/** One component still wanted, and by whom. */
+/** Where a component stands on the island it drops on. The three are ordered by how much they
+ *  ask of you, which is also the order they are listed in. */
+export type NeedState =
+  | "needed" // short of it, for at least one unfinished quest
+  | "held" // enough in hand to settle every unfinished quest that wants it
+  | "done"; // every quest that wanted it is finished; the turn-in consumed it
+
+/** One component of an island, and who wants it. */
 export interface NeedRow {
   name: string;
   island: string | null;
   dropsFrom: string | null;
-  /** The still-unfinished quests that want it — one entry per quest, so the length is how many
-   *  copies are needed. Fourteen components are wanted by two different classes, and a turn-in
-   *  consumes the item, so one in the bag does not settle both. */
-  wants: Array<{ code: string; quest: string }>;
+  /** Every quest wanting it, finished or not — one entry per quest. Fourteen components are
+   *  wanted by two different classes, and a turn-in consumes the item, so one in the bag does
+   *  not settle both. `done` marks the ones already turned in, which no longer ask for a copy. */
+  wants: Array<{ code: string; quest: string; done: boolean }>;
+  /** How many copies the *unfinished* quests still call for. Zero means the item's work is over. */
+  need: number;
   held: number;
+  state: NeedState;
 }
 
 /** Islands in the order you visit them. The label carries the number, so sorting on it is
@@ -63,6 +73,21 @@ export function primaryMob(dropsFrom: string | null): string | null {
 export interface MobGroup {
   mob: string | null; // null → the wiki names no source
   rows: NeedRow[];
+}
+
+/** One island: what is left to find, and what is already settled.
+ *
+ *  The two are kept apart rather than interleaved because they answer different questions. The
+ *  outstanding rows are a plan — grouped by the mob that drops them, since that is what you kill.
+ *  The settled ones are reassurance, and grouping *them* by mob would be answering "where would I
+ *  farm this" about something there is no reason to farm. */
+export interface IslandNeeds {
+  island: string | null;
+  outstanding: MobGroup[];
+  settled: NeedRow[];
+  /** Counts for the header: rows still short, and rows already answered. */
+  needCount: number;
+  settledCount: number;
 }
 
 /** Group one island's rows by their primary mob. Mobs are ordered by how much they owe you,
@@ -132,29 +157,40 @@ export function resolveCompletions(catalogue: SkyClass[], completed: SkyCompleti
 }
 
 /**
- * What is still worth looking for, grouped by where it drops.
+ * Every component of every island, and where it stands.
  *
- * Three things are deliberately left out, and each is a rule rather than a tidy-up:
- *   - **components of a finished quest** — the turn-in consumed them, and listing them sends
- *     you farming for a reward already in the bag;
- *   - **components held in sufficient number** — "sufficient" counts the quests that want it,
- *     not one, because a turn-in consumes the item and fourteen components are wanted twice;
- *   - **runes**, which are handed over by the quest giver rather than found.
+ * **Nothing is dropped any more.** An earlier cut excluded a component the moment it was
+ * settled — enough in hand, or its quests all finished — which kept the list to a plan but made
+ * the island unreadable as a place: you could not tell "Island 5 wants nothing more from me"
+ * from "Island 5 was never in the list". Settled rows are kept and sorted to the bottom.
+ *
+ * Three states, and the arithmetic that separates them:
+ *   - `need` counts only the **unfinished** quests wanting the item, because a turn-in consumes
+ *     its components — a finished quest asks for nothing further;
+ *   - `need === 0` is `done`: every quest that ever wanted it is complete;
+ *   - `held >= need` is `held`: enough in hand to settle what is left, so nothing to farm;
+ *   - anything else is `needed`.
+ *
+ * Runes never appear at all: the quest giver hands those over, so they are not found on an
+ * island and would be noise in a list about where to go.
  */
-export function buildNeeds(catalogue: SkyClass[], held: Map<string, number>): Array<[string | null, NeedRow[]]> {
+export function buildIslands(catalogue: SkyClass[], held: Map<string, number>): IslandNeeds[] {
   const rows = new Map<string, NeedRow>();
   for (const c of catalogue) {
+    const done = new Map<string, boolean>();
+    for (const q of c.quests) done.set(q.quest, progressOf(q, held).state === "done");
     for (const q of c.quests) {
-      if (progressOf(q, held).state === "done") continue;
       for (const it of q.items) {
         const row = rows.get(it.name) ?? {
           name: it.name,
           island: it.island,
           dropsFrom: it.dropsFrom,
           wants: [],
+          need: 0,
           held: held.get(it.name) ?? 0,
+          state: "needed" as NeedState,
         };
-        row.wants.push({ code: c.code, quest: q.quest });
+        row.wants.push({ code: c.code, quest: q.quest, done: done.get(q.quest)! });
         rows.set(it.name, row);
       }
     }
@@ -162,20 +198,34 @@ export function buildNeeds(catalogue: SkyClass[], held: Map<string, number>): Ar
 
   const byIsland = new Map<string | null, NeedRow[]>();
   for (const r of rows.values()) {
-    if (r.held >= r.wants.length) continue;
+    r.need = r.wants.filter((w) => !w.done).length;
+    r.state = r.need === 0 ? "done" : r.held >= r.need ? "held" : "needed";
     const list = byIsland.get(r.island);
     if (list) list.push(r);
     else byIsland.set(r.island, [r]);
   }
 
-  for (const list of byIsland.values()) {
-    // Most-wanted first: a component two classes need is the one worth recognising on sight.
-    list.sort((a, b) => b.wants.length - a.wants.length || a.name.localeCompare(b.name));
+  const out: IslandNeeds[] = [];
+  for (const [island, list] of byIsland) {
+    const outstanding = list.filter((r) => r.state === "needed");
+    // Most-wanted first: a component two classes still need is the one worth recognising on sight.
+    outstanding.sort((a, b) => b.need - a.need || a.name.localeCompare(b.name));
+    // Held before done — one is a thing you have, the other a thing you no longer think about.
+    const settled = list
+      .filter((r) => r.state !== "needed")
+      .sort((a, b) => (a.state === b.state ? a.name.localeCompare(b.name) : a.state === "held" ? -1 : 1));
+    out.push({
+      island,
+      outstanding: groupByMob(outstanding),
+      settled,
+      needCount: outstanding.length,
+      settledCount: settled.length,
+    });
   }
 
-  return [...byIsland].sort(([a], [b]) => {
-    const [an, al] = islandOrder(a);
-    const [bn, bl] = islandOrder(b);
+  return out.sort((a, b) => {
+    const [an, al] = islandOrder(a.island);
+    const [bn, bl] = islandOrder(b.island);
     return an - bn || al.localeCompare(bl);
   });
 }

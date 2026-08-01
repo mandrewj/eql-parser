@@ -565,8 +565,20 @@ interface MetricStat {                // every metric group has this one shape
     rather than a tidy-up: components of a **finished** quest (the turn-in consumed them, and
     listing them sends you farming for a reward already in the bag), components **held in
     sufficient number** — and sufficient counts the *quests* that want it, not one, because a
-    turn-in consumes the item and 14 components are wanted twice — and **runes**, which are asked
-    for rather than found.
+    turn-in consumes the item and 14 components are wanted twice.
+    - **Settled components stay on their island, sorted to the foot of it.** An earlier cut
+      dropped a component the moment it was answered, which kept the list to a plan but made an
+      island unreadable as a *place*: "Island 5 wants nothing more from me" and "Island 5 was
+      never in this list" rendered identically. They are now kept, dimmed, under a `have / turned
+      in` heading, and the island header carries both figures (`13 +1`). Deliberately **not**
+      grouped by mob — that heading answers "where would I farm this", the one question these
+      rows do not raise.
+    - Three states, separated by counting only the **unfinished** quests that want an item, since
+      a turn-in consumes its components: `done` (none left wanting it), `held` (enough in hand for
+      those that do), `needed` (short). Finishing one of two quests sharing a component therefore
+      drops what it asks for from two to one.
+    - **Runes** never appear at all: the giver hands those over, so they are not found on an
+      island and would be noise in a list about where to go.
     - **Rows sit under the mob that drops them**, because you kill mobs, not islands — and on a
       real island one boss owes you nearly everything (The Spiroc Lord holds 13 of Island 5's 16,
       Sister of the Spire 15 of Island 7's 16). The wiki lists several mobs per item in no fixed

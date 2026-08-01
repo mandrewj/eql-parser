@@ -723,3 +723,16 @@ body { margin: 0; }
 /* Chips: the 16 codes are a fixed set and read as a keyboard, so they can be tighter than a
    general-purpose chip and still be comfortable targets. Two rows at panel width, one at ~900px. */
 .skychips .chip { padding: 0.1rem 0.4rem; font-size: 0.72rem; }
+
+/* Settled rows — held, or turned in — at the foot of their island. Dimmed rather than hidden:
+   they answer "is there anything left for me here", which an absent row cannot. The mark stays
+   green because the answer is good news; the name recedes because it needs no action. */
+.skysettled { margin-top: 0.25rem; opacity: 0.72; }
+.skyrow.need-held .skymark,
+.skyrow.need-done .skymark { color: var(--player); }
+.skyrow.need-held .skyname { color: var(--text); }
+.skyrow.need-done .skyname { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.skyrow.need-held .skycount { color: var(--player); }
+.skyrow.need-done .skycount { color: var(--muted); font-size: 0.66rem; }
+/* The island header's second figure: how many of its rows are already answered. */
+.skyisldone { color: var(--player); }

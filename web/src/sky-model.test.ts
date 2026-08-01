@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildNeeds,
+  buildIslands,
   groupByMob,
   islandOrder,
   primaryMob,
   progressOf,
   readyQuests,
   resolveCompletions,
+  type NeedRow,
 } from "./sky-model.js";
 import type { SkyClass, SkyQuest } from "./types.js";
 
@@ -66,37 +67,77 @@ test("state — the rune is tracked but does not count toward the components", (
   assert.equal(p.state, "open");
 });
 
-// --- what is still needed ----------------------------------------------------
+// --- every component of an island, and where it stands ------------------------
 
-test("needs — components of a finished quest are not still needed", () => {
+/** Find one island's rows regardless of how they are grouped. */
+const rowsOf = (islands: ReturnType<typeof buildIslands>, island: string | null): NeedRow[] => {
+  const i = islands.find((x) => x.island === island)!;
+  return [...i.outstanding.flatMap((g) => g.rows), ...i.settled];
+};
+
+/** The point of the rework: a settled component stays on its island. Dropping it made
+ *  "this island wants nothing more" indistinguishable from "this island was never listed". */
+test("islands — a finished quest's component stays, marked done and sorted below", () => {
   const cat = [cls("WAR", [quest()])];
-  assert.equal(buildNeeds(cat, holding({})).length, 1);
-  // Reward in hand: the turn-in consumed the ring, so nothing about it is outstanding.
-  assert.deepEqual(buildNeeds(cat, holding({ "Azure Ruby Ring": 1 })), []);
+
+  const open = buildIslands(cat, holding({}))[0]!;
+  assert.equal(open.needCount, 1);
+  assert.equal(open.settledCount, 0);
+
+  // Reward in hand: the turn-in consumed the ring, so nothing is outstanding — but it is still
+  // listed, as settled.
+  const done = buildIslands(cat, holding({ "Azure Ruby Ring": 1 }))[0]!;
+  assert.equal(done.needCount, 0);
+  assert.deepEqual(done.outstanding, []);
+  assert.equal(done.settled.length, 1);
+  assert.equal(done.settled[0]!.name, "Azure Ring");
+  assert.equal(done.settled[0]!.state, "done");
+  assert.equal(done.settled[0]!.need, 0);
+});
+
+test("islands — holding enough moves a row to settled without calling it done", () => {
+  const cat = [cls("WAR", [quest()])];
+  const isl = buildIslands(cat, holding({ "Azure Ring": 1 }))[0]!;
+  assert.equal(isl.needCount, 0);
+  assert.equal(isl.settled[0]!.state, "held");
+  assert.equal(isl.settled[0]!.held, 1);
+  assert.equal(isl.settled[0]!.need, 1);
 });
 
 /** A turn-in consumes the item, so "do I have one" is the wrong test when two classes want it —
  *  and fourteen of the catalogue's components are wanted twice. */
-test("needs — an item wanted by two quests needs two, and one in hand is not enough", () => {
+test("islands — an item wanted by two quests needs two, and one in hand is not enough", () => {
   const cat = [
     cls("BST", [quest({ quest: "BST test", items: [item("Leather Cord")], rewards: ["A"] })]),
     cls("SHM", [quest({ quest: "SHM test", items: [item("Leather Cord")], rewards: ["B"] })]),
   ];
 
-  const one = buildNeeds(cat, holding({ "Leather Cord": 1 }));
-  const row = one[0]![1][0]!;
-  assert.equal(row.wants.length, 2);
+  const one = buildIslands(cat, holding({ "Leather Cord": 1 }))[0]!;
+  const row = one.outstanding[0]!.rows[0]!;
+  assert.equal(row.state, "needed");
+  assert.equal(row.need, 2);
   assert.equal(row.held, 1);
-  assert.deepEqual(
-    row.wants.map((w) => w.code),
-    ["BST", "SHM"],
-  );
+  assert.deepEqual(row.wants.map((w) => w.code), ["BST", "SHM"]);
 
-  // Two in hand settles both, and it leaves the list entirely.
-  assert.deepEqual(buildNeeds(cat, holding({ "Leather Cord": 2 })), []);
+  // Two in hand settles both.
+  assert.equal(buildIslands(cat, holding({ "Leather Cord": 2 }))[0]!.settled[0]!.state, "held");
 });
 
-test("needs — rows are grouped by island and islands come out in visiting order", () => {
+/** Finishing one of the two quests reduces what the item is *for*, so one copy now suffices —
+ *  the count has to follow the unfinished quests, not the total. */
+test("islands — a finished quest stops asking for its share of a shared component", () => {
+  const cat = [
+    cls("BST", [quest({ quest: "BST test", items: [item("Leather Cord")], rewards: ["A"] })]),
+    cls("SHM", [quest({ quest: "SHM test", items: [item("Leather Cord")], rewards: ["B"] })]),
+  ];
+  const isl = buildIslands(cat, holding({ "Leather Cord": 1, A: 1 }))[0]!;
+  const row = isl.settled[0]!;
+  assert.equal(row.need, 1); // only the Shaman quest still wants one
+  assert.equal(row.state, "held");
+  assert.deepEqual(row.wants.map((w) => w.done), [true, false]);
+});
+
+test("islands — islands come out in visiting order, unplaced last", () => {
   const cat = [
     cls("WAR", [
       quest({ quest: "a", items: [item("Late", "Island 8 — Veeshan")], rewards: ["ra"] }),
@@ -105,23 +146,41 @@ test("needs — rows are grouped by island and islands come out in visiting orde
     ]),
   ];
   assert.deepEqual(
-    buildNeeds(cat, holding({})).map(([island]) => island),
+    buildIslands(cat, holding({})).map((i) => i.island),
     ["Island 2 — Azarack", "Island 8 — Veeshan", null],
   );
 });
 
-test("needs — within an island the most-wanted component sorts first", () => {
+test("islands — within an island the most-wanted component sorts first", () => {
   const cat = [
     cls("WAR", [quest({ quest: "a", items: [item("Shared"), item("Solo")], rewards: ["ra"] })]),
     cls("MNK", [quest({ quest: "b", items: [item("Shared")], rewards: ["rb"] })]),
   ];
-  const rows = buildNeeds(cat, holding({}))[0]![1];
   assert.deepEqual(
-    rows.map((r) => r.name),
+    rowsOf(buildIslands(cat, holding({})), "Island 3 — Harpy").map((r) => r.name),
     ["Shared", "Solo"],
   );
 });
 
+test("islands — held sorts above turned-in within the settled block", () => {
+  const cat = [
+    cls("WAR", [
+      quest({ quest: "a", items: [item("StillHave")], rewards: ["ra"] }),
+      quest({ quest: "b", items: [item("SpentIt")], rewards: ["rb"] }),
+    ]),
+  ];
+  const isl = buildIslands(cat, holding({ StillHave: 1, rb: 1 }))[0]!;
+  assert.deepEqual(
+    isl.settled.map((r) => [r.name, r.state]),
+    [
+      ["StillHave", "held"],
+      ["SpentIt", "done"],
+    ],
+  );
+});
+
+/** Island 7 contributes both a named-mob group and a trash group, and they must stay adjacent
+ *  and in a stable order rather than sorting apart on their labels. */
 test("island order — the two Island 7 groups stay adjacent and stably ordered", () => {
   const labels = ["Island 7 — trash", "Island 7 — Drake", "Island 6 — Bee"];
   labels.sort((a, b) => {
@@ -143,10 +202,13 @@ test("primary mob — the first named, with a trailing parenthetical dropped", (
 /** Grouping on the whole string fragments one boss into several headings — the Efreeti items
  *  alone spread across eight variants of "Noble Dojorn, …". */
 test("group by mob — variants of one mob's list collapse to one heading", () => {
+  const mk = (name: string, from: string): NeedRow => ({
+    name, island: null, dropsFrom: from, wants: [], need: 1, held: 0, state: "needed",
+  });
   const rows = [
-    { name: "a", island: null, dropsFrom: "Noble Dojorn, Overseer of Air", wants: [], held: 0 },
-    { name: "b", island: null, dropsFrom: "Noble Dojorn", wants: [], held: 0 },
-    { name: "c", island: null, dropsFrom: "Noble Dojorn, The Hand of Veeshan", wants: [], held: 0 },
+    mk("a", "Noble Dojorn, Overseer of Air"),
+    mk("b", "Noble Dojorn"),
+    mk("c", "Noble Dojorn, The Hand of Veeshan"),
   ];
   const g = groupByMob(rows);
   assert.equal(g.length, 1);
@@ -155,7 +217,9 @@ test("group by mob — variants of one mob's list collapse to one heading", () =
 });
 
 test("group by mob — biggest debt first, and the unsourced group always last", () => {
-  const row = (name: string, from: string | null) => ({ name, island: null, dropsFrom: from, wants: [], held: 0 });
+  const row = (name: string, from: string | null): NeedRow => ({
+    name, island: null, dropsFrom: from, wants: [], need: 1, held: 0, state: "needed",
+  });
   const g = groupByMob([row("a", null), row("b", "Small Fry"), row("c", "Big Boss"), row("d", "Big Boss")]);
   assert.deepEqual(
     g.map((x) => x.mob),
