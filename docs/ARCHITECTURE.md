@@ -260,6 +260,9 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     difficulty distribution on the right. It was two stacked tables sharing a tier column, which
     left the upper one mostly whitespace and made comparing a tier's rate against where it drops
     a matter of matching names across a gap.
+    - **The D0–D4 labels live in the UI, not the parser.** `web/` imports nothing from `src/` —
+      the same boundary that makes the types mirrored — so `motes.ts` owns the *contract* (a
+      difficulty is 0–4, or null) and the UI owns how it is spelled.
     - **A trailing `all` column sums the row's own difficulty cells**, so a line's arithmetic is
       checkable and the bottom row's grand total lands on the window size. It is deliberately not
       the count beside the tier name: that one is every drop ever seen, this one is the window the

@@ -597,6 +597,27 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   one and the only form a mote uses. Anchored at `--` so the other ~5,100 loot lines fail on two
   characters.
 
+## Post-v1 — An audit pass over the mote work  ✅
+- **`noUnusedLocals` / `noUnusedParameters` are now on** in both tsconfigs. Both projects already
+  passed, so it cost nothing and closes the gap that let a helper outlive its caller through a UI
+  rewrite. The project has no linter and adding one would break the ~0-dependency rule; the
+  compiler already had the check sitting behind a flag.
+- **Dropped `DIFFICULTY_LABELS` / `DIFFICULTY_NAMES`** from `motes.ts` — exported, read by nothing.
+  The UI carries its own copies, correctly: `web/` imports nothing from `src/`, the same boundary
+  that makes the types mirrored. What the parser owns is the *contract* (a difficulty is 0–4 or
+  null), not how it is spelled on screen.
+  - **This is the second time an exported constant table went unread** — `SHIELD_ELEMENTS` was the
+    first. Worth naming as a pattern: a table gets written while designing a feature, the feature
+    ends up needing only the function beside it, and nothing ever fails. **`noUnusedLocals` does
+    not catch this**, because `export` counts as a use. Until there is a tool for it, unread
+    exports are a thing to look for by hand when auditing, not something the build will report.
+- **Comment drift, all from the window widening**: four sites still said the grid covered the last
+  100 loots after it moved to 250 (`src/types.ts` ×2, `web/src/types.ts`, `engine.ts`), and the
+  recent-list comment still said five rows after it became eight.
+- **`D_LABELS`, `D_NAMES` and `heat()` were being rebuilt on every render** of the stats panel and
+  closed over nothing. Hoisted to module scope. The rationale comment above them had also drifted
+  onto the wrong subject — it described the merged table, so it moved to the table.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

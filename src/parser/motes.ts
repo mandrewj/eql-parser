@@ -35,10 +35,12 @@ export const moteLabel = (tier: MoteTier): string => tier.charAt(0).toUpperCase(
 /** Zone difficulty, read off the suffix the game appends to instanced zone names —
  *  `Nagafen's Lair 2 (Adaptive)`. A zone with no suffix is the normal, un-named version.
  *  Verified against every zone line in a real log: those four words are the only suffixes
- *  that appear. */
-export const DIFFICULTY_LABELS = ["D0", "D1", "D2", "D3", "D4"] as const;
-export const DIFFICULTY_NAMES = ["normal", "Awakened", "Adaptive", "Fused", "Refined"] as const;
-
+ *  that appear.
+ *
+ *  The D0–D4 labels and their long names live in the UI, not here: they are presentation, and
+ *  `web/` deliberately imports nothing from `src/` (the same reason the types are mirrored).
+ *  What this module owns is the contract those labels render — a difficulty is 0–4, or null.
+ */
 const SUFFIX_TO_DIFFICULTY: Record<string, number> = {
   awakened: 1,
   adaptive: 2,

@@ -391,9 +391,9 @@ export interface MoteLoot {
 
 export interface MoteStats {
   tiers: MoteTierStat[];
-  /** Counts over the last 100 loots: `grid[tier][difficulty]`, difficulty 0–4. */
+  /** Counts over the last 250 loots: `grid[tier][difficulty]`, difficulty 0–4. */
   grid: number[][];
-  /** Column totals, and how many of the 100 had no known zone (before the first zone line). */
+  /** Column totals, and how many of the 250 had no known zone (before the first zone line). */
   perDifficulty: number[];
   unknownZone: number;
   windowSize: number; // how many loots the grid actually covers (≤ 250)

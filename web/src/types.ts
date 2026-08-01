@@ -181,7 +181,7 @@ export interface MoteLoot {
 
 export interface MoteStats {
   tiers: MoteTierStat[];
-  grid: number[][]; // [tier][difficulty] over the last 100 loots
+  grid: number[][]; // [tier][difficulty] over the last 250 loots
   perDifficulty: number[];
   unknownZone: number;
   windowSize: number;

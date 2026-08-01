@@ -5,6 +5,10 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
+    // Both projects already pass these; on is free, and it is the class of rot that
+    // actually accumulates here — a helper outliving its caller during a UI rewrite.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

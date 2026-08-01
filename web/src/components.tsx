@@ -454,6 +454,19 @@ const hhmm = (sec: number) => {
  *  scarce resource here, and these are all things you consult occasionally rather than watch.
  *  As tabs the closed state is a single row, and only the selected panel is ever mounted.
  *  Clicking the open tab closes it, so "all closed" stays reachable in one click. */
+/** Difficulty labels and their long names. Presentation only, so they live here rather than in
+ *  `src/parser/motes.ts` — `web/` imports nothing from `src/`, the same boundary that makes the
+ *  types mirrored. What the parser owns is the contract: a difficulty is 0–4, or null. */
+const D_LABELS = ["D0", "D1", "D2", "D3", "D4"];
+const D_NAMES = ["normal", "Awakened", "Adaptive", "Fused", "Refined"];
+
+/** Background for one difficulty cell. Each row is shaded against **its own** maximum, not the
+ *  table's: the question a row asks is "where does this tier come from", and a shared scale would
+ *  flatten every rare tier into one pale line — Major has nine drops against Minor's hundred and
+ *  would simply disappear. Module scope because it closes over nothing. */
+const heat = (v: number, rowMax: number): string | undefined =>
+  v === 0 || rowMax === 0 ? undefined : `rgba(57, 135, 229, ${(0.1 + 0.5 * (v / rowMax)).toFixed(3)})`;
+
 /** Keeps a render failure inside the panel that caused it.
  *
  *  The snapshot crosses a process boundary, so the shape the UI expects and the shape it gets can
@@ -608,17 +621,9 @@ export function StatTabs({
       ),
     },
   ];
-  // One row per tier: what it last did on the left, where it comes from on the right. They were
+  // One row per tier: what it last did on the left, where it comes from on the right. This was
   // two stacked blocks sharing a first column, which left the top one mostly empty space and
   // made the reader match tier names across a gap to compare them.
-  const D_LABELS = ["D0", "D1", "D2", "D3", "D4"];
-  const D_NAMES = ["normal", "Awakened", "Adaptive", "Fused", "Refined"];
-  /** Each row is shaded against **its own** maximum, not the table's. The question a row asks is
-   *  "where does this tier come from", and a shared scale would flatten every rare tier into one
-   *  pale line — Major has nine drops against Minor's hundred and would simply disappear. */
-  const heat = (v: number, rowMax: number) =>
-    v === 0 || rowMax === 0 ? undefined : `rgba(57, 135, 229, ${(0.1 + 0.5 * (v / rowMax)).toFixed(3)})`;
-
   if (motes.tiers.length > 0) {
     tabs.push({
       key: "motes",
@@ -660,7 +665,7 @@ export function StatTabs({
                   {d}
                 </span>
               ))}
-              <span className="mote-num mote-tot" title={`Every difficulty, over the same window`}>
+              <span className="mote-num mote-tot" title="Every difficulty, over the same window">
                 all
               </span>
             </div>

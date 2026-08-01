@@ -365,7 +365,7 @@ export class Engine {
   private readonly aaAnchors: Anchor[] = [];
   private zone: { name: string; sinceMs: number } | null = null;
   // Mote drops. Two windows, because the two readings want different ones: the grid wants the
-  // last 100 loots whatever their tier, and each tier's gap wants that tier's own last 10 — a
+  // last 250 loots whatever their tier, and each tier's gap wants that tier's own last 10 — a
   // rare tier would otherwise fall out of a shared window entirely and never show a rate.
   private readonly moteRecent: Array<{
     tier: MoteTier;
@@ -713,7 +713,7 @@ export class Engine {
       perDifficulty[m.difficulty]! += 1;
     }
     // Newest first, and off the same buffer the grid uses — a separate log would be a second
-    // thing to keep in step for five rows.
+    // thing to keep in step for a handful of rows.
     const recent = this.moteRecent
       .slice(-Engine.MOTE_RECENT)
       .reverse()
