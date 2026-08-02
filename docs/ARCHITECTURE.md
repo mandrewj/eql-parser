@@ -122,9 +122,25 @@ difficulty) and the Plane of Sky pair below.
   - **It is tied to the selected log by character and server, and by nothing else.** The game
     names the pair `eqlog_<Char>_<server>.txt` and `<Char>_<server>-Inventory.txt` from the same
     two words, so the export is *derived* from whichever log the picker has active — never
-    configured, never assumed. Change character and the whole tab follows. Two locations are
-    tried, first existing wins: one directory up from `logs/` (where the game writes it), then
-    the log's own folder (where the pair end up if `EQL_LOG_DIR` points at a copy of both).
+    configured, never assumed. Change character and the whole tab follows.
+  - **The location is relative to that log — no absolute path, no install root, no platform
+    branch.** The install sits somewhere different on every machine and somewhere very different
+    on Windows, so the only durable landmark is the log the user already chose:
+
+    ```
+    <install>/logs/eqlog_<Char>_<server>.txt   ← given
+    <install>/<Char>_<server>-Inventory.txt    ← one level up
+    ```
+
+    `dirname` twice is the whole rule — once to the logs folder, once to the directory that
+    *holds* it — so nothing depends on that folder being called `logs`, on how deep the install
+    is, or on which OS it is. `path.join` supplies the host's separator. A second candidate, the
+    log's own folder, covers `EQL_LOG_DIR` pointing at a directory holding a copied pair with no
+    `logs/` level to climb out of.
+    - The derivation is **pure and IO-free** (`inventoryCandidates`), split from the existence
+      check, precisely so the Windows layout can be *tested* from a Mac by passing `path.win32`
+      rather than asserted in a comment. (Discovering the logs folder in the first place is the
+      one genuinely platform-branched thing, and it lives in `config.ts`.)
   - **A missing export still reports its path**, because "not written yet" is the normal starting
     state and the panel has to name the file it is waiting for. `inventoryMs` is the field that
     says whether it was actually read; `inventoryPath` says which file is meant either way.

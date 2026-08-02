@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { matchSkyItem, normalizeItemName, skyItemNames } from "./sky.js";
 import { SKY_CLASSES } from "./sky-catalogue.js";
-import { readInventory, inventoryPathFor, isUnexportedStorage } from "./inventory.js";
+import { readInventory, inventoryPathFor, inventoryCandidates, isUnexportedStorage } from "./inventory.js";
 import { parseLogFileName } from "../config.js";
 import { parseLine } from "./parser.js";
 
@@ -119,8 +119,55 @@ test("inventory — the export is derived from the selected log's character and 
   }
 });
 
+/**
+ * The install root differs on every machine, so the export is located **relative to the open
+ * log** and nothing else: up out of the logs folder, whatever that folder is called and however
+ * deep it sits. These run the real derivation against `path.win32` and `path.posix`, so the
+ * Windows layout is checked rather than assumed from a Mac.
+ */
+test("inventory — the Windows install layout resolves with backslashes", () => {
+  const log = "C:\\Users\\Public\\Daybreak Game Company\\Installed Games\\EverQuest Legends\\logs\\eqlog_Sanluen_freeport.txt";
+  assert.deepEqual(inventoryCandidates(log, path.win32), [
+    "C:\\Users\\Public\\Daybreak Game Company\\Installed Games\\EverQuest Legends\\Sanluen_freeport-Inventory.txt",
+    "C:\\Users\\Public\\Daybreak Game Company\\Installed Games\\EverQuest Legends\\logs\\Sanluen_freeport-Inventory.txt",
+  ]);
+});
+
+test("inventory — the macOS Wine-bottle layout resolves with forward slashes", () => {
+  const log =
+    "/Users/x/Library/Application Support/osxEQL/prefix/drive_c/users/Public/Daybreak Game Company/Installed Games/EverQuest Legends/logs/eqlog_Sanluen_freeport.txt";
+  assert.equal(
+    inventoryCandidates(log, path.posix)[0],
+    "/Users/x/Library/Application Support/osxEQL/prefix/drive_c/users/Public/Daybreak Game Company/Installed Games/EverQuest Legends/Sanluen_freeport-Inventory.txt",
+  );
+});
+
+/** Nothing keys off the folder being called `logs`, or off how deep the install sits — the rule
+ *  is "the directory that holds the log's directory", which is true of any layout. */
+test("inventory — the logs folder need not be named `logs`, at any depth", () => {
+  assert.equal(
+    inventoryCandidates("/srv/a/b/c/whatever/eqlog_Tester_erollisi.txt", path.posix)[0],
+    "/srv/a/b/c/Tester_erollisi-Inventory.txt",
+  );
+  assert.equal(
+    inventoryCandidates("D:\\games\\eql\\Logs\\eqlog_Tester_erollisi.txt", path.win32)[0],
+    "D:\\games\\eql\\Tester_erollisi-Inventory.txt",
+  );
+});
+
+/** Relative, so a relative log path stays relative rather than being resolved against cwd. */
+test("inventory — a relative log path yields a relative export path", () => {
+  assert.equal(inventoryCandidates("logs/eqlog_Tester_erollisi.txt", path.posix)[0], "Tester_erollisi-Inventory.txt");
+});
+
+test("inventory — the second candidate is the log's own folder, for a copied pair", () => {
+  const [, beside] = inventoryCandidates("/copies/eqlog_Tester_erollisi.txt", path.posix);
+  assert.equal(beside, "/copies/Tester_erollisi-Inventory.txt");
+});
+
 test("inventory — a file that is not an eqlog names no export", () => {
   assert.equal(inventoryPathFor("/games/EverQuest Legends/logs/dbg.txt"), null);
+  assert.deepEqual(inventoryCandidates("/games/EverQuest Legends/logs/dbg.txt"), []);
 });
 
 /** The export path is built from `config.ts`'s reading of the log name rather than a second

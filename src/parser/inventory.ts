@@ -88,31 +88,59 @@ export function isUnexportedStorage(storedIn: string | undefined): boolean {
   return storedIn !== undefined && UNEXPORTED_STORAGE.has(storedIn.trim().toLowerCase());
 }
 
+/** The slice of `node:path` this needs. Injectable so the Windows layout can be *tested* from
+ *  any host rather than asserted — see the `path.win32` cases in `sky.test.ts`. */
+type PathApi = Pick<typeof path, "basename" | "dirname" | "join">;
+
 /**
- * Where the export for a given log lives.
+ * Where the export for a given log could be, most likely first.
+ *
+ * **Everything here is relative to the log that is open — no absolute path, no install root, no
+ * platform branch.** The install lives somewhere different on every machine (and somewhere very
+ * different on Windows), so the only durable landmark is the log file the user already chose.
+ * From it:
+ *
+ *     <install>/logs/eqlog_<Char>_<server>.txt     ← what we are given
+ *     <install>/<Char>_<server>-Inventory.txt      ← one level up, where the game writes it
+ *
+ * `dirname` twice is the whole trick: once to the logs folder, once to the directory that
+ * *holds* the logs folder. It does not matter what that directory is called or how deep it sits,
+ * so a Wine bottle on macOS, `C:\Users\Public\...` on Windows and a copied folder on a spare
+ * machine all resolve the same way. `path.join` supplies the right separator for the host.
+ *
+ * Two candidates, first existing wins:
+ *   1. the directory holding `logs/` — the install layout, where the game actually writes it;
+ *   2. the log's own directory, for someone who pointed `EQL_LOG_DIR` at a folder they copied
+ *      both files into, where there is no `logs/` level to climb out of.
+ *
+ * Pure and IO-free, so the resolution can be checked for a platform you are not running on.
+ */
+export function inventoryCandidates(logPath: string, p: PathApi = path): string[] {
+  // `config.ts` already owns how a log file name is read; a second copy of that regex here is
+  // one more place to forget if the game ever renames them.
+  const { character, server } = parseLogFileName(p.basename(logPath));
+  if (!character || !server) return [];
+  const fileName = `${character}_${server}-Inventory.txt`;
+  const logDir = p.dirname(logPath);
+  return [p.join(p.dirname(logDir), fileName), p.join(logDir, fileName)];
+}
+
+/**
+ * The export for a given log: the first candidate that exists, or the most likely one when
+ * neither does.
  *
  * **The two files are tied together by character and server, and by nothing else** — the game
  * names them `eqlog_<Char>_<server>.txt` and `<Char>_<server>-Inventory.txt` from the same pair.
- * So the export is derived from whichever log is *selected*, never configured and never assumed:
- * change the log picker to another character and this follows, which is what keeps the tracker
- * honest for anyone who is not the person it was written for.
+ * So the export follows whichever log is *selected*, never configured and never assumed: change
+ * the log picker to another character and this follows, which is what keeps the tracker honest
+ * for anyone who is not the person it was written for.
  *
- * Two places are tried, first existing wins:
- *   1. one directory up from `logs/` — the install layout, where the game actually writes it;
- *   2. the log's own directory, which is where the pair end up if someone points `EQL_LOG_DIR`
- *      at a folder they copied both files into.
- *
- * When neither exists the first is still returned, because "not written yet" is a normal state
- * and the UI has to be able to *name* the file it is waiting for.
+ * A path is returned even when nothing is there, because "not written yet" is a normal state and
+ * the UI has to be able to *name* the file it is waiting for.
  */
 export function inventoryPathFor(logPath: string): string | null {
-  // `config.ts` already owns how a log file name is read; a second copy of that regex here is
-  // one more place to forget if the game ever renames them.
-  const { character, server } = parseLogFileName(path.basename(logPath));
-  if (!character || !server) return null;
-  const fileName = `${character}_${server}-Inventory.txt`;
-  const logDir = path.dirname(logPath);
-  const candidates = [path.join(path.dirname(logDir), fileName), path.join(logDir, fileName)];
+  const candidates = inventoryCandidates(logPath);
+  if (!candidates.length) return null;
   for (const c of candidates) {
     try {
       if (fs.statSync(c).isFile()) return c;

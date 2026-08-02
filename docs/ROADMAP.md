@@ -860,6 +860,20 @@ optimisations were **rejected** for costing more in complexity than they save.
   whether there are enough to go round, because you genuinely can turn *this* one in now. The
   aggregate shortfall is what the rune group is for.
 
+## Post-v1 — Proving the export path is relative, not just believing it  ✅
+- The export was already located relative to the open log rather than from any absolute root, but
+  the claim rested on a comment. The path derivation is now **pure and IO-free**
+  (`inventoryCandidates`), split from the existence check, so it can be run against `path.win32`
+  from a Mac — the Windows layout is checked rather than asserted.
+- **The rule is `dirname` twice**: once to the logs folder, once to the directory that holds it.
+  Nothing depends on that folder being called `logs`, on how deep the install sits, or on the OS;
+  `path.join` supplies the host's separator. Verified against four layouts — the Windows install
+  under `C:\Users\Public\…`, the macOS Wine bottle, a Linux `~/.wine` bottle, and a custom
+  `EQL_LOG_DIR` — plus a relative log path, which stays relative rather than resolving against
+  cwd.
+- Discovering the logs folder in the first place stays the one genuinely platform-branched thing,
+  and it stays in `config.ts` where it already was.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now
