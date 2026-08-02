@@ -874,6 +874,30 @@ optimisations were **rejected** for costing more in complexity than they save.
 - Discovering the logs folder in the first place stays the one genuinely platform-branched thing,
   and it stays in `config.ts` where it already was.
 
+## Post-v1 — A folder picker for the logs directory  ✅
+- **Browse… beside the path box**, so the logs folder can be chosen instead of typed. Typing
+  survives alongside it: a path pasted from somewhere else is quicker than navigating to it.
+- **It has to be server-side, and that is not a shortcut.** The browser's own choosers cannot
+  supply an absolute path — `showDirectoryPicker()` returns an opaque handle and
+  `<input webkitdirectory>` returns paths relative to the folder you picked. Both withhold it
+  deliberately, and it is the only thing the backend can act on. So `/api/browse` lists
+  directories and the UI renders them; the server already binds to 127.0.0.1 and exists to read
+  this machine's disk.
+- **Every row carries its log count**, which is what makes the picker quick rather than merely
+  possible — and it earned that immediately: this install's folder is called `Logs`, not `logs`,
+  so the badge is a better signal than the name. One `readdir` per subdirectory, ~47ms on the
+  6,156-entry install folder, capped at 100 subdirectories so the cost is bounded and not just
+  small in practice.
+- Opens where the app is already pointed; shortcuts for the platform's expected install and home,
+  offered only when they exist. Symlinked directories are followed — `Dirent.isDirectory()` is
+  false for them and a Wine bottle is often laid out that way.
+- **Two things the screenshot caught.** `direction: rtl` — the usual one-liner for truncating a
+  path from the left — reorders the leading `/` of an absolute path to the far end, so
+  `/Users/andrew/…` rendered as `…/andrew/…/` with a slash that is not in the path; replaced with
+  an explicit head/tail split where only the head shrinks. And the panel could not be
+  photographed at all until the list was split from the fetching (`FolderList` / `FolderPicker`),
+  because the live app holds an SSE connection open and headless Chrome never settles.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

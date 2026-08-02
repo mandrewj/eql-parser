@@ -10,6 +10,7 @@ import type { App } from "../app.js";
 import type { ParseMode } from "../types.js";
 import { EMBEDDED_WEB } from "./web-assets.js";
 import { SKY_CLASSES } from "../parser/sky-catalogue.js";
+import { browseDir } from "./browse.js";
 
 export interface Broadcaster {
   send(event: unknown): void;
@@ -178,6 +179,15 @@ export function startServer(config: AppConfig, app: App): Promise<ServerHandle> 
 
     if (pathname === "/api/config" && req.method === "GET") {
       sendJson(res, 200, config);
+      return;
+    }
+
+    // Directory listing for the logs-folder picker. A browser cannot supply an absolute path
+    // from its own folder chooser, so the browsing happens server-side and the UI renders it.
+    // `dir` omitted means "open where the app is already pointed".
+    if (pathname === "/api/browse" && req.method === "GET") {
+      const dir = url.searchParams.get("dir");
+      sendJson(res, 200, browseDir(dir, app.logs().logDir));
       return;
     }
 

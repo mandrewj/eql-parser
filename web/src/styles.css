@@ -736,3 +736,46 @@ body { margin: 0; }
 .skyrow.need-done .skycount { color: var(--muted); font-size: 0.66rem; }
 /* The island header's second figure: how many of its rows are already answered. */
 .skyisldone { color: var(--player); }
+
+/* --- Logs-folder picker ------------------------------------------------------
+   Sits inside the log bar rather than floating over the app: it is a setting, not an alert,
+   and the bar is already the place settings live. Full-width row of the bar's grid. */
+.pickwrap {
+  grid-column: 1 / -1; margin-top: 0.4rem;
+  border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.pickhead {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.35rem 0.45rem; border-bottom: 1px solid var(--hair); background: var(--panel2);
+}
+/* The path is the one thing that must stay readable. The last segment answers "where am I" and
+   never shrinks; only the head before it does. (`direction: rtl` is the usual one-liner for this
+   and reorders the leading slash of an absolute path — see PathLabel.) */
+.pickpath { flex: 1; min-width: 0; display: flex; font-size: 0.72rem; color: var(--text); white-space: nowrap; }
+.pickpath-head { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.pickpath-tail { flex: none; font-weight: 600; }
+.btn.primary { background: var(--player); border-color: var(--player); color: #08120c; font-weight: 700; }
+.btn.on { background: var(--panel2); border-color: var(--border-strong); color: var(--text); }
+.pickshort { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.35rem 0.45rem 0; }
+
+.picklist { max-height: 15rem; overflow-y: auto; padding: 0.25rem; }
+.pickrow {
+  display: flex; align-items: center; gap: 0.4rem; width: 100%;
+  padding: 0.16rem 0.35rem; border: 0; border-radius: 4px;
+  background: transparent; color: var(--muted); font: inherit; font-size: 0.75rem;
+  text-align: left; cursor: pointer;
+}
+.pickrow:hover { background: var(--panel2); color: var(--text); }
+/* A folder holding logs is the thing being looked for, so it is the only one that stands out. */
+.pickrow.has { color: var(--text); }
+.pickrow.has .pickname { font-weight: 600; }
+.pickrow.up { color: var(--muted); }
+.pickicon { width: 1rem; text-align: center; opacity: 0.8; }
+.pickname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickn {
+  margin-left: auto; padding: 0 0.25rem; border-radius: 3px;
+  background: var(--player); color: #08120c; font-size: 0.62rem; font-weight: 700;
+}
+.btn .pickn { margin-left: 0.35rem; }
+.pickerr { padding: 0.4rem 0.5rem; font-size: 0.72rem; color: var(--muted); }

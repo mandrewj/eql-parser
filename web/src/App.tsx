@@ -11,6 +11,7 @@ import {
   StanceOverview,
 } from "./components";
 import { SkyPanel } from "./sky";
+import { FolderPicker } from "./FolderPicker";
 import { metricMeta, rankedCombatants } from "./filters";
 import type { Fight, Filters, FightSummary } from "./types";
 
@@ -43,6 +44,7 @@ export default function App() {
   const [dirInput, setDirInput] = useState("");
   const [dirError, setDirError] = useState<string | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (logs?.logDir) setDirInput((prev) => (prev === "" ? logs.logDir! : prev));
@@ -168,6 +170,13 @@ export default function App() {
         <button className="btn" onClick={() => void submitDir()}>
           Load
         </button>
+        <button
+          className={pickerOpen ? "btn on" : "btn"}
+          onClick={() => setPickerOpen((v) => !v)}
+          title="Browse for the folder instead of typing it"
+        >
+          Browse…
+        </button>
         {dirError && <span className="err">{dirError}</span>}
         <span className="flabel logbar-log">Log</span>
         <select value={logs?.activeLogPath ?? ""} onChange={(e) => void selectLog(e.target.value)} title="Active log">
@@ -178,6 +187,18 @@ export default function App() {
             </option>
           ))}
         </select>
+        {pickerOpen && (
+          <FolderPicker
+            onClose={() => setPickerOpen(false)}
+            onPick={(dir) => {
+              setPickerOpen(false);
+              // Fill the box too, so the chosen path is visible and editable afterwards.
+              setDirInput(dir);
+              setDirError(null);
+              void setLogDir(dir).then((r) => !r.ok && setDirError(r.error ?? "failed"));
+            }}
+          />
+        )}
       </div>
       )}
 

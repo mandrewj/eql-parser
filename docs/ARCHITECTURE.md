@@ -439,6 +439,13 @@ difficulty) and the Plane of Sky pair below.
   - `GET  /api/fights` → fight summaries (history).
   - `GET  /api/fights/:id` → full combatant + ability + stance detail for one fight.
   - `GET  /api/config` / `POST /api/config` → inactivityTimeout, etc.
+  - `GET  /api/browse?dir=` → directories inside `dir`, each with its `eqlog_*.txt` count, plus the
+    parent and the platform's shortcuts. Omit `dir` to open wherever the app is already pointed.
+    **The browser cannot do this itself**: `showDirectoryPicker()` returns an opaque handle and
+    `<input webkitdirectory>` returns paths relative to the chosen folder — both withhold the
+    absolute path on purpose, and the absolute path is the only thing the backend can act on. So
+    the listing happens here. The server already binds to 127.0.0.1 and exists to read this
+    machine's disk, so this adds no reach it did not have.
   - `GET  /api/sky-quests` → the Plane of Sky catalogue, `Cache-Control: max-age=3600`. **The one
     thing that is fetched rather than pushed**: 28KB of data that cannot change while the process
     runs, where folding it into the snapshot would add a third to every push and say nothing new.
@@ -550,6 +557,26 @@ interface MetricStat {                // every metric group has this one shape
     real spell names (`Denon's Disruptive Discord V`) are long enough that truncating them to fit more
     would cost the rank numeral that distinguishes them.
 - **Log picker** — dropdown of detected logs (from `/api/logs`) to choose which one is parsed live; remembers last choice.
+- **Folder picker** ([`FolderPicker.tsx`](../web/src/FolderPicker.tsx)) — a **Browse…** button beside
+  the path box, opening a server-backed directory browser rather than a native dialog (see
+  `/api/browse` for why a browser-side chooser cannot work here).
+  - **Every row carries its log count**, which is the whole point: you are hunting for the one
+    folder holding `eqlog_*.txt`, and being *told* which one beats recognising the name. It earns
+    its keep immediately — this install's folder is called `Logs`, not `logs`. Only folders with
+    logs are given weight, and the confirm button turns primary only when the current folder has
+    some. Costs one `readdir` per subdirectory, ~47ms on the 6,156-entry install folder, capped at
+    100 subdirectories so it stays bounded rather than merely fast in practice.
+  - **It opens where the app is already pointed**, so the common case is confirming, not hunting;
+    shortcuts cover the platform's expected install and home, and are only offered when they exist.
+  - Symlinked directories are followed, because `Dirent.isDirectory()` is false for them and a
+    Wine bottle is often laid out that way — skipping them would hide the install.
+  - The path bar truncates in the **middle**: the last segment answers "where am I" and never
+    shrinks. `direction: rtl` is the usual one-line trick for this and is wrong on paths — it
+    treats the leading `/` as neutral and reorders it to the far end, rendering `/Users/…` as
+    `…/` with a slash that is not in the path.
+  - The list is split from the fetching (`FolderList` / `FolderPicker`) so it can be rendered from
+    a fixed listing — the live app holds an SSE connection open, and headless Chrome never reaches
+    a settled state to photograph.
 - **Live pane** — the My DPS panel, then the active encounters, then the last five, all auto-updating.
   Deliberately **unfiltered**: the per-NPC encounter tables replaced the single filtered fight meter this
   pane originally held, and a 540px column has no room for chips that only ever hid rows. The
