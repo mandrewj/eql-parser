@@ -966,6 +966,26 @@ saying so is the finding: the numbers are recorded so the next pass does not re-
     `FolderList` is the seam that makes the picker screenshot-able at all. Those are readers, just
     not production ones.
 
+## Post-v1 — A turn-in takes its parts back off the count  ✅
+- **The gap this closes**: the count only ever went up. Acquisitions came from the export plus the
+  log; nothing represented an item *leaving*. For bag items the next export corrected it, but the
+  currency tab and the Dragon Hoard are not in the export, so a wind rune spent on a turn-in stayed
+  counted for good — and runes are the tracker's most-used figure.
+- `You have been given: <reward>` already identified the finished quest; `questConsumedFor` now maps
+  that reward to the rune and components the turn-in consumed, and `buildSkyStats` subtracts them.
+- **Consumption obeys the same cut-off as acquisition**, which is the whole correctness argument:
+  - *after* the export → subtract (the export counted something since handed in);
+  - *before* the export → do **not** (the export already shows the loss; subtracting would count it
+    twice and drive the count negative);
+  - *from an unexported storage* → always subtract, because the acquisition bypassed the cut-off
+    too. Six engine tests, one per branch.
+- Deduplicated by **quest**, not reward — Beastlord's Test of Claw hands over two items and
+  consumes its parts once. Counts clamp at zero, for a turn-in witnessed on an item whose pickup
+  predates the log.
+- **Changes nothing today, and that is the honest result**: a full replay finds three
+  `You have been given` lines in the log and none is a Sky reward, so no count moves until the
+  first real turn-in. Verified rather than assumed.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now
@@ -984,7 +1004,12 @@ saying so is the finding: the numbers are recorded so the next pass does not re-
   classified as an NPC at all, and where `perTarget[ranshi][self]` gets 19k from. Worth fixing —
   it is the largest single misattribution left in the log.
 
-### Known limitation — spent items from unexported storages are never released
+### ~~Known limitation — spent items from unexported storages are never released~~ — **fixed**
+Turn-ins now deduct what they consumed (see the Post-v1 entry below). What remains is only a
+turn-in made while the app was not running.
+
+<details><summary>The original entry, kept for the reasoning</summary>
+
 - The currency tab and the Dragon Hoard have no section in the inventory export, so pickups routed
   there are exempt from the export's cut-off and counted purely from the log. That is what makes
   them visible at all — but it also means **nothing ever removes them**. A wind rune spent on a
@@ -998,6 +1023,7 @@ saying so is the finding: the numbers are recorded so the next pass does not re-
   the app was watching.
 - Documented in the README rather than left to be discovered, since runes are exactly the item this
   bites and the tracker's rune counts are its most-used figure.
+</details>
 
 ### Charm/pet work that is still open
 - **The two unimplemented charm emotes** — `<mob> blinks.` (Druid/Shaman) and `<mob> moans.`

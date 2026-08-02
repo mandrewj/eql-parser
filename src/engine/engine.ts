@@ -14,7 +14,7 @@ import { CHARM_EMOTES, type ClassCode } from "../parser/spells.js";
 import { MOTE_TIERS, moteLabel, moteTier, zoneDifficulty, type MoteTier } from "../parser/motes.js";
 // The inventory's keys are already normalised, and normalising twice is a no-op, so the same
 // lookup serves both the export and the log.
-import { matchSkyItem } from "../parser/sky.js";
+import { matchSkyItem, questConsumedFor } from "../parser/sky.js";
 import { isUnexportedStorage, type Inventory } from "../parser/inventory.js";
 import type {
   AbilityBreakdown,
@@ -398,6 +398,14 @@ export class Engine {
   /** Turn-ins the log witnessed, chronological. Never filtered by the export's cut-off: this is
    *  a dated *event*, not a claim about what is currently held. */
   private readonly skyCompleted: SkyCompletion[] = [];
+  /** Quest → when its turn-in consumed its parts. A turn-in takes the rune and every component
+   *  with it, and nothing else in the log says so, so this is the only record that they left.
+   *  Keyed by quest rather than by reward because Beastlord's Test of Claw hands over two items
+   *  and consumes its parts once. */
+  private readonly skyConsumed = new Map<string, { tsMs: number; parts: string[] }>();
+  /** Sky items seen arriving in a storage the export cannot see. Their acquisitions bypass the
+   *  export cut-off, so their *consumptions* must too — see `buildSkyStats`. */
+  private readonly skyUnexported = new Set<string>();
 
   // Progression. `milestones` holds only the rare, markable kinds (they end up as glyphs
   // on the chart's timeline); skill-ups and xp ticks are far too frequent to mark, so they
@@ -467,7 +475,10 @@ export class Engine {
       if (tier) this.recordMote(tier, ev.from, ev.tsMs);
       // A Sky item is never also a mote, so this is an independent test rather than an else.
       const sky = matchSkyItem(ev.item);
-      if (sky) this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: ev.from, storedIn: ev.storedIn });
+      if (sky) {
+        this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: ev.from, storedIn: ev.storedIn });
+        if (isUnexportedStorage(ev.storedIn)) this.skyUnexported.add(sky.name);
+      }
       return;
     }
     if (ev.type === "given") {
@@ -477,7 +488,15 @@ export class Engine {
       const sky = matchSkyItem(ev.item);
       if (sky) {
         this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: "quest reward" });
-        if (sky.role === "reward") this.skyCompleted.push({ reward: sky.name, tsMs: ev.tsMs });
+        if (sky.role === "reward") {
+          this.skyCompleted.push({ reward: sky.name, tsMs: ev.tsMs });
+          const consumed = questConsumedFor(sky.name);
+          // First completion wins: the rewards are lore and no-drop, so a quest finishes once,
+          // and a two-reward quest must not have its parts deducted twice.
+          if (consumed && !this.skyConsumed.has(consumed.quest)) {
+            this.skyConsumed.set(consumed.quest, { tsMs: ev.tsMs, parts: consumed.parts });
+          }
+        }
       }
       return;
     }
@@ -815,11 +834,33 @@ export class Engine {
     }
     recentLoot.reverse();
 
-    const held: SkyHolding[] = [...counts].map(([name, c]) => ({
-      name,
-      count: c.count,
-      source: c.fromInventory && c.fromLoot ? "both" : c.fromInventory ? "inventory" : "loot",
-    }));
+    // What turn-ins took back out. Acquisitions and consumptions have to obey the *same*
+    // cut-off, or the two halves disagree and the count drifts:
+    //
+    //   - after the export → subtract. The export counted an item that has since been handed in.
+    //   - before the export → the export already reflects the loss (the item is simply not in
+    //     it), so subtracting again would double-count the loss.
+    //   - …unless the item lives somewhere the export cannot see, where the acquisition bypassed
+    //     the cut-off too. Nothing else will ever remove those, which is exactly how wind runes
+    //     spent on a turn-in stayed on the count forever.
+    for (const { tsMs, parts } of this.skyConsumed.values()) {
+      for (const part of parts) {
+        if (tsMs <= since && !this.skyUnexported.has(part)) continue;
+        const entry = counts.get(part);
+        if (entry) entry.count -= 1;
+      }
+    }
+
+    const held: SkyHolding[] = [...counts]
+      // A part consumed down to nothing is not held. Clamped rather than trusted: a turn-in the
+      // log saw for an item it never saw arrive (looted before this log begins) would otherwise
+      // push the count negative.
+      .filter(([, c]) => c.count > 0)
+      .map(([name, c]) => ({
+        name,
+        count: c.count,
+        source: c.fromInventory && c.fromLoot ? "both" : c.fromInventory ? "inventory" : "loot",
+      }));
 
     return {
       // The path is what the *active log* implies, so it is reported whether or not the file

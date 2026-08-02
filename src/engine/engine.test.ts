@@ -1640,3 +1640,102 @@ test("sky: with no log selected there is no export to name", () => {
   engine.setInventory(null, null);
   assert.equal(engine.snapshot().sky.inventoryPath, null);
 });
+
+// --- what a turn-in takes back out -------------------------------------------
+
+const GIVEN = (t: string, item: string) => L(t, `You have been given: ${item}`);
+const EXPORT = (t: string, held: Record<string, number> = {}) =>
+  baseline(Date.parse(`Sat Jul 18 2026 ${t} GMT-0400`), held);
+const countOf = (engine: Engine, name: string) =>
+  engine.snapshot().sky.held.find((h) => h.name === name)?.count ?? 0;
+
+/** The case that made rune counts drift upward forever: the currency tab is not in the export,
+ *  so the acquisition bypassed the cut-off and nothing ever removed it again. */
+test("sky: a currency rune spent on a turn-in stops being counted", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  for (const line of [
+    STORED("10:00:00", "Wind Rune Azia", "currency"),
+    STORED("10:05:00", "Storm Sky Opal", "currency"),
+    GIVEN("10:10:00", "Espri"), // Druid Test of Nature: Wind Rune Izah + Storm Sky Opal…
+  ]) {
+    const ev = parseLine(line);
+    assert.ok(ev);
+    engine.handle(ev!);
+  }
+  // …so the Opal it consumed is gone, and the rune it did not want is untouched.
+  assert.equal(countOf(engine, "Storm Sky Opal"), 0);
+  assert.equal(countOf(engine, "Wind Rune Azia"), 1);
+  // The completion itself is still on the record — it is an event, not a holding.
+  assert.equal(engine.snapshot().sky.completed.length, 1);
+});
+
+/** A bag item is corrected by the next export, so subtracting a turn-in that predates the export
+ *  would count the same loss twice. */
+test("sky: a turn-in before the export is not subtracted again — the export already shows it", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  for (const line of [LOOT("10:00:00", "Storm Sky Opal"), GIVEN("10:10:00", "Espri")]) {
+    const ev = parseLine(line);
+    assert.ok(ev);
+    engine.handle(ev!);
+  }
+  // The export is written afterwards and, correctly, no longer lists the Opal.
+  engine.setInventory(EXPORT("11:00:00", {}));
+  assert.equal(countOf(engine, "Storm Sky Opal"), 0);
+
+  // And if the player still had a second one, it survives rather than going negative.
+  engine.setInventory(EXPORT("11:00:00", { "storm sky opal": 1 }));
+  assert.equal(countOf(engine, "Storm Sky Opal"), 1);
+});
+
+test("sky: a turn-in after the export removes what the export had counted", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  engine.setInventory(EXPORT("10:00:00", { "storm sky opal": 1 }));
+  assert.equal(countOf(engine, "Storm Sky Opal"), 1);
+
+  const ev = parseLine(GIVEN("11:00:00", "Espri"));
+  assert.ok(ev);
+  engine.handle(ev!);
+  assert.equal(countOf(engine, "Storm Sky Opal"), 0);
+});
+
+/** Beastlord's Test of Claw hands over a weapon for each hand. Its parts are consumed once. */
+test("sky: a two-reward quest deducts its parts once, not twice", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  for (const line of [
+    STORED("10:00:00", "Sphinx Claw", "currency"),
+    STORED("10:00:30", "Sphinx Claw", "currency"),
+    GIVEN("10:10:00", "Windhowl"),
+    GIVEN("10:10:01", "Spirit Render"),
+  ]) {
+    const ev = parseLine(line);
+    assert.ok(ev);
+    engine.handle(ev!);
+  }
+  assert.equal(countOf(engine, "Sphinx Claw"), 1, "two claws, one turn-in, one left");
+});
+
+/** Only the finishing quest's parts move; a rune wanted by six quests loses one copy, not six. */
+test("sky: one turn-in consumes one copy of a shared rune", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  for (const line of [
+    STORED("10:00:00", "Wind Rune Izah", "currency"),
+    STORED("10:00:30", "Wind Rune Izah", "currency"),
+    STORED("10:01:00", "Wind Rune Izah", "currency"),
+    GIVEN("10:10:00", "Espri"), // Druid Test of Nature wants Wind Rune Izah
+  ]) {
+    const ev = parseLine(line);
+    assert.ok(ev);
+    engine.handle(ev!);
+  }
+  assert.equal(countOf(engine, "Wind Rune Izah"), 2);
+});
+
+test("sky: being handed a non-Sky item consumes nothing", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  for (const line of [STORED("10:00:00", "Wind Rune Azia", "currency"), GIVEN("10:10:00", "Void-Touched Potential")]) {
+    const ev = parseLine(line);
+    assert.ok(ev);
+    engine.handle(ev!);
+  }
+  assert.equal(countOf(engine, "Wind Rune Azia"), 1);
+});

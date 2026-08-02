@@ -146,13 +146,14 @@ things leaving your bags:
 So the export is the correction and the log is the running total. Re-export often enough and the
 two never drift; a run's worth of drift is small, a week's is not.
 
-> **One thing a re-export cannot fix — a known limitation.** Wind runes are routed to the currency
-> tab, and the currency tab does not appear in the export at all; the app knows about those runes
-> only because it watched you loot them. So a rune you have already *spent* on a turn-in stays on
-> the count, and re-exporting does not clear it (there is nothing in the export to contradict).
-> Neither does restarting, since the log is replayed from the beginning. If a rune count looks
-> higher than your bags, that is why — the components that come out of *bags* are corrected
-> normally by a re-export.
+Turn-ins are handled without an export: when the giver hands you the reward, the app knows which
+quest that finished and takes its rune and components back off your count. That matters most for
+wind runes, which live in the currency tab and so are the one thing an export can never correct.
+
+> **The remaining gap** is a turn-in the app did not witness — one you did while it was closed. Its
+> reward will show the quest as complete, but the parts it consumed stay counted until your next
+> export clears them (or forever, for anything from the currency tab or the Dragon Hoard). Running
+> the app while you hand quests in avoids it entirely.
 
 **Two views**, switched at the top:
 

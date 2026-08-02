@@ -64,6 +64,32 @@ export function matchSkyItem(raw: string): SkyItemRef | null {
   return BY_KEY.get(normalizeItemName(raw)) ?? null;
 }
 
+/** What a finished quest consumed, keyed by the reward the giver hands over.
+ *
+ *  A turn-in takes the rune and every component with it, and the log announces only the reward
+ *  (`You have been given: Espri`). Reward names are unique across the catalogue — a test asserts
+ *  it — so the reward alone identifies which quest, and therefore what left the bags.
+ *
+ *  Keyed and valued in **catalogue spelling**, since that is what the holdings are keyed by. */
+const CONSUMED_BY_REWARD = new Map<string, { quest: string; parts: string[] }>();
+
+for (const cls of SKY_CLASSES) {
+  for (const quest of cls.quests) {
+    const parts = [quest.rune, ...quest.items.map((i) => i.name)];
+    // A quest with two rewards (Beastlord's Test of Claw) consumes its parts *once*, so both
+    // rewards point at the same entry and the caller de-duplicates on `quest`.
+    for (const reward of quest.rewards) {
+      CONSUMED_BY_REWARD.set(normalizeItemName(reward), { quest: quest.quest, parts });
+    }
+  }
+}
+
+/** The quest a handed-over reward finishes, and the parts that turn-in consumed. Null when the
+ *  item is not a Sky reward — a real log hands over plenty that has nothing to do with Sky. */
+export function questConsumedFor(reward: string): { quest: string; parts: string[] } | null {
+  return CONSUMED_BY_REWARD.get(normalizeItemName(reward)) ?? null;
+}
+
 /** Every tracked name, catalogue spelling. Used by the tests and by the inventory scan. */
 export function skyItemNames(): SkyItemRef[] {
   return [...BY_KEY.values()];

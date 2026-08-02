@@ -202,9 +202,20 @@ difficulty) and the Plane of Sky pair below.
       them only because the depot had been emptied — which is why the test is "is there a
       section for it", not "is it empty today".) The list lives in
       [`inventory.ts`](../src/parser/inventory.ts).
-    - The honest cost: an item from an unexported storage that is spent on a turn-in stays on the
-      tracker, because no export will ever contradict the log. A false positive there beats the
-      false negative it replaces — the item being invisible from the moment it was looted.
+  - **A turn-in is the other half of the ledger, and obeys the same cut-off.** `You have been
+    given: <reward>` identifies the finished quest, and the catalogue says what that quest
+    consumed, so the parts come back off the count. The rule mirrors acquisition exactly:
+    subtract a consumption **after** the export (the export counted something since handed in);
+    do **not** subtract one from before it (the export already shows the loss — subtracting again
+    would count it twice); but **always** subtract for an item from a storage the export cannot
+    see, because its acquisition bypassed the cut-off too and nothing else would ever remove it.
+    Counts are clamped at zero, since a turn-in can be witnessed for an item whose pickup predates
+    the log.
+    - Deduplicated by **quest**, not reward: Beastlord's Test of Claw hands over a weapon for each
+      hand and consumes its parts once.
+    - What remains uncorrected is a turn-in made while the app was not running. Its reward marks
+      the quest complete, but the parts it consumed are only cleared by the next export — never,
+      for the unexported storages.
 - **Charmed pets are a *window*, not a fact.** The same mob is an enemy before the charm, an
   ally during it, and an enemy again after it breaks, so the engine closes the books at each
   boundary instead of picking a side: on the charm it banks what the mob did and what was
