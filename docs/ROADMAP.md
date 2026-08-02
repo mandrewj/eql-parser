@@ -936,6 +936,36 @@ real gap and one rough edge.
   choice in `joinPath` and the path label picks `\` for a Windows path and `/` otherwise, and
   `encodeURIComponent` round-trips backslashes through the query string.
 
+## Post-v1 — Second audit, over the tracker and the picker  ✅
+Measured before changing anything, as last time. **Nothing here was a performance problem**, and
+saying so is the finding: the numbers are recorded so the next pass does not re-derive them.
+
+| Path | Cost | When |
+|---|---|---|
+| `buildIslands` (island view, now including runes) | 0.082ms | memoised, per `held` change |
+| `readyQuests` (progress box) | 0.006ms | memoised |
+| `doneByClass` (chip badges) | 0.006ms | memoised |
+| `browseDir` on the 6,156-entry install folder | 6.8ms | once per click |
+| `browseDir` on the logs folder | 0.019ms | once per click |
+
+- **Three full passes over the 95 quests per render** (`buildIslands`, `readyQuests`,
+  `doneByClass`) total ~0.09ms and are separately memoised. Merging them into one walk was
+  considered and **rejected**: it would couple three independent views to one shared result to
+  save under a tenth of a millisecond.
+- **The `eqlog_*.txt` naming rule was stated in two places** — `listLogs` and the picker's
+  per-directory count — and is now `isLogFileName` in `config.ts`, beside `parseLogFileName`
+  which already owned the other half of the same rule.
+- **The picker derived the path separator twice**, in the label and in the join, from the same
+  expression. One disagreeing with the other would corrupt navigation on Windows specifically, so
+  it is now stated once in `separatorOf`.
+- **`questParts` was exported and read only inside its own file.** Un-exported. This is the third
+  time this pattern has come up (`SHIELD_ELEMENTS`, `DIFFICULTY_LABELS`), and `noUnusedLocals`
+  still cannot see it because `export` counts as a use — it remains a thing to check by hand.
+  - Judged and **kept**: `inventoryCandidates`, `skyItemNames`, `primaryMob`, `islandOrder`,
+    `RUNE_GROUP` are read by tests asserting invariants over otherwise-private state, and
+    `FolderList` is the seam that makes the picker screenshot-able at all. Those are readers, just
+    not production ones.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

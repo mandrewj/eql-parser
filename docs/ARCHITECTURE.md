@@ -37,6 +37,9 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 ## Backend components
 
 ### Config / log discovery
+- **The log naming rule lives here once**, as `isLogFileName` beside `parseLogFileName`: both
+  `listLogs` and the folder picker's per-directory count ask the same question of a file name, and
+  a second copy would be one more place to miss if the game ever renamed its logs.
 - The default logs directory is the one genuinely **OS-specific** thing in the app; everything
   downstream (the inventory export above all) is derived relative to whichever log is open.
 - **The folder's capitalisation is not assumed.** The game creates it as `Logs`; this project has

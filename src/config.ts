@@ -97,6 +97,13 @@ export function resolveLogDir(): string | null {
   return null;
 }
 
+/** Whether a file name is a character log. The naming rule lives here, once: `listLogs` and the
+ *  folder picker's per-directory count both ask the same question, and two copies of it is one
+ *  more place to miss if the game ever renames its logs. */
+export function isLogFileName(fileName: string): boolean {
+  return /^eqlog_.+\.txt$/i.test(fileName);
+}
+
 /** Parse "eqlog_<Char>_<server>.txt" → character + server. */
 export function parseLogFileName(fileName: string): {
   character: string | null;
@@ -118,7 +125,7 @@ export function listLogs(dir: string): LogFileInfo[] {
 
   const logs: LogFileInfo[] = [];
   for (const fileName of entries) {
-    if (!/^eqlog_.+\.txt$/i.test(fileName)) continue;
+    if (!isLogFileName(fileName)) continue;
     const full = path.join(dir, fileName);
     let stat: fs.Stats;
     try {

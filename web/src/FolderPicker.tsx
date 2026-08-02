@@ -121,6 +121,13 @@ export function FolderList({
   );
 }
 
+/** Which separator a path is built from. The backend decides that, not the browser, so it is
+ *  read off the path itself rather than guessed from the client's platform. Stated once: the
+ *  label and the join both need it, and disagreeing would corrupt one of them. */
+function separatorOf(p: string): string {
+  return p.includes("\\") && !p.includes("/") ? "\\" : "/";
+}
+
 /** The current path, truncated in the middle rather than at either end.
  *
  *  The last segment is the answer to "where am I" and must never be cut; the head is context and
@@ -130,8 +137,7 @@ export function FolderList({
  *  string and letting only the head shrink keeps the characters in the order they were written. */
 function PathLabel({ path }: { path: string | null }) {
   if (!path) return <span className="pickpath">…</span>;
-  const sep = path.includes("\\") && !path.includes("/") ? "\\" : "/";
-  const cut = path.lastIndexOf(sep);
+  const cut = path.lastIndexOf(separatorOf(path));
   const head = cut > 0 ? path.slice(0, cut) : "";
   const tail = cut > 0 ? path.slice(cut) : path;
   return (
@@ -143,10 +149,9 @@ function PathLabel({ path }: { path: string | null }) {
 }
 
 /** Join for display and for the next request. The server resolves properly; this only has to
- *  produce something it can parse, so it follows whichever separator the path already uses
- *  rather than assuming the browser knows what OS the backend is on. */
+ *  produce something it can parse. */
 function joinPath(base: string, name: string): string {
-  const sep = base.includes("\\") && !base.includes("/") ? "\\" : "/";
+  const sep = separatorOf(base);
   return base.endsWith(sep) ? base + name : base + sep + name;
 }
 

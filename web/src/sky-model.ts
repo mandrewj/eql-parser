@@ -30,7 +30,7 @@ export interface QuestProgress {
  *  The rune was once treated as a formality the quest giver would hand over on request; it is
  *  not, it is looted like the rest, and leaving it out declared quests ready that were a rune
  *  short. */
-export function questParts(quest: SkyQuest): string[] {
+function questParts(quest: SkyQuest): string[] {
   return [quest.rune, ...quest.items.map((i) => i.name)];
 }
 

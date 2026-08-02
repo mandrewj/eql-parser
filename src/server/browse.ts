@@ -16,13 +16,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { candidateLogDirs } from "../config.js";
+import { candidateLogDirs, isLogFileName } from "../config.js";
 
 /** Subdirectories scanned for logs before the rest are listed without a count. A folder with
  *  hundreds of children is not one you are picking by eye anyway. */
 const SCAN_LIMIT = 100;
-
-const isLog = (name: string): boolean => /^eqlog_.+\.txt$/i.test(name);
 
 export interface BrowseEntry {
   name: string;
@@ -47,7 +45,7 @@ function countLogs(dir: string): number | null {
   try {
     let n = 0;
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!e.isDirectory() && isLog(e.name)) n++;
+      if (!e.isDirectory() && isLogFileName(e.name)) n++;
     }
     return n;
   } catch {
@@ -163,7 +161,7 @@ export function browseDir(dir: string | null, start: string | null = null): Brow
       } catch {
         /* dangling link */
       }
-    } else if (isLog(e.name)) logs++;
+    } else if (isLogFileName(e.name)) logs++;
   }
 
   names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
