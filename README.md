@@ -117,19 +117,42 @@ The Plane of Sky class quests. See below.
 Sky quests want a Wind Rune plus one or two specific drops, across 95 quests and 16 classes. The
 tracker works out what you are holding and what is left.
 
-**Give it your inventory once.** In game, type:
+### Feeding it your inventory
+
+In game, type:
 
 ```
 /outputfile inventory
 ```
 
-That writes `<Character>_<server>-Inventory.txt` next to your game folder. The tracker finds it
-automatically — it is matched to whichever character log you have selected — and picks it up within
-a few seconds. Re-run it whenever you like; the parser notices the moment the game confirms the
-write, and re-runs are how everything stays accurate.
+That writes `<Character>_<server>-Inventory.txt` next to your game folder. The tracker finds it on
+its own — it is matched to whichever character log you have selected — and picks it up within a few
+seconds of the game confirming the write. You do not have to tell the app anything.
 
-Between exports it keeps up from the log: anything you loot is added on top of the last export, so
-you do not have to re-export after every drop.
+**Put it on a hotbutton and press it around every Sky run.** Make a social containing
+`/outputfile inventory`, drag it to a hotbar, and hit it when you zone in and again when you are
+done. It costs a keypress and it is what keeps the tracker honest.
+
+Between exports the app keeps up from your log, so you do not need to re-export after every drop —
+anything you loot is added on top of the last export as it happens. What the log **cannot** see is
+things leaving your bags:
+
+| The log tells the app about | Only a fresh export tells it about |
+|---|---|
+| Anything you loot, as you loot it | Components consumed by a turn-in |
+| Runes routed to the currency tab | Items sold, destroyed, traded, or moved to another character |
+| Quest rewards you are handed | Anything you picked up while the app was closed |
+
+So the export is the correction and the log is the running total. Re-export often enough and the
+two never drift; a run's worth of drift is small, a week's is not.
+
+> **One thing a re-export cannot fix — a known limitation.** Wind runes are routed to the currency
+> tab, and the currency tab does not appear in the export at all; the app knows about those runes
+> only because it watched you loot them. So a rune you have already *spent* on a turn-in stays on
+> the count, and re-exporting does not clear it (there is nothing in the export to contradict).
+> Neither does restarting, since the log is replayed from the beginning. If a rune count looks
+> higher than your bags, that is why — the components that come out of *bags* are corrected
+> normally by a re-export.
 
 **Two views**, switched at the top:
 

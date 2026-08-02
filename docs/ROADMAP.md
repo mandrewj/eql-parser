@@ -984,6 +984,21 @@ saying so is the finding: the numbers are recorded so the next pass does not re-
   classified as an NPC at all, and where `perTarget[ranshi][self]` gets 19k from. Worth fixing —
   it is the largest single misattribution left in the log.
 
+### Known limitation — spent items from unexported storages are never released
+- The currency tab and the Dragon Hoard have no section in the inventory export, so pickups routed
+  there are exempt from the export's cut-off and counted purely from the log. That is what makes
+  them visible at all — but it also means **nothing ever removes them**. A wind rune spent on a
+  turn-in stays on the count; a re-export cannot contradict it (there is nothing in the export to
+  disagree with) and a restart replays the same pickups. Measured: three `Wind Rune Azia` pickups
+  in the log, all to currency, counted as 3 whatever the inventory now holds.
+- **The fix is available and not large.** `You have been given: <reward>` already identifies the
+  finished quest, and `questParts` already knows what that quest consumed — so a completion could
+  decrement the parts it used from the log-derived counts. Not done yet because it wants care over
+  the case where the same rune is held for several quests, and over turn-ins that happened before
+  the app was watching.
+- Documented in the README rather than left to be discovered, since runes are exactly the item this
+  bites and the tracker's rune counts are its most-used figure.
+
 ### Charm/pet work that is still open
 - **The two unimplemented charm emotes** — `<mob> blinks.` (Druid/Shaman) and `<mob> moans.`
   (Necromancer). Zero occurrences in 875k lines and generic enough to fire on ambient emotes, so
