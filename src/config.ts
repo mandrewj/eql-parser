@@ -53,14 +53,46 @@ export function candidateLogDirs(): string[] {
   }
 }
 
+/** A directory, tolerating the case of its **last** segment.
+ *
+ *  The game creates the folder as `Logs`; this file has always looked for `logs`. macOS and
+ *  Windows are case-insensitive by default so the mismatch has never shown, but on a
+ *  case-sensitive Linux filesystem — a Wine bottle on ext4 — the exact-match lookup fails and the
+ *  app reports no logs at all on a machine that has them. Only the last segment is retried,
+ *  because that is the one this file spells out; the parents come from the OS. */
+function statDirCaseInsensitive(dir: string): string | null {
+  try {
+    if (fs.statSync(dir).isDirectory()) return dir;
+    return null; // exists but is a file
+  } catch {
+    // fall through to the case-insensitive retry
+  }
+  const parent = path.dirname(dir);
+  const want = path.basename(dir).toLowerCase();
+  if (parent === dir) return null;
+  try {
+    for (const entry of fs.readdirSync(parent, { withFileTypes: true })) {
+      if (entry.name.toLowerCase() !== want) continue;
+      const full = path.join(parent, entry.name);
+      if (entry.isDirectory()) return full;
+      // A symlinked directory reports as a link, not a directory.
+      try {
+        if (fs.statSync(full).isDirectory()) return full;
+      } catch {
+        /* dangling */
+      }
+    }
+  } catch {
+    // parent unreadable or absent
+  }
+  return null;
+}
+
 /** First candidate directory that actually exists, or null. */
 export function resolveLogDir(): string | null {
   for (const dir of candidateLogDirs()) {
-    try {
-      if (fs.statSync(dir).isDirectory()) return dir;
-    } catch {
-      // not present; try next
-    }
+    const found = statDirCaseInsensitive(dir);
+    if (found) return found;
   }
   return null;
 }

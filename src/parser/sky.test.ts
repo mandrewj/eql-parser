@@ -6,7 +6,7 @@ import path from "node:path";
 import { matchSkyItem, normalizeItemName, skyItemNames } from "./sky.js";
 import { SKY_CLASSES } from "./sky-catalogue.js";
 import { readInventory, inventoryPathFor, inventoryCandidates, isUnexportedStorage } from "./inventory.js";
-import { parseLogFileName } from "../config.js";
+import { parseLogFileName, resolveLogDir } from "../config.js";
 import { parseLine } from "./parser.js";
 
 // --- the fold ----------------------------------------------------------------
@@ -317,4 +317,39 @@ test("given — a non-Sky handover still parses, and is simply not a Sky reward"
   const ev = parseLine("[Thu Jul 30 12:13:54 2026] You have been given: Void-Touched Potential");
   assert.equal(ev?.type, "given");
   if (ev?.type === "given") assert.equal(matchSkyItem(ev.item), null);
+});
+
+// --- finding the logs folder ---------------------------------------------------
+
+/** The game creates the folder as `Logs`; this project has always looked for `logs`. macOS and
+ *  Windows hide that, but a Wine bottle on a case-sensitive Linux filesystem would report no logs
+ *  on a machine that has them. */
+test("config — the logs folder is found whatever its capitalisation", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "eql-case-"));
+  try {
+    const real = path.join(root, "Logs");
+    fs.mkdirSync(real);
+    fs.writeFileSync(path.join(real, "eqlog_Tester_erollisi.txt"), "");
+
+    // Asserting the resolved *string* would only hold on one kind of filesystem: a
+    // case-insensitive host satisfies the direct stat and returns the spelling asked for, while
+    // a case-sensitive one falls through to the retry and returns the real name. What has to be
+    // true on both is that the folder is found and it is the one holding the log.
+    const found = (asked: string): string | null => {
+      process.env.EQL_LOG_DIR = path.join(root, asked);
+      return resolveLogDir();
+    };
+    for (const spelling of ["logs", "Logs", "LOGS"]) {
+      const dir = found(spelling);
+      assert.ok(dir, `asking for ${spelling} should find the folder`);
+      assert.ok(
+        fs.existsSync(path.join(dir!, "eqlog_Tester_erollisi.txt")),
+        `${spelling} resolved to ${dir}, which does not hold the log`,
+      );
+    }
+    assert.equal(found("nothing-here"), null);
+  } finally {
+    delete process.env.EQL_LOG_DIR;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

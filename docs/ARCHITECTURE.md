@@ -36,6 +36,16 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 
 ## Backend components
 
+### Config / log discovery
+- The default logs directory is the one genuinely **OS-specific** thing in the app; everything
+  downstream (the inventory export above all) is derived relative to whichever log is open.
+- **The folder's capitalisation is not assumed.** The game creates it as `Logs`; this project has
+  always spelled it `logs`. macOS and Windows are case-insensitive by default so the mismatch never
+  showed — but on a Wine bottle sitting on a case-sensitive Linux filesystem the exact-match lookup
+  fails and the app reports no logs on a machine that has them. `resolveLogDir` retries by scanning
+  the parent for a case-insensitive match of the **last** segment only, since that is the segment
+  this project spells out; the parents come from the OS.
+
 ### Tailer
 - Opens the log and tracks a **byte offset**; on each change reads only new bytes.
 - **CRLF-safe & partial-line-safe**: buffer trailing bytes until `\n`; strip `\r`.

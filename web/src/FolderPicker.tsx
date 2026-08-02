@@ -44,7 +44,7 @@ export function FolderList({
   onClose: () => void;
 }) {
   return (
-    <div className="pickwrap" role="dialog" aria-label="Choose logs folder">
+    <div className="pickwrap" role="dialog" aria-label="Select the folder containing your EverQuest Legends character logs">
       <div className="pickhead">
         <PathLabel path={view?.path ?? null} />
         <button className="btn" onClick={onClose}>
@@ -56,13 +56,22 @@ export function FolderList({
           onClick={() => view && onPick(view.path)}
           title={
             view?.logs
-              ? `Use this folder — ${view.logs} log${view.logs === 1 ? "" : "s"} in it`
-              : "Use this folder (no logs found in it)"
+              ? `Read logs from this folder — ${view.logs} character log${view.logs === 1 ? "" : "s"} found in it`
+              : "This folder holds no eqlog_*.txt files. You can still use it, but no character will be found until one appears here."
           }
         >
           Use this folder
           {view && view.logs > 0 && <span className="pickn">{view.logs}</span>}
         </button>
+      </div>
+
+      {/* The picker asks for one specific thing and should say so. "Choose a folder" leaves you
+          guessing between the game folder, the install root and the logs folder itself — and the
+          right answer is the one *containing* the eqlog files, not the game directory above it. */}
+      <div className="pickhelp">
+        Select the folder that <strong>contains your log files</strong> — the ones named{" "}
+        <code>eqlog_&lt;Character&gt;_&lt;server&gt;.txt</code>. It is usually{" "}
+        <code>…/EverQuest Legends/Logs</code>. A count beside a folder means logs are in it.
       </div>
 
       {view?.shortcuts && view.shortcuts.length > 0 && (
@@ -78,9 +87,9 @@ export function FolderList({
       <div className="picklist">
         {view?.error && <div className="pickerr">{view.error}</div>}
         {view?.parent && (
-          <button className="pickrow up" onClick={() => onGo(view.parent!)}>
+          <button className="pickrow up" onClick={() => onGo(view.parent!)} title="Go up one folder">
             <span className="pickicon">↑</span>
-            <span className="pickname">..</span>
+            <span className="pickname">.. (up one folder)</span>
           </button>
         )}
         {view?.dirs.map((d) => (
@@ -88,14 +97,24 @@ export function FolderList({
             key={d.name}
             className={d.logs ? "pickrow has" : "pickrow"}
             onClick={() => onGo(joinPath(view.path, d.name))}
-            title={d.logs ? `${d.logs} log file${d.logs === 1 ? "" : "s"}` : undefined}
+            title={
+              d.logs
+                ? `${d.logs} character log${d.logs === 1 ? "" : "s"} in here — this is probably the folder you want`
+                : "No character logs directly in this folder — open it to look further in"
+            }
           >
             <span className="pickicon">{d.logs ? "▣" : "▢"}</span>
             <span className="pickname">{d.name}</span>
             {d.logs ? <span className="pickn">{d.logs}</span> : null}
           </button>
         ))}
-        {view && !view.error && view.dirs.length === 0 && <div className="pickerr">No sub-folders here.</div>}
+        {view && !view.error && view.dirs.length === 0 && (
+          <div className="pickerr">
+            {view.logs > 0
+              ? "No sub-folders — this folder holds your logs, so use it."
+              : "No sub-folders and no logs here. Go back up and try another folder."}
+          </div>
+        )}
         {loading && !view && <div className="pickerr">Loading…</div>}
       </div>
     </div>

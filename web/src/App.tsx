@@ -146,7 +146,7 @@ export default function App() {
           <span className={`conn ${connected ? "on" : ""}`}>{connected ? "live" : "offline"}</span>
           <button
             className={logsOpen ? "iconbtn on" : "iconbtn"}
-            title="Log settings"
+            title="Choose the logs folder and the character log to read"
             onClick={() => setLogsOpen((v) => !v)}
           >
             ⚙
@@ -156,7 +156,7 @@ export default function App() {
 
       {logsOpen && (
       <div className="logbar">
-        <span className="flabel">Logs folder</span>
+        <span className="flabel" title="The folder holding your eqlog_<Character>_<server>.txt files">Logs folder</span>
         <input
           className="dirinput"
           value={dirInput}
@@ -173,13 +173,13 @@ export default function App() {
         <button
           className={pickerOpen ? "btn on" : "btn"}
           onClick={() => setPickerOpen((v) => !v)}
-          title="Browse for the folder instead of typing it"
+          title="Browse for the folder that holds your eqlog_*.txt files, instead of typing the path"
         >
           Browse…
         </button>
         {dirError && <span className="err">{dirError}</span>}
         <span className="flabel logbar-log">Log</span>
-        <select value={logs?.activeLogPath ?? ""} onChange={(e) => void selectLog(e.target.value)} title="Active log">
+        <select value={logs?.activeLogPath ?? ""} onChange={(e) => void selectLog(e.target.value)} title="Which character's log to read — one per character and server">
           {!logs?.logs.length && <option value="">No logs found</option>}
           {logs?.logs.map((l) => (
             <option key={l.path} value={l.path}>

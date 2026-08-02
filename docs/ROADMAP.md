@@ -898,6 +898,25 @@ optimisations were **rejected** for costing more in complexity than they save.
   photographed at all until the list was split from the fetching (`FolderList` / `FolderPicker`),
   because the live app holds an SSE connection open and headless Chrome never settles.
 
+## Post-v1 — Helper text, a README for users, and a case bug it uncovered  ✅
+- **The folder picker now says what it wants.** "Choose a folder" left you guessing between the
+  game folder, the install root and the logs folder itself; it now states that it wants the folder
+  *containing* `eqlog_<Character>_<server>.txt`, names the usual location, and explains the count
+  badge. The confirm button's tooltip differs by state — how many logs it found, or what will
+  happen if you pick a folder with none — and an empty folder says whether to use it or go back up.
+- **The README was rewritten for people who did not build it**: what the tool gives you, how to set
+  it up (including `/log on`, which is easy to forget), a tab-by-tab guide to reading the interface,
+  and how the Plane of Sky tracker is fed. It had been a developer's file describing milestones.
+- **Writing the setup section found a real cross-platform bug.** The game creates the folder as
+  `Logs`; `config.ts` has always looked for `logs`. macOS and Windows are case-insensitive by
+  default so it never showed here — on a Wine bottle on a case-sensitive Linux filesystem the app
+  would report no logs on a machine full of them. `resolveLogDir` now retries case-insensitively on
+  the last segment.
+  - The test for it cannot assert the resolved *string*: a case-insensitive host satisfies the
+    direct stat and returns the spelling asked for, a case-sensitive one falls through and returns
+    the real name. It asserts the invariant that holds on both — the folder is found, and it is the
+    one holding the log.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

@@ -779,3 +779,11 @@ body { margin: 0; }
 }
 .btn .pickn { margin-left: 0.35rem; }
 .pickerr { padding: 0.4rem 0.5rem; font-size: 0.72rem; color: var(--muted); }
+
+/* The picker's one instruction. It sits above the list rather than in a tooltip because the
+   question it answers — *which* folder — is the whole reason the panel is open. */
+.pickhelp {
+  padding: 0.35rem 0.5rem 0; font-size: 0.7rem; color: var(--muted); line-height: 1.5;
+}
+.pickhelp strong { color: var(--text); font-weight: 600; }
+.pickhelp code { color: var(--text); background: var(--panel2); padding: 0.03rem 0.2rem; border-radius: 3px; }
