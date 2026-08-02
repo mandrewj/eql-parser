@@ -577,8 +577,12 @@ interface MetricStat {                // every metric group has this one shape
       a turn-in consumes its components: `done` (none left wanting it), `held` (enough in hand for
       those that do), `needed` (short). Finishing one of two quests sharing a component therefore
       drops what it asks for from two to one.
-    - **Runes** never appear at all: the giver hands those over, so they are not found on an
-      island and would be noise in a list about where to go.
+    - **Runes get a group of their own, sorted first.** They were once left out entirely, on the
+      belief that the quest giver handed them over. The wiki says otherwise — they "drop from all
+      mobs in the Plane of Sky" — so they are farmed like everything else, and filing them under
+      any one island would be a claim it contradicts. They lead the list because they are what you
+      can farm while doing anything, and because a rune is wanted by **six or seven quests on
+      average**: the biggest single thing to collect, not a footnote.
     - **Rows sit under the mob that drops them**, because you kill mobs, not islands — and on a
       real island one boss owes you nearly everything (The Spiroc Lord holds 13 of Island 5's 16,
       Sister of the Spire 15 of Island 7's 16). The wiki lists several mobs per item in no fixed
@@ -595,9 +599,17 @@ interface MetricStat {                // every metric group has this one shape
     have" render identically as a row of dashes, and only one of the two is fixed by playing — so
     the export's name, item count and read-time sit above the table, and its absence is replaced
     by the `/outputfile inventory` instruction that fixes it.
+  - **The rune is a component, and counting it is what makes "ready" mean anything.** It was
+    treated as a formality — a thing the giver would produce on request — so `progressOf` left it
+    out of the tally and any quest whose *other* items were in the bag reported itself ready to
+    turn in. Against a real inventory that overstated readiness by nearly half: 13 quests claimed
+    ready, 7 actually were, and the six differences were each exactly one rune short.
   - **A held rune is labelled `rune`, never "started".** The 15 runes are shared across the 16
-    classes, so holding Wind Rune Neza could be for this quest or the Warrior one that also wants
-    it; held is all that can honestly be claimed.
+    classes, so holding Wind Rune Neza could be for this quest or one of the five others that
+    also want it; held is all that can honestly be claimed.
+  - **Per-quest readiness is deliberately local.** It asks "is this in the bag", not "is there
+    enough to go round" — you really can turn this one in now. The aggregate lives in the rune
+    group, where `1/7` says the bag holds one and seven quests want one each.
   - **Counts are printed, never spelled.** Runes stack into a single slot with a quantity beside
     them, and several classes want the same rune, so a row saying "have" hid the only figure that
     answers whether one covers one quest or three. Every held row shows `×N`.

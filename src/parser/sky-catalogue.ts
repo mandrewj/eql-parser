@@ -1,9 +1,10 @@
 // Plane of Sky class quests — generated from https://eqlwiki.com/Plane_of_Sky
-// by scripts/build-sky-quests.mjs on 2026-08-01. Do not edit by hand.
+// by scripts/build-sky-quests.mjs on 2026-08-02. Do not edit by hand.
 //
-// 16 classes, 95 quests, 127 required-item slots. The reward and item
-// names are the wiki's verbatim; matching them against what the game writes is `sky.ts`'s job,
-// because the two disagree on apostrophes and capitalisation.
+// 16 classes, 95 quests, 127 required-item slots. Names are the wiki's, with
+// its mixed apostrophes settled on the straight quote so the panel does not show two spellings
+// of the same punctuation. Matching them against what the game writes is `sky.ts`'s job — the
+// game adds `+N`/`(Exaltation)` suffixes and disagrees on capitalisation.
 
 import type { ClassCode } from "./spells.js";
 
@@ -17,10 +18,11 @@ export interface SkyQuestItem {
 
 export interface SkyQuest {
   quest: string;
-  /** What you say to the quest giver to be handed the rune. */
+  /** What you say to the quest giver. */
   trigger: string;
-  /** The Wind Rune the giver hands over — a turn-in component, but obtained by asking
-   *  rather than looted, so holding one means the quest is started rather than progressed. */
+  /** The Wind Rune this test consumes. A looted component like the others, not something the
+   *  giver hands over: the wiki says the runes "drop from all mobs in the Plane of Sky". One
+   *  rune serves quests in several classes, and each turn-in consumes one. */
   rune: string;
   items: SkyQuestItem[];
   /** Usually one; Beastlord's Test of Claw awards a weapon in each hand. */

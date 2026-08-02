@@ -671,7 +671,8 @@ per-NPC encounters and a self-analysis panel, which is where the work now goes.
   - components **held in sufficient number** — where sufficient counts the *quests* that want it
     rather than one, because a turn-in consumes the item. One Leather Cord against a Beastlord and
     a Shaman quest reads `1/2` and stays on the list;
-  - **runes**, which the quest giver hands over rather than dropping.
+  - **runes** — *later corrected*: they are looted like everything else, and now appear. See
+    "Wind runes are looted" below.
 - **All 16 classes matter here, and that is a game mechanic rather than a preference.** EQL
   characters hold a *trio* of classes and can change the loadout at will, with the character's
   level being the lowest in the trio — which is why one log shows Sanluen as both `[44 PAL/MNK/BRD]`
@@ -836,6 +837,28 @@ optimisations were **rejected** for costing more in complexity than they save.
   mob, settled rows flat, and both counts — rather than a bare list with the answered rows
   filtered out. Eight model tests cover the states, the shared-component arithmetic and the
   ordering.
+
+## Post-v1 — Wind runes are looted, and readiness was overstated because of it  ✅
+- **The premise was wrong.** The tracker treated a Wind Rune as a formality the quest giver would
+  hand over on request — the rune row even read "ask the giver". The wiki says plainly that the
+  runes "drop from all mobs in the Plane of Sky, and many players simply farm the trash mobs on
+  one of the early islands", and the log had been saying so all along: runes looted off a thunder
+  spirit, Protector of Sky, an azarack, Gorgalosk. The evidence was on screen and went
+  unreconciled with the assumption.
+- **The cost was a panel that lied about what was ready.** `progressOf` left the rune out of the
+  tally, so any quest whose other components were in the bag reported itself ready to hand in.
+  Against the real inventory: **13 quests claimed ready, 7 actually were** — and each of the six
+  differences was exactly one rune short (Dena ×3, Neza ×2, Geza ×1).
+- **A rune is now a component like any other**, via `questParts` — no privileged member, counted
+  in `have`/`need`, and required for `ready`.
+- **The island view gains a Wind Runes group, sorted first.** They drop everywhere, so filing them
+  under one island would be a claim the wiki contradicts; the group's mob heading is "any mob in
+  the Plane of Sky". It leads the list because a rune is wanted by six or seven quests on average
+  — the biggest single thing to farm, not a footnote. On a real inventory it reads
+  `Wind Rune Dena … ×7` (none held, seven quests want one) beside `Wind Rune Lena … 5/6`.
+- **Per-quest readiness stays local on purpose**: it asks whether the parts are in the bag, not
+  whether there are enough to go round, because you genuinely can turn *this* one in now. The
+  aggregate shortfall is what the rune group is for.
 
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done

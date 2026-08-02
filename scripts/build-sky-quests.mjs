@@ -192,10 +192,11 @@ export interface SkyQuestItem {
 
 export interface SkyQuest {
   quest: string;
-  /** What you say to the quest giver to be handed the rune. */
+  /** What you say to the quest giver. */
   trigger: string;
-  /** The Wind Rune the giver hands over — a turn-in component, but obtained by asking
-   *  rather than looted, so holding one means the quest is started rather than progressed. */
+  /** The Wind Rune this test consumes. A looted component like the others, not something the
+   *  giver hands over: the wiki says the runes "drop from all mobs in the Plane of Sky". One
+   *  rune serves quests in several classes, and each turn-in consumes one. */
   rune: string;
   items: SkyQuestItem[];
   /** Usually one; Beastlord's Test of Claw awards a weapon in each hand. */

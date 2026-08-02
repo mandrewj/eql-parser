@@ -5,6 +5,7 @@ import {
   progressOf,
   readyQuests,
   resolveCompletions,
+  RUNE_SOURCE,
   type NeedRow,
   type QuestState,
 } from "./sky-model";
@@ -171,19 +172,19 @@ function QuestBlock({ quest, held }: { quest: SkyQuest; held: Map<string, number
             {p.have}/{p.need}
           </span>
         )}
-        <span className="skytrigger" title="say this to the quest giver to be handed the rune">
+        <span className="skytrigger" title="what you say to the quest giver">
           “{quest.trigger}”
         </span>
       </div>
-      {/* Deliberately not labelled "started": the 15 runes are shared across the 16 classes, so
-          holding Wind Rune Neza could be for this quest or for the Warrior one that also wants
-          it. Held is all that can honestly be claimed. */}
+      {/* A component like any other. It is not labelled "started" either: the 15 runes are shared
+          across the 16 classes, so holding Wind Rune Neza could be for this quest or for one of
+          the five others that also want it. Held is all that can honestly be claimed. */}
       <ItemRow
         name={quest.rune}
-        note={p.runeHeld ? "rune" : "ask the giver"}
+        note={p.runeHeld ? "rune" : RUNE_SOURCE}
         count={held.get(quest.rune)}
         kind="rune"
-        title="Handed over by the quest giver when you say the trigger phrase, rather than looted. The same rune serves quests in several classes."
+        title={`Wind runes drop from ${RUNE_SOURCE}. The same rune is wanted by quests in several classes, and a turn-in consumes one.`}
       />
       {quest.items.map((it) => (
         <ItemRow

@@ -9,17 +9,35 @@ import type { SkyClass, SkyCompletion, SkyQuest } from "./types";
  *  the whole state is a function of the inventory export and the log. */
 export type QuestState = "done" | "ready" | "partial" | "open";
 
+/** Where the Wind Runes come from, in the wiki's own words: "The wind runes drop from all mobs
+ *  in the Plane of Sky, and many players simply farm the trash mobs on one of the early
+ *  islands." They are turn-in components like any other and have to be **in the bag**. */
+export const RUNE_SOURCE = "any mob in the Plane of Sky";
+/** Runes drop everywhere, so filing them under one island would be a claim the wiki contradicts.
+ *  They get a group of their own, and it sorts first — it is the thing you can farm while doing
+ *  anything else. */
+export const RUNE_GROUP = "Wind Runes";
+
 export interface QuestProgress {
   state: QuestState;
-  /** Components held / needed. Excludes the rune, which is asked for rather than found. */
+  /** Everything the turn-in wants, held / total — **including the rune**. */
   have: number;
   need: number;
   runeHeld: boolean;
 }
 
+/** Everything a turn-in consumes: the rune and the components, with no privileged member.
+ *  The rune was once treated as a formality the quest giver would hand over on request; it is
+ *  not, it is looted like the rest, and leaving it out declared quests ready that were a rune
+ *  short. */
+export function questParts(quest: SkyQuest): string[] {
+  return [quest.rune, ...quest.items.map((i) => i.name)];
+}
+
 export function progressOf(quest: SkyQuest, held: Map<string, number>): QuestProgress {
-  const have = quest.items.filter((i) => held.has(i.name)).length;
-  const need = quest.items.length;
+  const parts = questParts(quest);
+  const have = parts.filter((n) => held.has(n)).length;
+  const need = parts.length;
   // Every reward, not any: Beastlord's Test of Claw hands over a weapon for each hand, and
   // holding one of the two is not a finished quest.
   const done = quest.rewards.length > 0 && quest.rewards.every((r) => held.has(r));
@@ -54,6 +72,7 @@ export interface NeedRow {
  *  the secondary sort on the label keeps adjacent and in a stable order. */
 export function islandOrder(label: string | null): [number, string] {
   if (label === null) return [99, ""]; // no island listed — last
+  if (label === RUNE_GROUP) return [0, label]; // farmable anywhere, so it leads
   const n = /^Island (\d+)/.exec(label);
   return [n ? Number(n[1]) : 98, label];
 }
@@ -157,7 +176,7 @@ export function resolveCompletions(catalogue: SkyClass[], completed: SkyCompleti
 }
 
 /**
- * Every component of every island, and where it stands.
+ * Every component of every island — and the runes — and where each stands.
  *
  * **Nothing is dropped any more.** An earlier cut excluded a component the moment it was
  * settled — enough in hand, or its quests all finished — which kept the list to a plan but made
@@ -171,8 +190,10 @@ export function resolveCompletions(catalogue: SkyClass[], completed: SkyCompleti
  *   - `held >= need` is `held`: enough in hand to settle what is left, so nothing to farm;
  *   - anything else is `needed`.
  *
- * Runes never appear at all: the quest giver hands those over, so they are not found on an
- * island and would be noise in a list about where to go.
+ * Runes are included, in a group of their own. They were once left out on the belief that the
+ * quest giver handed them over; the wiki says they "drop from all mobs in the Plane of Sky", so
+ * they are farmed like everything else — and a rune is wanted by six quests on average, which
+ * makes them the biggest single thing to farm rather than a detail.
  */
 export function buildIslands(catalogue: SkyClass[], held: Map<string, number>): IslandNeeds[] {
   const rows = new Map<string, NeedRow>();
@@ -180,7 +201,13 @@ export function buildIslands(catalogue: SkyClass[], held: Map<string, number>): 
     const done = new Map<string, boolean>();
     for (const q of c.quests) done.set(q.quest, progressOf(q, held).state === "done");
     for (const q of c.quests) {
-      for (const it of q.items) {
+      // The rune is one of the parts, so it is one of the rows — in a group of its own, since
+      // it drops everywhere rather than on any one island.
+      const parts = [
+        { name: q.rune, island: RUNE_GROUP as string | null, dropsFrom: RUNE_SOURCE as string | null },
+        ...q.items,
+      ];
+      for (const it of parts) {
         const row = rows.get(it.name) ?? {
           name: it.name,
           island: it.island,

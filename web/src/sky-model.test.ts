@@ -8,6 +8,8 @@ import {
   progressOf,
   readyQuests,
   resolveCompletions,
+  RUNE_GROUP,
+  RUNE_SOURCE,
   type NeedRow,
 } from "./sky-model.js";
 import type { SkyClass, SkyQuest } from "./types.js";
@@ -40,16 +42,34 @@ const holding = (o: Record<string, number>) => new Map(Object.entries(o));
 
 test("state — holding the reward is what makes a quest done, not holding the parts", () => {
   assert.equal(progressOf(quest(), holding({ "Azure Ruby Ring": 1 })).state, "done");
-  assert.equal(progressOf(quest(), holding({ "Azure Ring": 1 })).state, "ready");
+  assert.equal(progressOf(quest(), holding({ "Azure Ring": 1, "Wind Rune Meda": 1 })).state, "ready");
   assert.equal(progressOf(quest(), holding({})).state, "open");
 });
 
-test("state — partial when only some components are in hand", () => {
+/** The bug this test exists for: the rune was treated as a formality the giver would hand over,
+ *  so a quest a rune short reported itself ready to turn in. The wiki is explicit that runes
+ *  "drop from all mobs in the Plane of Sky" — they are looted and must be in the bag. */
+test("state — a quest one rune short is not ready", () => {
+  const p = progressOf(quest(), holding({ "Azure Ring": 1 }));
+  assert.equal(p.state, "partial");
+  assert.equal(p.runeHeld, false);
+  assert.equal(p.have, 1);
+  assert.equal(p.need, 2); // the rune counts
+});
+
+test("state — the rune alone is progress, not readiness", () => {
+  const p = progressOf(quest(), holding({ "Wind Rune Meda": 1 }));
+  assert.equal(p.state, "partial");
+  assert.equal(p.runeHeld, true);
+  assert.equal(p.have, 1);
+});
+
+test("state — partial when only some parts are in hand", () => {
   const q = quest({ items: [item("Azure Ring"), item("Stone Amulet")] });
   const p = progressOf(q, holding({ "Azure Ring": 1 }));
   assert.equal(p.state, "partial");
   assert.equal(p.have, 1);
-  assert.equal(p.need, 2);
+  assert.equal(p.need, 3); // rune + two components
 });
 
 /** Beastlord's Test of Claw awards a weapon for each hand. Holding one is not a finished quest,
@@ -60,33 +80,37 @@ test("state — a two-reward quest needs both rewards to count as done", () => {
   assert.equal(progressOf(q, holding({ Windhowl: 1, "Spirit Render": 1 })).state, "done");
 });
 
-test("state — the rune is tracked but does not count toward the components", () => {
-  const p = progressOf(quest(), holding({ "Wind Rune Meda": 1 }));
-  assert.equal(p.runeHeld, true);
-  assert.equal(p.have, 0);
-  assert.equal(p.state, "open");
+test("state — a two-reward quest is done only once both are held, rune spent or not", () => {
+  const q = quest({ rewards: ["Windhowl", "Spirit Render"] });
+  assert.equal(progressOf(q, holding({ Windhowl: 1, "Spirit Render": 1 })).state, "done");
 });
 
 // --- every component of an island, and where it stands ------------------------
 
+/** Pick one island out by name — index 0 is the rune group now, not a place. */
+const islandOf = (islands: ReturnType<typeof buildIslands>, island: string | null) =>
+  islands.find((x) => x.island === island)!;
+
 /** Find one island's rows regardless of how they are grouped. */
 const rowsOf = (islands: ReturnType<typeof buildIslands>, island: string | null): NeedRow[] => {
-  const i = islands.find((x) => x.island === island)!;
+  const i = islandOf(islands, island);
   return [...i.outstanding.flatMap((g) => g.rows), ...i.settled];
 };
+
+const HARPY = "Island 3 — Harpy"; // where the default fixture's components drop
 
 /** The point of the rework: a settled component stays on its island. Dropping it made
  *  "this island wants nothing more" indistinguishable from "this island was never listed". */
 test("islands — a finished quest's component stays, marked done and sorted below", () => {
   const cat = [cls("WAR", [quest()])];
 
-  const open = buildIslands(cat, holding({}))[0]!;
+  const open = islandOf(buildIslands(cat, holding({})), HARPY);
   assert.equal(open.needCount, 1);
   assert.equal(open.settledCount, 0);
 
   // Reward in hand: the turn-in consumed the ring, so nothing is outstanding — but it is still
   // listed, as settled.
-  const done = buildIslands(cat, holding({ "Azure Ruby Ring": 1 }))[0]!;
+  const done = islandOf(buildIslands(cat, holding({ "Azure Ruby Ring": 1 })), HARPY);
   assert.equal(done.needCount, 0);
   assert.deepEqual(done.outstanding, []);
   assert.equal(done.settled.length, 1);
@@ -97,7 +121,7 @@ test("islands — a finished quest's component stays, marked done and sorted bel
 
 test("islands — holding enough moves a row to settled without calling it done", () => {
   const cat = [cls("WAR", [quest()])];
-  const isl = buildIslands(cat, holding({ "Azure Ring": 1 }))[0]!;
+  const isl = islandOf(buildIslands(cat, holding({ "Azure Ring": 1 })), HARPY);
   assert.equal(isl.needCount, 0);
   assert.equal(isl.settled[0]!.state, "held");
   assert.equal(isl.settled[0]!.held, 1);
@@ -112,7 +136,7 @@ test("islands — an item wanted by two quests needs two, and one in hand is not
     cls("SHM", [quest({ quest: "SHM test", items: [item("Leather Cord")], rewards: ["B"] })]),
   ];
 
-  const one = buildIslands(cat, holding({ "Leather Cord": 1 }))[0]!;
+  const one = islandOf(buildIslands(cat, holding({ "Leather Cord": 1 })), HARPY);
   const row = one.outstanding[0]!.rows[0]!;
   assert.equal(row.state, "needed");
   assert.equal(row.need, 2);
@@ -120,7 +144,7 @@ test("islands — an item wanted by two quests needs two, and one in hand is not
   assert.deepEqual(row.wants.map((w) => w.code), ["BST", "SHM"]);
 
   // Two in hand settles both.
-  assert.equal(buildIslands(cat, holding({ "Leather Cord": 2 }))[0]!.settled[0]!.state, "held");
+  assert.equal(islandOf(buildIslands(cat, holding({ "Leather Cord": 2 })), HARPY).settled[0]!.state, "held");
 });
 
 /** Finishing one of the two quests reduces what the item is *for*, so one copy now suffices —
@@ -130,11 +154,34 @@ test("islands — a finished quest stops asking for its share of a shared compon
     cls("BST", [quest({ quest: "BST test", items: [item("Leather Cord")], rewards: ["A"] })]),
     cls("SHM", [quest({ quest: "SHM test", items: [item("Leather Cord")], rewards: ["B"] })]),
   ];
-  const isl = buildIslands(cat, holding({ "Leather Cord": 1, A: 1 }))[0]!;
+  const isl = islandOf(buildIslands(cat, holding({ "Leather Cord": 1, A: 1 })), HARPY);
   const row = isl.settled[0]!;
   assert.equal(row.need, 1); // only the Shaman quest still wants one
   assert.equal(row.state, "held");
   assert.deepEqual(row.wants.map((w) => w.done), [true, false]);
+});
+
+/** Runes are farmed like everything else, so they are rows — in a group of their own, because
+ *  they drop everywhere and filing them under one island would be a claim the wiki contradicts. */
+test("islands — runes get their own group and it sorts first", () => {
+  const cat = [cls("WAR", [quest()])];
+  const islands = buildIslands(cat, holding({}));
+  assert.equal(islands[0]!.island, RUNE_GROUP);
+  const rune = islands[0]!.outstanding[0]!;
+  assert.equal(rune.mob, RUNE_SOURCE);
+  assert.equal(rune.rows[0]!.name, "Wind Rune Meda");
+});
+
+test("islands — one rune wanted by several quests needs one copy each", () => {
+  const cat = [
+    cls("WAR", [quest({ quest: "a", rewards: ["ra"] })]),
+    cls("MNK", [quest({ quest: "b", rewards: ["rb"] })]),
+  ];
+  const runes = islandOf(buildIslands(cat, holding({ "Wind Rune Meda": 1 })), RUNE_GROUP);
+  const row = runes.outstanding[0]!.rows[0]!;
+  assert.equal(row.need, 2);
+  assert.equal(row.held, 1);
+  assert.equal(row.state, "needed");
 });
 
 test("islands — islands come out in visiting order, unplaced last", () => {
@@ -147,7 +194,7 @@ test("islands — islands come out in visiting order, unplaced last", () => {
   ];
   assert.deepEqual(
     buildIslands(cat, holding({})).map((i) => i.island),
-    ["Island 2 — Azarack", "Island 8 — Veeshan", null],
+    [RUNE_GROUP, "Island 2 — Azarack", "Island 8 — Veeshan", null],
   );
 });
 
@@ -169,7 +216,7 @@ test("islands — held sorts above turned-in within the settled block", () => {
       quest({ quest: "b", items: [item("SpentIt")], rewards: ["rb"] }),
     ]),
   ];
-  const isl = buildIslands(cat, holding({ StillHave: 1, rb: 1 }))[0]!;
+  const isl = islandOf(buildIslands(cat, holding({ StillHave: 1, rb: 1 })), HARPY);
   assert.deepEqual(
     isl.settled.map((r) => [r.name, r.state]),
     [
@@ -237,11 +284,19 @@ test("ready — every component held, reward not yet", () => {
       quest({ quest: "already done", items: [item("Worn Leather Mask")], rewards: ["Drake-Hide Mask"] }),
     ]),
   ];
-  const held = holding({ "Storm Sky Opal": 1, "Worn Leather Mask": 1, "Drake-Hide Mask": 1 });
+  // The rune counts, so it has to be held for anything to be ready.
+  const held = holding({
+    "Wind Rune Meda": 1,
+    "Storm Sky Opal": 1,
+    "Worn Leather Mask": 1,
+    "Drake-Hide Mask": 1,
+  });
   assert.deepEqual(
     readyQuests(cat, held).map((r) => r.quest.quest),
     ["ready one"],
   );
+  // Take the rune away and nothing is ready, however many components are in the bag.
+  assert.deepEqual(readyQuests(cat, holding({ "Storm Sky Opal": 1 })), []);
 });
 
 test("completions — a reward resolves back to its quest and class", () => {
