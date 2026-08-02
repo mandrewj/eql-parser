@@ -104,3 +104,28 @@ test("browse — shortcuts are offered only for folders that exist", () => {
     }
   });
 });
+
+/** Windows has no single root — `dirname("C:\\")` is `C:\\` — so walking up can never leave the
+ *  drive the picker opened on. Drive shortcuts are the only way to reach a game installed on D:.
+ *  The probe itself is win32-only and cannot run here; what is checked is that a root is
+ *  correctly recognised as having no parent, which is the behaviour that creates the need. */
+test("browse — a filesystem root has no parent, which is why drives are offered", () => {
+  const root = path.parse(process.cwd()).root;
+  assert.equal(browseDir(root).parent, null);
+});
+
+test("browse — a start folder that does not exist is skipped rather than opened on", () => {
+  const missing = path.join(os.tmpdir(), "eql-not-here-" + Date.now());
+  const r = browseDir(null, missing);
+  assert.notEqual(r.path, missing);
+  assert.equal(r.error, undefined, "should have landed somewhere readable");
+});
+
+/** An explicitly requested folder is still reported as missing — that is information, where
+ *  silently redirecting would leave a mistyped path looking like it had worked. */
+test("browse — an explicitly requested missing folder still reports the error", () => {
+  const missing = path.join(os.tmpdir(), "eql-not-here-" + Date.now());
+  const r = browseDir(missing);
+  assert.equal(r.path, missing);
+  assert.ok(r.error);
+});

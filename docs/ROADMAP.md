@@ -917,6 +917,25 @@ optimisations were **rejected** for costing more in complexity than they save.
     the real name. It asserts the invariant that holds on both — the folder is found, and it is the
     one holding the log.
 
+## Post-v1 — Windows gaps in the folder picker  ✅
+Prompted by a friend testing on Windows successfully — but on a build from *before* the picker
+existed, so the picker itself was unverified there. Reviewing it against `path.win32` found one
+real gap and one rough edge.
+
+- **The picker could never leave the drive it opened on.** Windows has no single filesystem root:
+  `path.dirname("C:\")` is `C:\`, so "up" terminates at the drive. A game installed on `D:` was
+  unreachable except by typing the path — the exact thing the picker is for. The shortcut row now
+  lists the machine's drives on Windows. The 26-letter probe is win32-only and cached for the
+  process: drives do not come and go mid-session, and a mapped network drive makes the stat far
+  from free.
+- **A missing start folder opened the picker on an error.** The fallback chain now filters by
+  existence, so a first run lands somewhere readable. A folder the user *explicitly asked for* is
+  still reported missing, because silently redirecting a mistyped path makes it look like it
+  worked.
+- Everything else checked out against `path.win32`: `dirname` walks correctly, the separator
+  choice in `joinPath` and the path label picks `\` for a Windows path and `/` otherwise, and
+  `encodeURIComponent` round-trips backslashes through the query string.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

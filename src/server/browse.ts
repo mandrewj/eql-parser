@@ -55,6 +55,49 @@ function countLogs(dir: string): number | null {
   }
 }
 
+/**
+ * The drives on this machine, on Windows only.
+ *
+ * Windows has no single filesystem root: `path.dirname("C:\\")` is `C:\\`, so a picker that only
+ * walks *up* can never leave the drive it opened on. If the game is installed on `D:` and the app
+ * started on `C:`, there would be no way to reach it except by typing the path — which is the
+ * thing the picker exists to avoid.
+ *
+ * Probing the 26 letters costs 26 `stat` calls, so it is done once and cached: drives do not come
+ * and go over the life of a parser session, and repeating it on every keystroke of navigation
+ * would be the kind of per-request cost that is invisible until someone has a slow network drive
+ * mapped.
+ */
+let drivesCache: string[] | null = null;
+function driveRoots(): string[] {
+  if (process.platform !== "win32") return [];
+  if (drivesCache) return drivesCache;
+  const out: string[] = [];
+  for (let c = "A".charCodeAt(0); c <= "Z".charCodeAt(0); c++) {
+    const root = `${String.fromCharCode(c)}:\\`;
+    try {
+      if (fs.statSync(root).isDirectory()) out.push(root);
+    } catch {
+      // no such drive, or nothing in it
+    }
+  }
+  drivesCache = out;
+  return out;
+}
+
+/** The first of these that exists, so the picker never opens on a path that is not there. */
+function firstExisting(candidates: Array<string | null>): string | null {
+  for (const c of candidates) {
+    if (!c) continue;
+    try {
+      if (fs.statSync(c).isDirectory()) return c;
+    } catch {
+      /* next */
+    }
+  }
+  return null;
+}
+
 function shortcuts(): Array<{ label: string; path: string }> {
   const out: Array<{ label: string; path: string }> = [];
   const seen = new Set<string>();
@@ -70,6 +113,9 @@ function shortcuts(): Array<{ label: string; path: string }> {
   }
   const home = os.homedir();
   if (!seen.has(home)) out.push({ label: "Home", path: home });
+  // Last, because they are the fallback for "the game is not where I expected", not the first
+  // place to look.
+  for (const d of driveRoots()) if (!seen.has(d)) out.push({ label: d, path: d });
   return out;
 }
 
@@ -80,7 +126,12 @@ function shortcuts(): Array<{ label: string; path: string }> {
  * already in use, so the common case is "confirm what is selected" rather than "navigate from /".
  */
 export function browseDir(dir: string | null, start: string | null = null): BrowseResult {
-  const target = path.resolve(dir || start || candidateLogDirs()[0] || os.homedir());
+  // Opening on a path that does not exist would greet a first-run user with an error, so the
+  // fallbacks are filtered by existence — only an explicitly requested `dir` is trusted blindly,
+  // since reporting *that* it is missing is useful.
+  const target = path.resolve(
+    dir || firstExisting([start, ...candidateLogDirs(), os.homedir()]) || os.homedir(),
+  );
   const parentOf = (d: string): string | null => {
     const up = path.dirname(d);
     return up === d ? null : up; // a root is its own parent

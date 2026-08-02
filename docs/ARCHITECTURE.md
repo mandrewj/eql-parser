@@ -578,6 +578,15 @@ interface MetricStat {                // every metric group has this one shape
     100 subdirectories so it stays bounded rather than merely fast in practice.
   - **It opens where the app is already pointed**, so the common case is confirming, not hunting;
     shortcuts cover the platform's expected install and home, and are only offered when they exist.
+    A start folder that has gone missing is skipped rather than opened on, so a first run never
+    greets you with an error — but a folder you *asked* for is still reported missing, since a
+    mistyped path silently redirecting would look like it had worked.
+  - **On Windows the shortcuts also list the drives, and that is load-bearing.** Windows has no
+    single filesystem root — `path.dirname("C:\")` is `C:\` — so a picker that only walks *up*
+    can never leave the drive it opened on. A game installed on `D:` would be unreachable except
+    by typing the path, which is the thing the picker exists to avoid. The 26-letter probe is
+    win32-only and cached for the process, since drives do not come and go mid-session and a
+    mapped network drive would make the stat far from free.
   - Symlinked directories are followed, because `Dirent.isDirectory()` is false for them and a
     Wine bottle is often laid out that way — skipping them would hide the install.
   - The path bar truncates in the **middle**: the last segment answers "where am I" and never
