@@ -1353,6 +1353,10 @@ test("charm: my damage to my own pet never counts toward my personal DPS", () =>
   feedInto(engine, [
     L("01:00:00", "You begin singing Solon's Bewitching Bravura V."),
     L("01:00:02", "a lava beetle's eyes glaze over."),
+    // The Master line is what makes the charm real. Without some such proof a landing is
+    // ignored — the same emote is used by the mesmerise songs, which land on the mob you are
+    // killing and would otherwise hand your own target to you as a pet.
+    L("01:00:03", "A lava beetle told you, 'Attacking a death beetle Master.'"),
     L("01:00:05", "A lava beetle has taken 38 damage from your Chords of Dissonance V."),
     L("01:00:10", "You strike a death beetle for 100 points of damage."),
     L("01:00:12", "You have slain a death beetle!"),

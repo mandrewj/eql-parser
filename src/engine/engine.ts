@@ -464,6 +464,18 @@ export class Engine {
       // with the mob it was sent at, would fold the enemy in with it. It is also the best
       // ownership evidence there is, better than the cast we time-matched: this line says
       // outright whose pet it is, so it overwrites a guess rather than deferring to one.
+      // A pet announcing itself is the strongest confirmation a landing can get — stronger than
+      // the pet action we otherwise wait for, since it names whose pet it is outright. Promote it
+      // *and* carry the owner across: a pending charm is not in `charmed`, so without this the
+      // owner would be filed as a summoned pet's and fold the mob into that row.
+      const pendKey = this.pendingCharms.has(pk) ? pk : this.pendingCharms.has(twinKey(pk)) ? twinKey(pk) : null;
+      if (pendKey) {
+        const hold = this.pendingCharms.get(pendKey)!;
+        hold.ownerKey = ownerKey;
+        hold.ownerGuess = false;
+        this.confirmCharmByMaster(pendKey, ev.tsMs);
+        return;
+      }
       const charmKey = this.charmed.has(pk) ? pk : this.charmed.has(twinKey(pk)) ? twinKey(pk) : null;
       if (charmKey) this.charmed.get(charmKey)!.ownerKey = ownerKey;
       else this.petOwners.set(pk, ownerKey);
@@ -1147,6 +1159,22 @@ export class Engine {
 
   // --- charm --------------------------------------------------------------
 
+  /** Charms that have landed but not yet proved they took.
+   *
+   *  **A landing is not a charm.** The `eyes glaze over` emote is shared by the bard's charm song
+   *  and its *mesmerise* songs, and a charm song pulses onto whatever is in range — including the
+   *  mob the group is beating on, where it is broken by the next swing. Measured on a real log:
+   *  of 24 landings on `a greater sphinx`, **23 were broken within 5 seconds by our own attacks**
+   *  and the median gap was one second. Treating each as a life change banked and wiped that
+   *  encounter 21 times in six minutes, and it is not one mob's problem — 674 landings across 70
+   *  names.
+   *
+   *  So a landing is recorded here and affects **nothing** — not the classifier, not `everCharmed`,
+   *  not the encounter — until the mob does the one thing only a pet does: hit another mob. That
+   *  moment is also exactly where the two lives divide, so it is the right instant to bank the
+   *  first one. A charm that flickers off before then simply never happened. */
+  private readonly pendingCharms = new Map<string, CharmHold>();
+
   private applyCharm(ev: CharmEvent): void {
     if (ev.state === "cast") {
       const casterKey = this.keyOf(ev.who);
@@ -1177,8 +1205,7 @@ export class Engine {
 
     const key = this.keyOf(ev.who);
     this.see(key, ev.who);
-    this.current?.everCharmed.add(key);
-    const held = this.charmed.get(key);
+    const held = this.charmed.get(key) ?? this.pendingCharms.get(key);
     if (held) {
       // A bard's song re-lands on every pulse. That is the same pet, not a new one —
       // re-splitting its encounter here would shred the fight into one-tick slivers.
@@ -1189,7 +1216,7 @@ export class Engine {
 
     const f = this.current;
     if (f) {
-      const { friendly, npc } = this.resolveKinds(f);
+      const { friendly } = this.resolveKinds(f);
       // Charm flips allegiance, so landing on one of *ours* is the opposite event: they
       // become the enemy, not our pet. A mob being charmed is an enemy at this instant, so
       // "already friendly" is what separates the two cases.
@@ -1198,20 +1225,12 @@ export class Engine {
         f.npcSeeds.add(key);
         return;
       }
-      // The mob was an enemy until this instant. Bank what it did and what was done to
-      // it as a finished encounter, then wipe its tracking, so the pet's row starts from
-      // zero instead of inheriting the health bar we just chewed through. This is the
-      // same reset a death does, for the same reason: one name, two separate lives.
-      if (npc.has(key)) {
-        this.pushEncounter(f, key, ev.tsMs, friendly);
-        this.resetNpcTracking(f, key, friendly);
-      }
-      f.npcSeeds.delete(key);
-      // Stop it holding the fight open: an un-killed pet would otherwise keep the
-      // engaged set non-empty until the inactivity timeout.
-      f.aliveEngaged.delete(key);
+      // Nothing else happens here any more. The bank, the wipe, the unseeding and the
+      // unengaging all moved to `confirmCharm` / `confirmCharmByMaster`, which run when the mob
+      // proves the charm took — because until then this may be a song pulse glancing off the
+      // very mob the group is killing.
     }
-    this.charmed.set(key, {
+    this.pendingCharms.set(key, {
       ...this.resolveCharmOwner(ev, key, f),
       spell: ev.spell ?? null,
       sinceMs: ev.tsMs,
@@ -1284,10 +1303,69 @@ export class Engine {
     return { key: best, guess: true };
   }
 
+  /** Promote a landing that has proved it took, at the instant it proves it.
+   *
+   *  Only a pet attacks another mob, so that blow is both the proof and the boundary: everything
+   *  before it belongs to the mob's life as an enemy, everything after to its life as ours. So the
+   *  bank and the wipe that used to fire on the landing fire here instead — one blow later in the
+   *  true case, and never at all in the flicker case that was shredding encounters. */
+  private confirmCharm(aKey: string, tKey: string, tsMs: number): void {
+    const hold = this.pendingCharms.get(aKey);
+    if (!hold) return;
+    const f = this.current;
+    if (!f) return;
+    const { friendly, npc } = this.resolveKinds(f);
+    // Its target must be someone on the other side. Hitting *us* is how a charm breaks, not how
+    // one is confirmed. Deliberately not "is a known NPC": a pet is usually sent at something the
+    // group has not touched yet, so demanding the target already be classified would refuse to
+    // confirm exactly the charms that are working.
+    if (tKey === aKey || tKey === this.selfKey || friendly.has(tKey)) return;
+
+    this.pendingCharms.delete(aKey);
+    this.charmed.set(aKey, hold);
+    f.everCharmed.add(aKey);
+    if (npc.has(aKey)) {
+      this.pushEncounter(f, aKey, tsMs, friendly);
+      this.resetNpcTracking(f, aKey, friendly);
+    }
+    f.npcSeeds.delete(aKey);
+    // Stop it holding the fight open: an un-killed pet would otherwise keep the engaged set
+    // non-empty until the inactivity timeout.
+    f.aliveEngaged.delete(aKey);
+  }
+
+  /** Promote a landing on the strength of a `Master` line, which names the pet outright. Shares
+   *  the banking that `confirmCharm` does; it differs only in what counts as proof. */
+  private confirmCharmByMaster(key: string, tsMs: number): void {
+    const hold = this.pendingCharms.get(key);
+    if (!hold) return;
+    const f = this.current;
+    // Classified **before** the charm goes into force, or the mob already reads as ours and the
+    // bank below is skipped — the enemy life it just finished would be silently merged into the
+    // pet's. (`confirmCharm` orders these the same way, for the same reason.)
+    const kinds = f ? this.resolveKinds(f) : null;
+    // Promoted whether or not a fight is open: the line is proof by itself, and the banking
+    // below is only what happens when there is a fight with something in it to bank.
+    this.pendingCharms.delete(key);
+    this.charmed.set(key, hold);
+    if (!f || !kinds) return;
+    const { friendly, npc } = kinds;
+    f.everCharmed.add(key);
+    if (npc.has(key)) {
+      this.pushEncounter(f, key, tsMs, friendly);
+      this.resetNpcTracking(f, key, friendly);
+    }
+    f.npcSeeds.delete(key);
+    f.aliveEngaged.delete(key);
+  }
+
   /** End a charm: the mob is an enemy again, so its pet-era tracking is wiped and the
    *  next blow it trades opens a fresh encounter. Its damage to mobs that already died
    *  is untouched — those encounters were banked when they were finalized. */
   private breakCharm(key: string): void {
+    // A landing that never took is simply forgotten: it banked nothing, so there is nothing to
+    // put back and no encounter to restart. This is the path the flicker takes.
+    this.pendingCharms.delete(key);
     if (!this.charmed.delete(key)) return;
     // Symmetric with the reset on the charm *landing*: the mob is an enemy again, so its
     // next encounter starts clean, and what it dealt us before the charm stays banked in
@@ -1307,11 +1385,16 @@ export class Engine {
    *  Both wait out the grace window, so a swing already in the air when the charm landed
    *  doesn't un-charm a pet that goes on to fight for us for the next half minute. */
   private maybeBreakCharm(aKey: string, tKey: string, tsMs: number): void {
+    // Pending landings break on the same evidence as held ones — and it is the pending ones this
+    // mostly retires, since trading blows with the mob is precisely what a song pulse glancing off
+    // our target runs into. Leaving them behind would let a landing we had already disproved be
+    // confirmed minutes later by an unrelated blow.
+    const held = (key: string) => this.charmed.get(key) ?? this.pendingCharms.get(key);
     const broke = (key: string): boolean => {
-      const held = this.charmed.get(key);
-      return held !== undefined && tsMs - held.sinceMs > CHARM_GRACE_MS;
+      const h = held(key);
+      return h !== undefined && tsMs - h.sinceMs > CHARM_GRACE_MS;
     };
-    if (this.charmed.get(aKey)?.ownerKey === tKey && broke(aKey)) return this.breakCharm(aKey);
+    if (held(aKey)?.ownerKey === tKey && broke(aKey)) return this.breakCharm(aKey);
     const key = tKey === this.selfKey ? aKey : aKey === this.selfKey ? tKey : null;
     if (key !== null && key !== this.selfKey && broke(key)) this.breakCharm(key);
   }
@@ -1398,7 +1481,9 @@ export class Engine {
       firstSeen: new Map(),
       lastSeen: new Map(),
       aliveEngaged: new Set(),
-      everCharmed: new Set(),
+      // Seeded from charms already in force: one confirmed before this fight opened would
+      // otherwise be missing from the record the encounter tables filter on.
+      everCharmed: new Set(this.charmed.keys()),
     };
     return this.current;
   }
@@ -1489,6 +1574,9 @@ export class Engine {
     // Before the NPC seeding below, so a pet that just broke loose is seeded as the
     // enemy it now is rather than being held friendly by a stale charm.
     if (breaksCharm) this.maybeBreakCharm(aKey, tKey, tsMs);
+    // Only a pet attacks another mob, so this is where a landing proves it took — and where the
+    // mob's life as an enemy ends and its life as ours begins.
+    this.confirmCharm(aKey, tKey, tsMs);
     // A blow from a pet still inside its grace window is pre-charm aggression that merely
     // landed late, so it is no evidence of anyone's faction. `damagePairs` feeds only the
     // classifier, so dropping it costs no damage accounting. (Real case: a wan ghoul knight

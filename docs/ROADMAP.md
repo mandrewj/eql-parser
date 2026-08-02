@@ -986,6 +986,30 @@ saying so is the finding: the numbers are recorded so the next pass does not re-
   `You have been given` lines in the log and none is a Sky reward, so no count moves until the
   first real turn-in. Verified rather than assumed.
 
+## Post-v1 — A charm landing is not a charm  ✅
+Reported as "an encounter for *a greater sphinx* keeps completing and restarting". It was not the
+sphinx — it was the player's own bard song.
+
+- **The cause.** `<mob>'s eyes glaze over` is shared by Solon's Bewitching Bravura (charm) and the
+  mesmerise songs, and a charm song **pulses onto whatever is in range**, including the mob the
+  group is killing. The engine read each landing as "one name, two separate lives", banked the
+  encounter and wiped its tracking; the next swing opened a fresh one.
+- **The evidence.** Of 24 landings on a greater sphinx, **23 broke within five seconds** to the
+  group's own attacks, median gap **one second**, and the song never once wore off one naturally —
+  while it holds fine on imp protectors (469 wear-offs), fire giant warriors (295) and Lord Nagafen
+  (159). Replaying the session: the encounter opened **21 times and lost progress 21 times** in six
+  minutes. Not sphinx-specific — **674 landings across 70 mob names**.
+- **The fix.** A landing goes to `pendingCharms` and affects nothing until the mob does something
+  only a pet does: attacks another mob, or calls you Master. That instant is also where the two
+  lives divide, so it is where the bank now happens. A landing broken before then never happened.
+- **A bug found inside the fix**: `confirmCharmByMaster` resolved kinds *after* putting the charm
+  in force, so the mob already read as ours and the bank was skipped — merging the enemy life into
+  the pet's. Caught by an existing test asserting post-charm damage lands on the enemy twin.
+- **Validated against the raw log**, per the rule that unit tests pass through what this catches:
+  a full 1.63M-line replay gives **identical** session damage (814,507) and damage taken (322,109),
+  while the sphinx window opens **5 encounters instead of 21** — exactly the five sphinx deaths in
+  it — with peak total up from 12,838 to 30,886.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

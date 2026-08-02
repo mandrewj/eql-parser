@@ -216,6 +216,25 @@ difficulty) and the Plane of Sky pair below.
     - What remains uncorrected is a turn-in made while the app was not running. Its reward marks
       the quest complete, but the parts it consumed are only cleared by the next export — never,
       for the unexported storages.
+- **A charm landing is not a charm until it proves it took.** The `eyes glaze over` emote is
+  shared by the bard's charm song and its *mesmerise* songs, and a charm song pulses onto whatever
+  is in range — including the mob the group is beating on, where the next swing breaks it. Measured
+  on a real log: of 24 landings on `a greater sphinx`, **23 broke within 5 seconds to our own
+  attacks**, median gap one second. Treating each as a life change banked and wiped that encounter
+  **21 times in six minutes**, and it was not one mob's problem — 674 landings across 70 names.
+  - So a landing goes to `pendingCharms` and affects **nothing** — not the classifier, not
+    `everCharmed`, not the encounter. It is promoted when the mob does something only a pet does:
+    **attacks another mob**, or **calls you Master**. That instant is also exactly where the two
+    lives divide, so it is the right moment to bank the first — one blow later than before in the
+    true case, and never at all in the flicker case.
+  - A landing that breaks before it is confirmed is simply forgotten: it banked nothing, so there
+    is nothing to restore and no encounter to restart.
+  - **Kinds are resolved *before* the charm goes into force**, in both promotion paths. Setting it
+    first makes the mob read as ours, which skips the bank and silently merges the enemy life it
+    just finished into the pet's. That was a live bug for the length of one commit.
+  - Measured after: the same window opens the encounter **5 times instead of 21** — matching the
+    five sphinx deaths actually in the log — and its peak total rises from 12,838 to 30,886 damage.
+    Session damage and damage taken are unchanged to the digit (814,507 / 322,109).
 - **Charmed pets are a *window*, not a fact.** The same mob is an enemy before the charm, an
   ally during it, and an enemy again after it breaks, so the engine closes the books at each
   boundary instead of picking a side: on the charm it banks what the mob did and what was
