@@ -787,3 +787,12 @@ body { margin: 0; }
 }
 .pickhelp strong { color: var(--text); font-weight: 600; }
 .pickhelp code { color: var(--text); background: var(--panel2); padding: 0.03rem 0.2rem; border-radius: 3px; }
+
+/* Where a held item actually is. The bank and the currency tab are both "you have it", but only
+   one of them is on you when you reach the quest giver — so it earns a column rather than a
+   tooltip. Quiet, because it only matters once the answer is already yes. */
+.skywhere {
+  font-size: 0.62rem; letter-spacing: 0.03em; white-space: nowrap;
+  color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 0.2rem;
+}
+.skyrow.held .skywhere { border-color: var(--border-strong); }

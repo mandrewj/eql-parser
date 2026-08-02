@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { time } from "./format";
 import {
   buildIslands,
+  completedQuestNames,
   progressOf,
   readyQuests,
   resolveCompletions,
   RUNE_SOURCE,
+  type CompletedSet,
   type NeedRow,
   type QuestState,
 } from "./sky-model";
@@ -51,7 +53,7 @@ type View = "class" | "island";
 
 /** One component of an island. The right-hand columns say who wants it and how far off it is;
  *  a settled row keeps both, because "BST SHM · 2/2" is the answer, not clutter. */
-function NeedRowLine({ r }: { r: NeedRow }) {
+function NeedRowLine({ r, where }: { r: NeedRow; where?: string | null }) {
   const codes = [...new Set(r.wants.map((w) => w.code))].join(" ");
   const mark = r.state === "done" ? "✓" : r.state === "held" ? "✓" : r.held > 0 ? "◐" : "·";
   return (
@@ -64,6 +66,7 @@ function NeedRowLine({ r }: { r: NeedRow }) {
     >
       <span className="skymark">{mark}</span>
       <span className="skyname">{r.name}</span>
+      {r.held > 0 && where && <span className="skywhere">{where}</span>}
       <span className="skywants">{codes}</span>
       <span className="skycount">
         {r.state === "done"
@@ -80,8 +83,18 @@ function NeedRowLine({ r }: { r: NeedRow }) {
   );
 }
 
-function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<string, number> }) {
-  const islands = useMemo(() => buildIslands(catalogue, held), [catalogue, held]);
+function IslandView({
+  catalogue,
+  held,
+  completed,
+  where,
+}: {
+  catalogue: SkyClass[];
+  held: Map<string, number>;
+  completed: CompletedSet;
+  where: Map<string, string | null>;
+}) {
+  const islands = useMemo(() => buildIslands(catalogue, held, completed), [catalogue, held, completed]);
   const total = islands.reduce((n, i) => n + i.needCount, 0);
   const places = islands.filter((i) => i.needCount > 0).length;
 
@@ -109,7 +122,7 @@ function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<stri
               <div className="skymob" key={g.mob ?? "(unsourced)"}>
                 <div className="skymobname">{g.mob ?? "no mob listed"}</div>
                 {g.rows.map((r) => (
-                  <NeedRowLine key={r.name} r={r} />
+                  <NeedRowLine key={r.name} r={r} where={where.get(r.name) ?? null} />
                 ))}
               </div>
             ))}
@@ -120,7 +133,7 @@ function IslandView({ catalogue, held }: { catalogue: SkyClass[]; held: Map<stri
               <div className="skysettled">
                 <div className="skymobname">have / turned in</div>
                 {isl.settled.map((r) => (
-                  <NeedRowLine key={r.name} r={r} />
+                  <NeedRowLine key={r.name} r={r} where={where.get(r.name) ?? null} />
                 ))}
               </div>
             )}
@@ -137,18 +150,23 @@ function ItemRow({
   count,
   kind,
   title,
+  where,
 }: {
   name: string;
   note: string | null;
   count: number | undefined;
   kind: "component" | "rune" | "reward";
   title?: string;
+  /** Where it is, when it is held — the bank and the currency tab are both "have it", but only
+   *  one of them is on you when you reach the quest giver. */
+  where?: string | null;
 }) {
   const held = count !== undefined;
   return (
     <div className={held ? `skyrow ${kind} held` : `skyrow ${kind}`} title={title}>
       <span className="skymark">{held ? "✓" : "·"}</span>
       <span className="skyname">{name}</span>
+      {held && where && <span className="skywhere">{where}</span>}
       {note && <span className="skynote">{note}</span>}
       {/* Always the number, never the word. Runes stack into one slot with a quantity beside
           them, and several quests want the same one — so "have" hid the only figure that says
@@ -158,8 +176,18 @@ function ItemRow({
   );
 }
 
-function QuestBlock({ quest, held }: { quest: SkyQuest; held: Map<string, number> }) {
-  const p = progressOf(quest, held);
+function QuestBlock({
+  quest,
+  held,
+  completed,
+  where,
+}: {
+  quest: SkyQuest;
+  held: Map<string, number>;
+  completed: CompletedSet;
+  where: Map<string, string | null>;
+}) {
+  const p = progressOf(quest, held, completed);
   return (
     <div className={`skyquest ${p.state}`}>
       <div className="skyqhead" title={STATE_TITLE[p.state]}>
@@ -183,6 +211,7 @@ function QuestBlock({ quest, held }: { quest: SkyQuest; held: Map<string, number
         name={quest.rune}
         note={p.runeHeld ? "rune" : RUNE_SOURCE}
         count={held.get(quest.rune)}
+        where={where.get(quest.rune)}
         kind="rune"
         title={`Wind runes drop from ${RUNE_SOURCE}. The same rune is wanted by quests in several classes, and a turn-in consumes one.`}
       />
@@ -192,12 +221,13 @@ function QuestBlock({ quest, held }: { quest: SkyQuest; held: Map<string, number
           name={it.name}
           note={it.island}
           count={held.get(it.name)}
+          where={where.get(it.name)}
           kind="component"
           title={it.dropsFrom ? `Drops from ${it.dropsFrom}` : "No drop source listed on the wiki"}
         />
       ))}
       {quest.rewards.map((r) => (
-        <ItemRow key={r} name={r} note="reward" count={held.get(r)} kind="reward" />
+        <ItemRow key={r} name={r} note="reward" count={held.get(r)} where={where.get(r)} kind="reward" />
       ))}
     </div>
   );
@@ -252,13 +282,15 @@ function Baseline({ sky }: { sky: SkyStats }) {
 function ProgressBox({
   catalogue,
   held,
+  doneNames,
   completed,
 }: {
   catalogue: SkyClass[];
   held: Map<string, number>;
+  doneNames: CompletedSet;
   completed: SkyStats["completed"];
 }) {
-  const ready = useMemo(() => readyQuests(catalogue, held), [catalogue, held]);
+  const ready = useMemo(() => readyQuests(catalogue, held, doneNames), [catalogue, held, doneNames]);
   const done = useMemo(() => resolveCompletions(catalogue, completed), [catalogue, completed]);
   if (!ready.length && !done.length) return null;
 
@@ -329,19 +361,23 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
   // name → count. The catalogue's spelling is the key on both sides, which is what the
   // server's normalisation exists to guarantee.
   const held = useMemo(() => new Map(sky.held.map((h) => [h.name, h.count])), [sky.held]);
+  const where = useMemo(() => new Map(sky.held.map((h) => [h.name, h.where])), [sky.held]);
+  // Quests the log saw handed in. Permanent, and what `progressOf` trusts over holding the
+  // reward — a reward can be banked or sold without un-finishing the quest.
+  const done = useMemo(
+    () => (catalogue ? completedQuestNames(catalogue, sky.completed) : new Set<string>()),
+    [catalogue, sky.completed],
+  );
 
   // Completed quests per class, for the badge on each chip: the one number that says where
   // the effort has gone without opening all 16.
   const doneByClass = useMemo(() => {
     const m = new Map<string, number>();
     for (const c of catalogue ?? []) {
-      m.set(
-        c.code,
-        c.quests.filter((q) => progressOf(q, held).state === "done").length,
-      );
+      m.set(c.code, c.quests.filter((q) => progressOf(q, held, done).state === "done").length);
     }
     return m;
-  }, [catalogue, held]);
+  }, [catalogue, held, done]);
 
   if (!catalogue) {
     return <div className="idle">Loading the Plane of Sky catalogue…</div>;
@@ -353,7 +389,7 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
     <div className="skypanel">
       <Baseline sky={sky} />
 
-      <ProgressBox catalogue={catalogue} held={held} completed={sky.completed} />
+      <ProgressBox catalogue={catalogue} held={held} doneNames={done} completed={sky.completed} />
 
       <nav className="skyviews">
         <button className={view === "class" ? "tab on" : "tab"} onClick={() => setView("class")}>
@@ -365,9 +401,9 @@ export function SkyPanel({ catalogue, sky }: { catalogue: SkyClass[] | null; sky
       </nav>
 
       {view === "island" ? (
-        <IslandView catalogue={catalogue} held={held} />
+        <IslandView catalogue={catalogue} held={held} completed={done} where={where} />
       ) : (
-        <ClassView catalogue={catalogue} cls={cls} held={held} doneByClass={doneByClass} onPick={setCode} />
+        <ClassView catalogue={catalogue} cls={cls} held={held} completed={done} where={where} doneByClass={doneByClass} onPick={setCode} />
       )}
 
       {/* Shared by both views: what the log has added since the export is the one part of this
@@ -398,12 +434,16 @@ function ClassView({
   catalogue,
   cls,
   held,
+  completed,
+  where,
   doneByClass,
   onPick,
 }: {
   catalogue: SkyClass[];
   cls: SkyClass;
   held: Map<string, number>;
+  completed: CompletedSet;
+  where: Map<string, string | null>;
   doneByClass: Map<string, number>;
   onPick: (code: string) => void;
 }) {
@@ -437,7 +477,7 @@ function ClassView({
 
       <div className="skyquests">
         {cls.quests.map((q) => (
-          <QuestBlock key={q.quest} quest={q} held={held} />
+          <QuestBlock key={q.quest} quest={q} held={held} completed={completed} where={where} />
         ))}
       </div>
     </>

@@ -165,6 +165,23 @@ export interface GivenEvent extends BaseEvent {
   item: string;
 }
 
+/** An item leaving your inventory in a trade: `You offered 1 Wind Rune Dena to Torgon
+ *  Blademaster.` **The only line in the log that says something left.** Handing a quest in is a
+ *  trade, so this is what a turn-in consumes — and without it the Sky counts could only rise. */
+export interface TradeOfferEvent extends BaseEvent {
+  type: "tradeOffer";
+  item: string; // carries the upgrade suffix, e.g. "High Quality Raiment +1"
+  count: number;
+  to: string; // the NPC or player receiving it
+}
+
+/** `You complete the trade with Torgon Blademaster.` — the offers before it actually went
+ *  through. Kept separate because an offer alone is not a loss. */
+export interface TradeCompleteEvent extends BaseEvent {
+  type: "tradeComplete";
+  to: string;
+}
+
 export interface ZoneEvent extends BaseEvent {
   type: "zone";
   /** Destination zone, or null for the unnamed half of a transition (`LOADING, PLEASE
@@ -204,6 +221,8 @@ export type CombatEvent =
   | LootEvent
   | OutputFileEvent
   | GivenEvent
+  | TradeOfferEvent
+  | TradeCompleteEvent
   | ZoneEvent
   | ProgressEvent;
 
@@ -429,6 +448,10 @@ export interface SkyHolding {
   /** The catalogue's spelling, not the game's, so the UI can key straight off it. */
   name: string;
   count: number;
+  /** Where it was last seen — `inv`, `bank`, `shared`, `depot`, `keyring`, `DH`, `currency`.
+   *  The export's own slot when it can see the item; otherwise the storage the log said it was
+   *  routed into. Null when neither knows. */
+  where: string | null;
   /** `inventory` for the export's own contents, `loot` for something picked up since it was
    *  written, `both` when the two agree — which is the normal state for a stackable. */
   source: "inventory" | "loot" | "both";
@@ -451,6 +474,9 @@ export interface SkyLoot {
 export interface SkyCompletion {
   reward: string;
   tsMs: number;
+  /** The quest finished, when the turn-in identified it. Null for a completion recognised only
+   *  by its reward. */
+  quest: string | null;
 }
 
 /** The Sky tracker's *dynamic* half. The catalogue itself is immutable and is served once from

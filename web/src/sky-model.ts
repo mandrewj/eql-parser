@@ -5,6 +5,9 @@
 
 import type { SkyClass, SkyCompletion, SkyQuest } from "./types";
 
+/** Quests the log saw handed in. Completion is an event, so it outlives holding the reward. */
+export type CompletedSet = ReadonlySet<string>;
+
 /** Where a quest stands. Derived rather than stored — there is no persistence in this app, and
  *  the whole state is a function of the inventory export and the log. */
 export type QuestState = "done" | "ready" | "partial" | "open";
@@ -34,13 +37,20 @@ function questParts(quest: SkyQuest): string[] {
   return [quest.rune, ...quest.items.map((i) => i.name)];
 }
 
-export function progressOf(quest: SkyQuest, held: Map<string, number>): QuestProgress {
+export function progressOf(
+  quest: SkyQuest,
+  held: Map<string, number>,
+  completed?: CompletedSet,
+): QuestProgress {
   const parts = questParts(quest);
   const have = parts.filter((n) => held.has(n)).length;
   const need = parts.length;
-  // Every reward, not any: Beastlord's Test of Claw hands over a weapon for each hand, and
-  // holding one of the two is not a finished quest.
-  const done = quest.rewards.length > 0 && quest.rewards.every((r) => held.has(r));
+  // **A completion is permanent.** Holding the reward is only the fallback test — rewards get
+  // banked, worn on another character or sold, and none of that un-finishes the quest. The log
+  // saw the turn-in, so that is what the answer rests on when it is available.
+  const done =
+    completed?.has(quest.quest) === true ||
+    (quest.rewards.length > 0 && quest.rewards.every((r) => held.has(r)));
   const state: QuestState = done ? "done" : have === need && need > 0 ? "ready" : have > 0 ? "partial" : "open";
   return { state, have, need, runeHeld: held.has(quest.rune) };
 }
@@ -137,11 +147,15 @@ export interface ReadyQuest {
 }
 
 /** Everything ready to turn in, across all 16 classes. */
-export function readyQuests(catalogue: SkyClass[], held: Map<string, number>): ReadyQuest[] {
+export function readyQuests(
+  catalogue: SkyClass[],
+  held: Map<string, number>,
+  completed?: CompletedSet,
+): ReadyQuest[] {
   const out: ReadyQuest[] = [];
   for (const c of catalogue) {
     for (const q of c.quests) {
-      if (progressOf(q, held).state === "ready") {
+      if (progressOf(q, held, completed).state === "ready") {
         out.push({ code: c.code, className: c.className, giver: c.giver, quest: q });
       }
     }
@@ -160,6 +174,18 @@ export interface ResolvedCompletion {
   quest: string;
 }
 
+/** The quest names the log saw finished, for `progressOf`. */
+export function completedQuestNames(catalogue: SkyClass[], completed: SkyCompletion[]): Set<string> {
+  const byReward = new Map<string, string>();
+  for (const c of catalogue) for (const q of c.quests) for (const r of q.rewards) byReward.set(r, q.quest);
+  const out = new Set<string>();
+  for (const c of completed) {
+    const name = c.quest ?? byReward.get(c.reward);
+    if (name) out.add(name);
+  }
+  return out;
+}
+
 export function resolveCompletions(catalogue: SkyClass[], completed: SkyCompletion[]): ResolvedCompletion[] {
   const byReward = new Map<string, { code: string; className: string; quest: string }>();
   for (const c of catalogue) {
@@ -172,6 +198,7 @@ export function resolveCompletions(catalogue: SkyClass[], completed: SkyCompleti
     const hit = byReward.get(c.reward);
     if (hit) out.push({ tsMs: c.tsMs, reward: c.reward, ...hit });
   }
+  out.sort((a, b) => b.tsMs - a.tsMs);
   return out;
 }
 
@@ -195,11 +222,15 @@ export function resolveCompletions(catalogue: SkyClass[], completed: SkyCompleti
  * they are farmed like everything else — and a rune is wanted by six quests on average, which
  * makes them the biggest single thing to farm rather than a detail.
  */
-export function buildIslands(catalogue: SkyClass[], held: Map<string, number>): IslandNeeds[] {
+export function buildIslands(
+  catalogue: SkyClass[],
+  held: Map<string, number>,
+  completed?: CompletedSet,
+): IslandNeeds[] {
   const rows = new Map<string, NeedRow>();
   for (const c of catalogue) {
     const done = new Map<string, boolean>();
-    for (const q of c.quests) done.set(q.quest, progressOf(q, held).state === "done");
+    for (const q of c.quests) done.set(q.quest, progressOf(q, held, completed).state === "done");
     for (const q of c.quests) {
       // The rune is one of the parts, so it is one of the rows — in a group of its own, since
       // it drops everywhere rather than on any one island.

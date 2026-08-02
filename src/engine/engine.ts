@@ -14,8 +14,8 @@ import { CHARM_EMOTES, type ClassCode } from "../parser/spells.js";
 import { MOTE_TIERS, moteLabel, moteTier, zoneDifficulty, type MoteTier } from "../parser/motes.js";
 // The inventory's keys are already normalised, and normalising twice is a no-op, so the same
 // lookup serves both the export and the log.
-import { matchSkyItem, questConsumedFor } from "../parser/sky.js";
-import { isUnexportedStorage, type Inventory } from "../parser/inventory.js";
+import { matchSkyItem, questConsumedFor, skyQuestFromTurnIn } from "../parser/sky.js";
+import { isUnexportedStorage, locationLabel, type Inventory } from "../parser/inventory.js";
 import type {
   AbilityBreakdown,
   MoteStats,
@@ -90,6 +90,14 @@ const LIVE_POINT_MIN_SEC = 5;
  *  because the log is ASCII throughout, so a non-ASCII marker is unreachable from it.
  *  (It was a NUL until that quietly turned this file binary to git and grep.) */
 const twinKey = (key: string): string => `${key}§charmed`;
+
+/** A storage destination, shortened for the panel's location column. */
+const shortPlace = (storedIn: string): string => {
+  const s = storedIn.trim().toLowerCase();
+  if (s === "dragon hoard") return "DH";
+  if (s === "tradeskill depot") return "depot";
+  return s; // "currency"
+};
 const isTwinKey = (key: string): boolean => key.endsWith("§charmed");
 
 /** A milestone with the running counters as they stood when it landed. */
@@ -398,11 +406,14 @@ export class Engine {
   /** Turn-ins the log witnessed, chronological. Never filtered by the export's cut-off: this is
    *  a dated *event*, not a claim about what is currently held. */
   private readonly skyCompleted: SkyCompletion[] = [];
-  /** Quest → when its turn-in consumed its parts. A turn-in takes the rune and every component
-   *  with it, and nothing else in the log says so, so this is the only record that they left.
-   *  Keyed by quest rather than by reward because Beastlord's Test of Claw hands over two items
-   *  and consumes its parts once. */
-  private readonly skyConsumed = new Map<string, { tsMs: number; parts: string[] }>();
+  private readonly skyCompletedKeys = new Set<string>();
+  /** Items handed over in completed trades — the only record in the log that anything **left**.
+   *  Offers are buffered until the trade completes, because an offer alone is not a loss. */
+  private readonly skyGivenAway: Array<{ name: string; count: number; tsMs: number }> = [];
+  /** Offers made but not yet confirmed by a `You complete the trade` line. */
+  private pendingOffers: Array<{ name: string; count: number; tsMs: number; to: string }> = [];
+  /** Where each held Sky item was last seen, for the UI's location column. */
+  private readonly skyLastPlace = new Map<string, string>();
   /** Sky items seen arriving in a storage the export cannot see. Their acquisitions bypass the
    *  export cut-off, so their *consumptions* must too — see `buildSkyStats`. */
   private readonly skyUnexported = new Set<string>();
@@ -490,6 +501,8 @@ export class Engine {
       if (sky) {
         this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: ev.from, storedIn: ev.storedIn });
         if (isUnexportedStorage(ev.storedIn)) this.skyUnexported.add(sky.name);
+        // The log's own answer to "where is it", used when the export cannot see the item.
+        this.skyLastPlace.set(sky.name, ev.storedIn ? shortPlace(ev.storedIn) : "inv");
       }
       return;
     }
@@ -500,16 +513,32 @@ export class Engine {
       const sky = matchSkyItem(ev.item);
       if (sky) {
         this.skyLoot.push({ name: sky.name, tsMs: ev.tsMs, from: "quest reward" });
-        if (sky.role === "reward") {
-          this.skyCompleted.push({ reward: sky.name, tsMs: ev.tsMs });
-          const consumed = questConsumedFor(sky.name);
-          // First completion wins: the rewards are lore and no-drop, so a quest finishes once,
-          // and a two-reward quest must not have its parts deducted twice.
-          if (consumed && !this.skyConsumed.has(consumed.quest)) {
-            this.skyConsumed.set(consumed.quest, { tsMs: ev.tsMs, parts: consumed.parts });
-          }
-        }
+        // A reward handed over marks the quest done. What it *cost* is no longer inferred from
+        // the catalogue — the trade lines say outright what left the bags, which is both exact
+        // and independent of whether the quest could be identified at all.
+        if (sky.role === "reward") this.recordSkyCompletion(sky.name, ev.tsMs);
       }
+      return;
+    }
+    if (ev.type === "tradeOffer") {
+      // Buffered: an offer that is never completed is a trade window closed, not a loss.
+      this.pendingOffers.push({ name: ev.item, count: ev.count, tsMs: ev.tsMs, to: ev.to });
+      return;
+    }
+    if (ev.type === "tradeComplete") {
+      const mine = this.pendingOffers.filter((o) => o.to === ev.to);
+      this.pendingOffers = this.pendingOffers.filter((o) => o.to !== ev.to);
+      const offered: string[] = [];
+      for (const o of mine) {
+        const sky = matchSkyItem(o.name);
+        if (!sky) continue;
+        this.skyGivenAway.push({ name: sky.name, count: o.count, tsMs: ev.tsMs });
+        offered.push(sky.name);
+      }
+      // Handing a Sky quest in *is* this trade, so the giver and what went across it identify
+      // which quest — no reward line needed, and a real log turns out not to write one.
+      const quest = skyQuestFromTurnIn(ev.to, offered);
+      if (quest) this.recordSkyCompletion(quest.reward, ev.tsMs, quest.quest);
       return;
     }
     if (ev.type === "who") {
@@ -806,6 +835,21 @@ export class Engine {
     return { tiers, grid, perDifficulty, unknownZone, windowSize: this.moteRecent.length, recent };
   }
 
+  /** Record a finished quest, once. **Permanent**: a completion is a thing that happened, so it
+   *  survives the reward being sold, banked, or never seen — the tracker's job is to say what you
+   *  have done, not only what you are carrying. Deduplicated by quest, since a two-reward quest
+   *  would otherwise report itself twice. */
+  private recordSkyCompletion(reward: string, tsMs: number, quest?: string): void {
+    // Keyed on the *quest*, resolving it from the reward when the caller did not name one — the
+    // trade and the reward line are two sightings of one turn-in, and keying on what each happens
+    // to know would record it twice.
+    const named = quest ?? questConsumedFor(reward)?.quest;
+    const key = named ?? reward;
+    if (this.skyCompletedKeys.has(key)) return;
+    this.skyCompletedKeys.add(key);
+    this.skyCompleted.push({ reward, tsMs, quest: named ?? null });
+  }
+
   /** How many recent Sky pickups the panel lists. */
   private static readonly SKY_RECENT = 10;
 
@@ -846,22 +890,31 @@ export class Engine {
     }
     recentLoot.reverse();
 
-    // What turn-ins took back out. Acquisitions and consumptions have to obey the *same*
-    // cut-off, or the two halves disagree and the count drifts:
+    // What trades took back out, on the same cut-off the pickups obey — the two halves have to
+    // agree or the count drifts:
     //
-    //   - after the export → subtract. The export counted an item that has since been handed in.
-    //   - before the export → the export already reflects the loss (the item is simply not in
-    //     it), so subtracting again would double-count the loss.
-    //   - …unless the item lives somewhere the export cannot see, where the acquisition bypassed
-    //     the cut-off too. Nothing else will ever remove those, which is exactly how wind runes
-    //     spent on a turn-in stayed on the count forever.
-    for (const { tsMs, parts } of this.skyConsumed.values()) {
-      for (const part of parts) {
-        if (tsMs <= since && !this.skyUnexported.has(part)) continue;
-        const entry = counts.get(part);
-        if (entry) entry.count -= 1;
+    //   - after the export → subtract. The export counted something since handed over.
+    //   - before the export → do not. The export already shows the loss, so subtracting again
+    //     would count it twice and drive the total below what is in the bags.
+    //   - …unless the item came from a storage the export cannot see, where the pickup bypassed
+    //     the cut-off too. Wind runes live in the currency tab, so their turn-ins are only ever
+    //     visible here; without this they accumulate forever however many are spent.
+    for (const g of this.skyGivenAway) {
+      if (g.tsMs <= since && !this.skyUnexported.has(g.name)) continue;
+      const entry = counts.get(g.name);
+      if (entry) entry.count -= g.count;
+    }
+
+    // Where each one is. The export knows for anything it can see; for the rest the log's last
+    // pickup is the only clue, and the storage it named is the answer.
+    const place = new Map<string, string>();
+    if (inv) {
+      for (const [key, entries] of inv.entries) {
+        const ref = matchSkyItem(key);
+        if (ref && entries[0]) place.set(ref.name, locationLabel(entries[0].location));
       }
     }
+    for (const [name, where] of this.skyLastPlace) if (!place.has(name)) place.set(name, where);
 
     const held: SkyHolding[] = [...counts]
       // A part consumed down to nothing is not held. Clamped rather than trusted: a turn-in the
@@ -872,6 +925,7 @@ export class Engine {
         name,
         count: c.count,
         source: c.fromInventory && c.fromLoot ? "both" : c.fromInventory ? "inventory" : "loot",
+        where: place.get(name) ?? null,
       }));
 
     return {
@@ -882,7 +936,9 @@ export class Engine {
       inventoryItems: inv?.itemCount ?? 0,
       held,
       recentLoot: recentLoot.slice(0, Engine.SKY_RECENT),
-      completed: [...this.skyCompleted].reverse().slice(0, Engine.SKY_RECENT),
+      // Not capped. A completion is permanent and the UI marks quests done from this list, so
+      // truncating it would un-finish the oldest quests. Ninety-five is the ceiling.
+      completed: [...this.skyCompleted].reverse(),
     };
   }
 

@@ -35,6 +35,8 @@ function main(): void {
     loot: 0,
     outputfile: 0,
     given: 0,
+    tradeOffer: 0,
+    tradeComplete: 0,
     zone: 0,
     progress: 0,
   };

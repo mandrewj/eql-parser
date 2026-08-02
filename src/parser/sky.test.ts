@@ -3,9 +3,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { matchSkyItem, normalizeItemName, skyItemNames } from "./sky.js";
+import { matchSkyItem, normalizeItemName, skyItemNames, skyQuestFromTurnIn } from "./sky.js";
 import { SKY_CLASSES } from "./sky-catalogue.js";
-import { readInventory, inventoryPathFor, inventoryCandidates, isUnexportedStorage } from "./inventory.js";
+import {
+  readInventory,
+  inventoryPathFor,
+  inventoryCandidates,
+  isUnexportedStorage,
+  locationLabel,
+} from "./inventory.js";
 import { parseLogFileName, resolveLogDir } from "../config.js";
 import { parseLine } from "./parser.js";
 
@@ -272,16 +278,69 @@ test("loot — selling an item is not keeping it", () => {
   assert.equal(ev, null);
 });
 
-/** Which storages the export can vouch for was measured against a real export, not guessed.
- *  The currency tab and the Dragon Hoard have no section in the file; the tradeskill depot has
- *  one (`Personal-Depot`), so exempting it would double-count. */
-test("storage — currency and the Dragon Hoard are outside the export's reach; the depot is not", () => {
+/** Only the currency tab is genuinely invisible to the export.
+ *
+ *  The Dragon Hoard was on this list and should not have been. The measurement that put it there
+ *  — "12 of 19 items stored there before an export appear nowhere in it" — was confounded: those
+ *  items had been *spent* in the interval, so their absence said nothing about coverage. Items
+ *  that were not spent do appear. Exempting it added every hoard pickup on top of an export that
+ *  already counted it, so one High Quality Raiment read as three. */
+test("storage — only the currency tab is outside the export's reach", () => {
   assert.equal(isUnexportedStorage("currency"), true);
   assert.equal(isUnexportedStorage("Currency"), true);
-  assert.equal(isUnexportedStorage("Dragon Hoard"), true);
-  assert.equal(isUnexportedStorage("dragon hoard"), true);
+  assert.equal(isUnexportedStorage("Dragon Hoard"), false);
   assert.equal(isUnexportedStorage("tradeskill depot"), false);
   assert.equal(isUnexportedStorage(undefined), false); // an ordinary bag pickup
+});
+
+test("location — a slot name condenses to something a narrow column can carry", () => {
+  assert.equal(locationLabel("General 3-Slot7"), "inv");
+  assert.equal(locationLabel("Wrist"), "inv");
+  assert.equal(locationLabel("Bank14-Slot1"), "bank");
+  assert.equal(locationLabel("SharedBank2"), "shared");
+  assert.equal(locationLabel("Personal-Depot1"), "depot");
+  assert.equal(locationLabel("Equipment"), "keyring");
+});
+
+// --- the turn-in -----------------------------------------------------------------
+
+test("trade — an offer names the item, the count and who it went to", () => {
+  const ev = parseLine("[Sun Aug 02 16:16:46 2026] You offered 1 Wind Rune Dena to Torgon Blademaster.");
+  assert.equal(ev?.type, "tradeOffer");
+  if (ev?.type !== "tradeOffer") return;
+  assert.equal(ev.item, "Wind Rune Dena");
+  assert.equal(ev.count, 1);
+  assert.equal(ev.to, "Torgon Blademaster");
+});
+
+test("trade — an offer carries the upgrade suffix, which folds away on matching", () => {
+  const ev = parseLine("[Sun Aug 02 16:22:29 2026] You offered 1 High Quality Raiment +1 to Wizard Schrock.");
+  assert.equal(ev?.type, "tradeOffer");
+  if (ev?.type === "tradeOffer") assert.equal(matchSkyItem(ev.item)?.name, "High Quality Raiment");
+});
+
+test("trade — completion names the other side", () => {
+  const ev = parseLine("[Sun Aug 02 16:16:47 2026] You complete the trade with Torgon Blademaster.");
+  assert.equal(ev?.type, "tradeComplete");
+  if (ev?.type === "tradeComplete") assert.equal(ev.to, "Torgon Blademaster");
+});
+
+/** A real log writes **no** reward line for a Sky turn-in, so the trade itself is what a
+ *  completion has to be recognised by: the giver narrows it to one class, the items pick the
+ *  quest. */
+test("turn-in — the giver and what crossed the trade identify the quest", () => {
+  const hit = skyQuestFromTurnIn("Torgon Blademaster", ["Wind Rune Dena", "Ethereal Emerald", "Efreeti Battle Axe"]);
+  assert.equal(hit?.quest, "Warrior Test of Bash");
+  assert.equal(hit?.reward, "Fangol");
+});
+
+test("turn-in — a partial offer is not a completion", () => {
+  assert.equal(skyQuestFromTurnIn("Torgon Blademaster", ["Wind Rune Dena"]), null);
+  assert.equal(skyQuestFromTurnIn("Torgon Blademaster", []), null);
+});
+
+test("turn-in — trading with someone who takes no Sky quest completes nothing", () => {
+  assert.equal(skyQuestFromTurnIn("Mirad", ["Wind Rune Dena", "Ethereal Emerald", "Efreeti Battle Axe"]), null);
 });
 
 // --- the export-written cue ---------------------------------------------------

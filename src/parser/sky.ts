@@ -90,6 +90,42 @@ export function questConsumedFor(reward: string): { quest: string; parts: string
   return CONSUMED_BY_REWARD.get(normalizeItemName(reward)) ?? null;
 }
 
+/** Quest givers, lowercased, to the quests they take. */
+const BY_GIVER = new Map<string, Array<{ quest: string; parts: string[]; reward: string }>>();
+for (const cls of SKY_CLASSES) {
+  const list = BY_GIVER.get(cls.giver.toLowerCase()) ?? [];
+  for (const quest of cls.quests) {
+    list.push({
+      quest: quest.quest,
+      parts: [quest.rune, ...quest.items.map((i) => i.name)].map(normalizeItemName),
+      reward: quest.rewards[0]!,
+    });
+  }
+  BY_GIVER.set(cls.giver.toLowerCase(), list);
+}
+
+/** Which quest a completed turn-in finished, from the NPC it went to and what crossed the trade.
+ *
+ *  Handing a Sky quest in is an ordinary trade, and a real log writes **no** reward line for it —
+ *  so this, not the reward, is what a completion has to be recognised by. A giver takes several
+ *  quests, so the items pick between them: the best match is the quest whose parts the offer
+ *  covers most completely, and a quest is only claimed when every part it wants was offered.
+ *  Anything less is someone handing a giver an item that is not a turn-in. */
+export function skyQuestFromTurnIn(
+  giver: string,
+  offered: string[],
+): { quest: string; reward: string } | null {
+  const quests = BY_GIVER.get(giver.trim().toLowerCase());
+  if (!quests || !offered.length) return null;
+  const given = new Set(offered.map(normalizeItemName));
+  let best: { quest: string; reward: string; size: number } | null = null;
+  for (const q of quests) {
+    if (!q.parts.every((p) => given.has(p))) continue;
+    if (!best || q.parts.length > best.size) best = { quest: q.quest, reward: q.reward, size: q.parts.length };
+  }
+  return best ? { quest: best.quest, reward: best.reward } : null;
+}
+
 /** Every tracked name, catalogue spelling. Used by the tests and by the inventory scan. */
 export function skyItemNames(): SkyItemRef[] {
   return [...BY_KEY.values()];

@@ -301,7 +301,7 @@ test("ready — every component held, reward not yet", () => {
 
 test("completions — a reward resolves back to its quest and class", () => {
   const cat = [cls("WAR", [quest({ quest: "Warrior Test of Skill", rewards: ["Azure Ruby Ring"] })])];
-  const out = resolveCompletions(cat, [{ reward: "Azure Ruby Ring", tsMs: 1000 }]);
+  const out = resolveCompletions(cat, [{ reward: "Azure Ruby Ring", tsMs: 1000, quest: null }]);
   assert.equal(out.length, 1);
   assert.equal(out[0]!.quest, "Warrior Test of Skill");
   assert.equal(out[0]!.code, "WAR");
@@ -311,5 +311,5 @@ test("completions — a reward resolves back to its quest and class", () => {
  *  `You have been given: Void-Touched Potential`. Those must not appear as completions. */
 test("completions — an item that is no quest reward is dropped, not shown bare", () => {
   const cat = [cls("WAR", [quest()])];
-  assert.deepEqual(resolveCompletions(cat, [{ reward: "Void-Touched Potential", tsMs: 1000 }]), []);
+  assert.deepEqual(resolveCompletions(cat, [{ reward: "Void-Touched Potential", tsMs: 1000, quest: null }]), []);
 });

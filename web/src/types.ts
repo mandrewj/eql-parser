@@ -218,6 +218,8 @@ export interface SkyHolding {
   name: string;
   count: number;
   source: "inventory" | "loot" | "both";
+  /** Where it was last seen: `inv`, `bank`, `shared`, `depot`, `keyring`, `DH`, `currency`. */
+  where: string | null;
 }
 
 export interface SkyLoot {
@@ -233,6 +235,8 @@ export interface SkyLoot {
 export interface SkyCompletion {
   reward: string;
   tsMs: number;
+  /** The quest finished, when the turn-in identified it. */
+  quest: string | null;
 }
 
 export interface SkyStats {

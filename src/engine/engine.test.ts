@@ -1616,17 +1616,6 @@ test("sky: a later export does not erase a completion the log witnessed", () => 
   assert.equal(sky.held.find((h) => h.name === "Espri")!.count, 1);
 });
 
-/** Measured, not assumed: 12 of 19 items stored in the Dragon Hoard before an export appear
- *  nowhere in it, and the file has no such location. A Wizard's Test of Concentration component
- *  was routed there, so this is the same silent loss the currency tab caused. */
-test("sky: a Dragon Hoard pickup survives an export written after it", () => {
-  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
-  const ev = parseLine(STORED("13:51:22", "Grey Damask Cloak", "Dragon Hoard"));
-  assert.ok(ev);
-  engine.handle(ev!);
-  engine.setInventory(baseline(Date.parse("Sat Jul 18 2026 14:00:00 GMT-0400"), {}));
-  assert.equal(engine.snapshot().sky.held.find((h) => h.name === "Grey Damask Cloak")?.count, 1);
-});
 
 /** The panel has to be able to say *which* export it is waiting for, so a missing file still
  *  reports the path the selected log implies — `inventoryMs` is what says it was read. */
@@ -1648,98 +1637,147 @@ test("sky: with no log selected there is no export to name", () => {
 // --- what a turn-in takes back out -------------------------------------------
 
 const GIVEN = (t: string, item: string) => L(t, `You have been given: ${item}`);
+const OFFER = (t: string, item: string, to: string) => L(t, `You offered 1 ${item} to ${to}.`);
+const TRADE = (t: string, to: string) => L(t, `You complete the trade with ${to}.`);
 const EXPORT = (t: string, held: Record<string, number> = {}) =>
   baseline(Date.parse(`Sat Jul 18 2026 ${t} GMT-0400`), held);
 const countOf = (engine: Engine, name: string) =>
   engine.snapshot().sky.held.find((h) => h.name === name)?.count ?? 0;
-
-/** The case that made rune counts drift upward forever: the currency tab is not in the export,
- *  so the acquisition bypassed the cut-off and nothing ever removed it again. */
-test("sky: a currency rune spent on a turn-in stops being counted", () => {
-  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
-  for (const line of [
-    STORED("10:00:00", "Wind Rune Azia", "currency"),
-    STORED("10:05:00", "Storm Sky Opal", "currency"),
-    GIVEN("10:10:00", "Espri"), // Druid Test of Nature: Wind Rune Izah + Storm Sky Opal…
-  ]) {
+const feedSky = (engine: Engine, lines: string[]) => {
+  for (const line of lines) {
     const ev = parseLine(line);
-    assert.ok(ev);
+    assert.ok(ev, line);
     engine.handle(ev!);
   }
-  // …so the Opal it consumed is gone, and the rune it did not want is untouched.
+};
+
+/** Handing a quest in is a trade, and the offer lines are the only record in the log that
+ *  anything **left** the bags. Without them the counts could only ever rise. */
+test("sky: a currency rune offered in a completed trade stops being counted", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  feedSky(engine, [
+    STORED("10:00:00", "Wind Rune Dena", "currency"),
+    STORED("10:00:30", "Wind Rune Dena", "currency"),
+    OFFER("10:10:00", "Wind Rune Dena", "Torgon Blademaster"),
+    TRADE("10:10:01", "Torgon Blademaster"),
+  ]);
+  assert.equal(countOf(engine, "Wind Rune Dena"), 1, "two looted, one handed over");
+});
+
+/** An offer with no completion is a trade window closed, not a loss. */
+test("sky: an offer that never completes takes nothing away", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  feedSky(engine, [
+    STORED("10:00:00", "Wind Rune Dena", "currency"),
+    OFFER("10:10:00", "Wind Rune Dena", "Torgon Blademaster"),
+  ]);
+  assert.equal(countOf(engine, "Wind Rune Dena"), 1);
+});
+
+test("sky: only the offers to the party that completed are consumed", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  feedSky(engine, [
+    STORED("10:00:00", "Wind Rune Dena", "currency"),
+    STORED("10:00:30", "Wind Rune Kala", "currency"),
+    OFFER("10:10:00", "Wind Rune Dena", "Torgon Blademaster"),
+    OFFER("10:10:02", "Wind Rune Kala", "Mirad"),
+    TRADE("10:10:03", "Torgon Blademaster"),
+  ]);
+  assert.equal(countOf(engine, "Wind Rune Dena"), 0);
+  assert.equal(countOf(engine, "Wind Rune Kala"), 1, "the offer to Mirad is still open");
+});
+
+/** A bag item is corrected by the next export, so subtracting a pre-export trade would count the
+ *  loss twice and push the total below what is actually in the bags. */
+test("sky: a trade before the export is not subtracted again", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  feedSky(engine, [
+    LOOT("10:00:00", "Storm Sky Opal"),
+    OFFER("10:10:00", "Storm Sky Opal", "Strandar Pinemist"),
+    TRADE("10:10:01", "Strandar Pinemist"),
+  ]);
+  engine.setInventory(EXPORT("11:00:00", { "storm sky opal": 1 }));
+  assert.equal(countOf(engine, "Storm Sky Opal"), 1, "the export is the truth for a bag item");
+});
+
+test("sky: a trade after the export removes what the export had counted", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  engine.setInventory(EXPORT("10:00:00", { "storm sky opal": 1 }));
+  feedSky(engine, [OFFER("11:00:00", "Storm Sky Opal", "Strandar Pinemist"), TRADE("11:00:01", "Strandar Pinemist")]);
   assert.equal(countOf(engine, "Storm Sky Opal"), 0);
-  assert.equal(countOf(engine, "Wind Rune Azia"), 1);
-  // The completion itself is still on the record — it is an event, not a holding.
+});
+
+/** The Dragon Hoard *is* covered by the export, so its pickups must not be added on top of it.
+ *  Treating it as invisible made one High Quality Raiment read as three. */
+test("sky: a Dragon Hoard pickup before the export is left to the export", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  feedSky(engine, [
+    STORED("10:00:00", "High Quality Raiment", "Dragon Hoard"),
+    STORED("10:00:30", "High Quality Raiment", "Dragon Hoard"),
+  ]);
+  engine.setInventory(EXPORT("11:00:00", { "high quality raiment": 1 }));
+  assert.equal(countOf(engine, "High Quality Raiment"), 1);
+});
+
+// --- completion ------------------------------------------------------------------
+
+/** A real log writes no reward line for a Sky turn-in, so the trade is the completion. */
+test("sky: a completed turn-in is recognised from the giver and the items", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  feedSky(engine, [
+    OFFER("10:00:00", "Ethereal Emerald", "Torgon Blademaster"),
+    OFFER("10:00:01", "Efreeti Battle Axe", "Torgon Blademaster"),
+    OFFER("10:00:02", "Wind Rune Dena", "Torgon Blademaster"),
+    TRADE("10:00:03", "Torgon Blademaster"),
+  ]);
+  const done = engine.snapshot().sky.completed;
+  assert.equal(done.length, 1);
+  assert.equal(done[0]!.quest, "Warrior Test of Bash");
+  assert.equal(done[0]!.reward, "Fangol");
+});
+
+/** Completion is permanent: it is a thing that happened, and no longer holding the reward — sold,
+ *  banked, worn by someone else — does not un-finish it. */
+test("sky: a completion survives an export that shows no reward", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  feedSky(engine, [
+    OFFER("10:00:00", "Ethereal Emerald", "Torgon Blademaster"),
+    OFFER("10:00:01", "Efreeti Battle Axe", "Torgon Blademaster"),
+    OFFER("10:00:02", "Wind Rune Dena", "Torgon Blademaster"),
+    TRADE("10:00:03", "Torgon Blademaster"),
+  ]);
+  engine.setInventory(EXPORT("12:00:00", {}));
+  assert.equal(engine.snapshot().sky.completed.length, 1, "still finished with nothing in the bags");
+});
+
+test("sky: a reward handed over is still a completion, for quests that do announce one", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  feedSky(engine, [GIVEN("14:02:00", "Espri")]);
+  assert.equal(engine.snapshot().sky.completed[0]!.reward, "Espri");
+});
+
+test("sky: the same quest is never recorded finished twice", () => {
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
+  feedSky(engine, [
+    OFFER("10:00:00", "Ethereal Emerald", "Torgon Blademaster"),
+    OFFER("10:00:01", "Efreeti Battle Axe", "Torgon Blademaster"),
+    OFFER("10:00:02", "Wind Rune Dena", "Torgon Blademaster"),
+    TRADE("10:00:03", "Torgon Blademaster"),
+    GIVEN("10:00:04", "Fangol"),
+  ]);
   assert.equal(engine.snapshot().sky.completed.length, 1);
 });
 
-/** A bag item is corrected by the next export, so subtracting a turn-in that predates the export
- *  would count the same loss twice. */
-test("sky: a turn-in before the export is not subtracted again — the export already shows it", () => {
+test("sky: being handed a non-Sky item completes nothing", () => {
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
-  for (const line of [LOOT("10:00:00", "Storm Sky Opal"), GIVEN("10:10:00", "Espri")]) {
-    const ev = parseLine(line);
-    assert.ok(ev);
-    engine.handle(ev!);
-  }
-  // The export is written afterwards and, correctly, no longer lists the Opal.
-  engine.setInventory(EXPORT("11:00:00", {}));
-  assert.equal(countOf(engine, "Storm Sky Opal"), 0);
-
-  // And if the player still had a second one, it survives rather than going negative.
-  engine.setInventory(EXPORT("11:00:00", { "storm sky opal": 1 }));
-  assert.equal(countOf(engine, "Storm Sky Opal"), 1);
+  feedSky(engine, [GIVEN("12:13:54", "Void-Touched Potential")]);
+  assert.equal(engine.snapshot().sky.completed.length, 0);
 });
 
-test("sky: a turn-in after the export removes what the export had counted", () => {
-  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
-  engine.setInventory(EXPORT("10:00:00", { "storm sky opal": 1 }));
-  assert.equal(countOf(engine, "Storm Sky Opal"), 1);
+// --- where it is -----------------------------------------------------------------
 
-  const ev = parseLine(GIVEN("11:00:00", "Espri"));
-  assert.ok(ev);
-  engine.handle(ev!);
-  assert.equal(countOf(engine, "Storm Sky Opal"), 0);
-});
-
-/** Beastlord's Test of Claw hands over a weapon for each hand. Its parts are consumed once. */
-test("sky: a two-reward quest deducts its parts once, not twice", () => {
+test("sky: a held item reports where it was last seen", () => {
   const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
-  for (const line of [
-    STORED("10:00:00", "Sphinx Claw", "currency"),
-    STORED("10:00:30", "Sphinx Claw", "currency"),
-    GIVEN("10:10:00", "Windhowl"),
-    GIVEN("10:10:01", "Spirit Render"),
-  ]) {
-    const ev = parseLine(line);
-    assert.ok(ev);
-    engine.handle(ev!);
-  }
-  assert.equal(countOf(engine, "Sphinx Claw"), 1, "two claws, one turn-in, one left");
-});
-
-/** Only the finishing quest's parts move; a rune wanted by six quests loses one copy, not six. */
-test("sky: one turn-in consumes one copy of a shared rune", () => {
-  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
-  for (const line of [
-    STORED("10:00:00", "Wind Rune Izah", "currency"),
-    STORED("10:00:30", "Wind Rune Izah", "currency"),
-    STORED("10:01:00", "Wind Rune Izah", "currency"),
-    GIVEN("10:10:00", "Espri"), // Druid Test of Nature wants Wind Rune Izah
-  ]) {
-    const ev = parseLine(line);
-    assert.ok(ev);
-    engine.handle(ev!);
-  }
-  assert.equal(countOf(engine, "Wind Rune Izah"), 2);
-});
-
-test("sky: being handed a non-Sky item consumes nothing", () => {
-  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 20 });
-  for (const line of [STORED("10:00:00", "Wind Rune Azia", "currency"), GIVEN("10:10:00", "Void-Touched Potential")]) {
-    const ev = parseLine(line);
-    assert.ok(ev);
-    engine.handle(ev!);
-  }
-  assert.equal(countOf(engine, "Wind Rune Azia"), 1);
+  feedSky(engine, [STORED("10:00:00", "Wind Rune Dena", "currency")]);
+  assert.equal(engine.snapshot().sky.held.find((h) => h.name === "Wind Rune Dena")!.where, "currency");
 });

@@ -1010,6 +1010,36 @@ sphinx — it was the player's own bard song.
   while the sphinx window opens **5 encounters instead of 21** — exactly the five sphinx deaths in
   it — with peak total up from 12,838 to 30,886.
 
+## Post-v1 — Turn-ins are trades, and the counts were wrong three ways  ✅
+Reported as "the tracker says I still have runes I no longer have, and lists 3 High Quality Raiment
+when I have none". Three separate faults, all found by comparing the tracker against the export
+item by item.
+
+- **The reward-based turn-in detection never fired.** A real log writes **no** reward line for a Sky
+  turn-in — the three `You have been given` lines in 1.6M are all something else. Handing a quest in
+  is a **trade**, and `You offered <n> <item> to <npc>.` followed by `You complete the trade with
+  <npc>.` is the actual record. That line is the only one in the log that says anything **left** the
+  bags, which is why the counts could only ever rise. Offers are buffered until the completion,
+  since an offer alone may still be cancelled.
+- **The Dragon Hoard should never have been exempt from the export cut-off.** The measurement that
+  put it there was confounded: "12 of 19 hoard items appear nowhere in the export" was true because
+  those items had been *spent* in between, not because the export cannot see them. Items that were
+  not spent do appear — 2 hoard pickups of an Efreeti War Spear, none offered, and the export holds
+  it. Exempting it added every pickup on top of an export that already counted them, which is
+  exactly the "3 High Quality Raiment" that was reported.
+- **Completions were capped at ten**, so the three oldest silently disappeared — and since the UI
+  now marks quests done from that list, truncating it would un-finish them. Uncapped; 95 is the
+  ceiling.
+- **Completion is now permanent** and drives the panel. It is an event, so `progressOf` trusts it
+  over holding the reward: banking, selling or handing the reward to an alt no longer un-finishes a
+  quest. Holding the reward stays the fallback for a completion never witnessed.
+- **Every holding reports where it is** — `inv`, `bank`, `shared`, `depot`, `keyring`, `DH`,
+  `currency` — from the export's slot, or the storage the log named when the export cannot see it.
+- **Validated item by item against the export**, which is the invariant that matters: of the 33 Sky
+  items the export can see, the tracker now agrees on **33** (it disagreed on several before). The
+  only log-only holdings left are the nine currency runes, correctly labelled. Thirteen completed
+  quests are recognised from the trades, where zero were before.
+
 ## Backlog (engine already supports the shape)
 - ~~Real spell-name mapping for non-melee "effect" messages via a damage-message table~~ — **done
   cheaply and closed**: a real log contains exactly three such messages (thorns/flames/frost), now

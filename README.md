@@ -146,14 +146,22 @@ things leaving your bags:
 So the export is the correction and the log is the running total. Re-export often enough and the
 two never drift; a run's worth of drift is small, a week's is not.
 
-Turn-ins are handled without an export: when the giver hands you the reward, the app knows which
-quest that finished and takes its rune and components back off your count. That matters most for
-wind runes, which live in the currency tab and so are the one thing an export can never correct.
+Turn-ins are handled without an export. Handing a quest in is a *trade*, and the log records every
+item that crosses it — so the app knows what left your bags, and the giver plus the items tell it
+which quest you finished. That matters most for wind runes, which live in the currency tab and are
+the one thing an export can never correct.
 
-> **The remaining gap** is a turn-in the app did not witness — one you did while it was closed. Its
-> reward will show the quest as complete, but the parts it consumed stay counted until your next
-> export clears them (or forever, for anything from the currency tab or the Dragon Hoard). Running
-> the app while you hand quests in avoids it entirely.
+Completions are **permanent**. Once the app has seen you hand a quest in, it stays finished whether
+or not you still hold the reward — sell it, bank it, hand it to an alt, and the quest is still done.
+
+Each item you hold also shows **where it is** — `inv`, `bank`, `shared`, `DH` (Dragon Hoard),
+`currency` — because "you have it" and "you have it on you at the quest giver" are different
+answers.
+
+> **The remaining gap** is a turn-in made while the app was closed: it never saw the trade, so the
+> quest will not be marked complete and the parts it consumed stay counted until your next export
+> clears them (forever, for anything in the currency tab). Running the app while you hand quests in
+> avoids it entirely.
 
 **Two views**, switched at the top:
 

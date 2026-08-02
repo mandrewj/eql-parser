@@ -69,18 +69,33 @@ export interface Inventory {
  * invisible. Plane of Sky wind runes are routed to the currency tab, so that is not a corner
  * case, it is every rune the character will ever loot.
  *
- * `Dragon Hoard` was measured the same way and is also absent. Of 19 distinct items stored there
- * before an export, 12 appear nowhere in it; the 7 that do are all in `Equipment` or a `Bank`
- * slot — separate copies of the same item, not the hoard's contents — and the file has no
- * `Dragon Hoard` location at all. This is not hypothetical either: a Grey Damask Cloak, the
- * Wizard's Test of Concentration component, was routed there.
+ * **`Dragon Hoard` is not listed, and an earlier version of this wrongly did list it.** The first
+ * measurement — "12 of 19 items stored there before an export appear nowhere in it" — was
+ * confounded: those items had been *spent* between the pickup and the export, so their absence
+ * said nothing about coverage. Checked against items that were not spent, the export accounts for
+ * them (2 hoard pickups of an Efreeti War Spear, none offered, and the export holds it). Exempting
+ * it therefore added every hoard pickup on top of an export that already counted it: a High
+ * Quality Raiment the player held one of read as three.
  *
- * `tradeskill depot` is **not** listed, and that is a measurement too rather than caution: an
- * export carried a `Personal-Depot` section holding exactly the Black Sapphire, Blue Diamond and
- * Darkbone Marrow the log had stored there. The depot is covered, so exempting it would
- * double-count. A later export shows none of them only because the depot had been emptied.
+ * `tradeskill depot` is not listed either, for the reason it never was: an export carried a
+ * `Personal-Depot` section holding exactly the items the log had stored there.
+ *
+ * That leaves `currency`, which really is invisible — no export has ever contained a rune routed
+ * there. Its pickups bypass the cut-off, and so must the **offers** that spend them, or the count
+ * only rises. See the trade handling in the engine.
  */
-const UNEXPORTED_STORAGE = new Set(["currency", "dragon hoard"]);
+const UNEXPORTED_STORAGE = new Set(["currency"]);
+
+/** Where the export says an item is, condensed to something a narrow column can carry.
+ *  The slot names are many (`General 3-Slot7`, `Bank14-Slot1`, `Wrist`, `Ammo`…) and the useful
+ *  distinction is only "on me" against "in the bank" against the odd corners. */
+export function locationLabel(location: string): string {
+  if (/^SharedBank/i.test(location)) return "shared";
+  if (/^Bank/i.test(location)) return "bank";
+  if (/^Personal/i.test(location)) return "depot";
+  if (/^(KeyRing|Equipment)$/i.test(location)) return "keyring";
+  return "inv"; // worn slots and General bags alike — it is on the character
+}
 
 /** Whether a pickup's destination is one the export cannot vouch for, making the log the only
  *  witness that the item was obtained at all. */

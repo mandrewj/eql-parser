@@ -13,6 +13,8 @@ import type {
   LootEvent,
   OutputFileEvent,
   GivenEvent,
+  TradeOfferEvent,
+  TradeCompleteEvent,
   MeleeDamageEvent,
   MissEvent,
   PetEvent,
@@ -27,7 +29,7 @@ const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
 const RELEVANT_RE =
-  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: |looted|Outputfile|been given/;
+  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: |looted|Outputfile|been given|You offered|complete the trade/;
 
 // A `/who` result line — the only place the log states anyone's class:
 //   [42 PAL/MNK/BRD] Sanluen (Wood Elf) <Guild Name> ZONE: Nagafen's Lair (soldungb)
@@ -66,6 +68,19 @@ const OUTPUTFILE_RE = /^Outputfile Complete: (.+?)\s*$/;
 // completion; holding the reward says a quest is done, this says when. Rare (3 lines in 1.5M)
 // and gated behind `been given` in the prefilter.
 const GIVEN_RE = /^You have been given: (.+?)\s*$/;
+
+// A trade, which is how a quest is handed in. The offer names the item and the count leaving
+// your inventory; the completion is what says the trade went through rather than being
+// cancelled, so the two are paired by the engine rather than acted on separately:
+//
+//   You offered 1 Wind Rune Dena to Torgon Blademaster.
+//   You complete the trade with Torgon Blademaster.
+//
+// This is the only record that an item **left**. Nothing else in the log says so, which is why
+// the Sky tracker's counts could only ever go up. Note the item carries its upgrade suffix
+// (`High Quality Raiment +1`), which `sky.ts` folds away.
+const TRADE_OFFER_RE = /^You offered (\d+) (.+?) to (.+?)\.$/;
+const TRADE_DONE_RE = /^You complete the trade with (.+?)\.$/;
 
 // Zoning is a hard fight boundary: "You have entered The Greater Faydark."
 // (guard against the non-zone "You have entered an area where …" warning).
@@ -309,6 +324,21 @@ export function parseLine(raw: string): CombatEvent | null {
   m = GIVEN_RE.exec(body);
   if (m) {
     const ev: GivenEvent = { type: "given", tsMs, raw: body, item: m[1]! };
+    return ev;
+  }
+
+  m = TRADE_OFFER_RE.exec(body);
+  if (m) {
+    const ev: TradeOfferEvent = {
+      type: "tradeOffer", tsMs, raw: body,
+      item: m[2]!, count: Number(m[1]), to: m[3]!,
+    };
+    return ev;
+  }
+
+  m = TRADE_DONE_RE.exec(body);
+  if (m) {
+    const ev: TradeCompleteEvent = { type: "tradeComplete", tsMs, raw: body, to: m[1]! };
     return ev;
   }
 

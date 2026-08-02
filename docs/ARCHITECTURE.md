@@ -202,9 +202,13 @@ difficulty) and the Plane of Sky pair below.
       them only because the depot had been emptied — which is why the test is "is there a
       section for it", not "is it empty today".) The list lives in
       [`inventory.ts`](../src/parser/inventory.ts).
-  - **A turn-in is the other half of the ledger, and obeys the same cut-off.** `You have been
-    given: <reward>` identifies the finished quest, and the catalogue says what that quest
-    consumed, so the parts come back off the count. The rule mirrors acquisition exactly:
+  - **A turn-in is the other half of the ledger, and obeys the same cut-off.** Handing a quest in
+    is a **trade**, and `You offered <n> <item> to <npc>.` is the only line in the log that says
+    anything **left** the bags — so that, not the reward, is what the deduction rests on. Offers
+    are buffered until `You complete the trade with <npc>.`, because an offer alone is a window
+    that may still be closed. This replaced an earlier scheme that inferred the cost from the
+    reward: a real log turns out to write **no** reward line for a Sky turn-in at all, so that
+    scheme deducted nothing and the counts only ever rose. The rule mirrors acquisition exactly:
     subtract a consumption **after** the export (the export counted something since handed in);
     do **not** subtract one from before it (the export already shows the loss — subtracting again
     would count it twice); but **always** subtract for an item from a storage the export cannot
@@ -212,10 +216,20 @@ difficulty) and the Plane of Sky pair below.
     Counts are clamped at zero, since a turn-in can be witnessed for an item whose pickup predates
     the log.
     - Deduplicated by **quest**, not reward: Beastlord's Test of Claw hands over a weapon for each
-      hand and consumes its parts once.
-    - What remains uncorrected is a turn-in made while the app was not running. Its reward marks
-      the quest complete, but the parts it consumed are only cleared by the next export — never,
-      for the unexported storages.
+      hand and consumes its parts once, and the trade and any reward line are two sightings of one
+      turn-in.
+    - **The trade also identifies the quest**, which is how completion is detected without a reward
+      line: the giver narrows it to one class and the items pick between that class's quests. A
+      quest is only claimed when every part it wants was offered.
+    - **Completion is permanent.** It is an event, so `progressOf` trusts it over holding the
+      reward — rewards get banked, sold or worn by another character, and none of that un-finishes
+      a quest. Holding the reward remains the fallback for a completion the log never saw.
+    - What remains uncorrected is a turn-in made while the app was not running: it saw no trade, so
+      the quest is not marked complete and its parts stay counted until the next export clears them
+      — never, for the currency tab.
+  - **Each holding reports where it was last seen** (`inv`, `bank`, `shared`, `depot`, `keyring`,
+    `DH`, `currency`) — the export's own slot where it can see the item, otherwise the storage the
+    log said it was routed into. "You have it" and "you have it on you" are different answers.
 - **A charm landing is not a charm until it proves it took.** The `eyes glaze over` emote is
   shared by the bard's charm song and its *mesmerise* songs, and a charm song pulses onto whatever
   is in range — including the mob the group is beating on, where the next swing breaks it. Measured
