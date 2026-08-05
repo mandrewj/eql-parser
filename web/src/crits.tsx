@@ -54,12 +54,72 @@ const KIND_LABEL: Record<CritKind, string> = {
 
 const pct = (v: number | null, digits = 1) => (v === null ? "—" : `${v.toFixed(digits)}%`);
 
+/** The three the records board leads with. Melee, spells and damage over time are the three ways
+ *  this character deals damage; heals and procs have records too and keep them on their own row,
+ *  where a healing number cannot be mistaken for a damage one. */
+const RECORD_CATEGORIES: CritCategory[] = ["melee", "spell", "dot"];
+
+const RECORD_LABEL: Record<string, string> = {
+  melee: "Biggest melee crit",
+  spell: "Biggest spell crit",
+  dot: "Biggest DoT crit",
+};
+
+/** One record tile. The headline is the biggest **crit**, which is what the board is for — but
+ *  the hardest thing you land is not always a crit, so the outright record is printed underneath
+ *  whenever it is a different hit. That is not a hypothetical: this character's biggest spell hit
+ *  is a 647 Denon's Desperate Dirge that never critted, against a biggest spell crit of 220.
+ *  Leading with 220 alone would read as broken to anyone who watched the 647 land. */
+function RecordTile({ c }: { c: CritCategoryStat }) {
+  const { best, bestHit } = c;
+  const outright = bestHit && (!best || bestHit.amount > best.amount) ? bestHit : null;
+
+  return (
+    <div className={`crit-record ${best ? "" : "nil"}`}>
+      <div className="crit-record-cap">
+        <span className={`crit-dot ${c.category}`} />
+        {RECORD_LABEL[c.category]}
+      </div>
+      {best ? (
+        <>
+          <div className="crit-record-amt" title={`${KIND_LABEL[best.kind ?? "critical"]} · ${time(best.tsMs)}`}>
+            {fmt(best.amount)}
+          </div>
+          <div className="crit-record-by" title={`${best.ability} on ${best.target}`}>
+            {best.ability} <span className="muted">→ {best.target}</span>
+          </div>
+          <div className="crit-record-when muted">{when(best.tsMs)}</div>
+        </>
+      ) : (
+        <>
+          <div className="crit-record-amt none">—</div>
+          <div className="crit-record-by muted">
+            {c.crittable ? "no crits yet" : "this form never crits"}
+          </div>
+          <div className="crit-record-when" />
+        </>
+      )}
+      {outright && (
+        <div className="crit-record-alt" title={`${outright.ability} on ${outright.target} · ${when(outright.tsMs)}`}>
+          hardest hit <b>{fmt(outright.amount)}</b> — {outright.ability}
+          <span className="crit-record-nocrit">, not a crit</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Date + clock, because a record is usually days old — "11:15 PM" alone would invite reading it
+ *  as today's. */
+const when = (ms: number) =>
+  new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " · " + time(ms);
+
 /** A record, as one line: how big, what did it, and to whom. */
 function RecordLine({ r, showCategory = false }: { r: CritRecord; showCategory?: boolean }) {
   return (
     // The ability and target both ellipsise on a narrow panel, so the full text has to survive
     // somewhere — long spell names ("Tuyen's Chant of Flame VI") are exactly the ones that trim.
-    <span className="crit-rec" title={`${fmt(r.amount)} — ${r.ability} on ${r.target} · ${KIND_LABEL[r.kind]} · ${time(r.tsMs)}`}>
+    <span className="crit-rec" title={`${fmt(r.amount)} — ${r.ability} on ${r.target} · ${r.kind ? KIND_LABEL[r.kind] : "not a crit"} · ${time(r.tsMs)}`}>
       <span className="crit-rec-amt">{fmt(r.amount)}</span>
       <span className="crit-rec-by">
         {showCategory && <span className={`crit-dot ${r.category}`} />}
@@ -191,7 +251,7 @@ function CategoryBlock({ c, open, onToggle }: { c: CritCategoryStat; open: boole
                 <span className="crit-anum">hits</span>
                 <span className="crit-anum">crits</span>
                 <span className="crit-anum">rate</span>
-                <span className="crit-abar">biggest</span>
+                <span className="crit-abar">biggest crit</span>
               </div>
               {abilities.map((a) => (
                 <AbilityRow key={a.name} a={a} best={bestAmount} />
@@ -230,6 +290,15 @@ export function CritPanel({ crits }: { crits: CritStats }) {
         </div>
       ) : (
         <>
+          {/* Records first. They are the one thing here that is read at a glance and never
+              changes on most pulls, so they sit above the rates rather than inside them. */}
+          <div className="crit-records">
+            {RECORD_CATEGORIES.map((key) => {
+              const c = crits.categories.find((x) => x.category === key);
+              return c ? <RecordTile key={key} c={c} /> : null;
+            })}
+          </div>
+
           <div className="crit-cats">
             {crits.categories.map((c) => (
               <CategoryBlock

@@ -549,13 +549,18 @@ export type CritCategory =
   | "heal" // `You heal X for 210 (260) hit points by Superior Healing. (Critical)`
   | "proc"; // procs and damage shields — the `non-melee` form, which never carries a flag
 
-/** A single crit worth remembering: the biggest of its kind, or one of the last few. */
+/** A single hit worth remembering: the biggest of its kind, or one of the last few crits.
+ *
+ *  `kind` is null when the hit was not a crit at all — which only `bestHit` below produces, and
+ *  which is not a corner case: this character's biggest spell hit is a 647 Denon's Desperate
+ *  Dirge that never critted, against a biggest spell *crit* of 220. A records board that could
+ *  only hold crits would report the 220 and read as broken to anyone who saw the 647 land. */
 export interface CritRecord {
   amount: number;
   ability: string; // melee verb, spell name, or heal spell
   target: string;
   tsMs: number;
-  kind: CritKind;
+  kind: CritKind | null;
   category: CritCategory;
 }
 
@@ -582,7 +587,12 @@ export interface CritCategoryStat {
    *  crit, the other is a run of bad luck. */
   crittable: boolean;
   byKind: Array<{ kind: CritKind; count: number }>; // biggest first, zero kinds omitted
+  /** The biggest **crit**. Null until one lands. */
   best: CritRecord | null;
+  /** The biggest hit of any kind, crit or not — the category's outright record. Usually the same
+   *  hit as `best` (a crit is normally the hardest thing you land), and the panel says so only
+   *  when it is *not*, which is the case worth seeing. */
+  bestHit: CritRecord | null;
   abilities: CritAbility[]; // most crits first, then most used
 }
 

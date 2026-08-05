@@ -26,11 +26,13 @@ deaths marked on the timeline.
 **Stance analysis.** What each melee-stance and invocation pairing is actually worth: its DPS, the
 damage it costs you defensively, and how much of your combat time you spent in it.
 
-**A critical-hit tracker.** How often your melee, your spells and your damage-over-time actually
-crit, as a share of the times each of them dealt damage — plus what those crits are worth: the
-damage they carry, how they compare to an ordinary hit, and your biggest one of each kind and of
-each individual attack and spell. It counts crippling blows, slay-undead and finishing blows too,
-which the game reports *instead of* "Critical" rather than alongside it.
+**A critical-hit tracker.** Your record crits across the whole log — biggest melee, biggest spell,
+biggest damage-over-time tick — over a breakdown of how often each of them actually crits, as a
+share of the times it dealt damage. Plus what those crits are worth: the damage they carry, how
+they compare to an ordinary hit, and the biggest one of every individual attack and spell. It
+counts crippling blows, slay-undead and finishing blows too, which the game reports *instead of*
+"Critical" rather than alongside it — and where your hardest hit of all wasn't a crit, it says so
+rather than pretending the record belongs to something else.
 
 **"What killed me."** Every death, reconstructed from the incoming hits before it — who, what, how
 much, and which stance you were in.

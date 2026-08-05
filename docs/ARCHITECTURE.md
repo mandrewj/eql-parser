@@ -526,6 +526,14 @@ difficulty) and the Plane of Sky pair below.
   - **A record keeps the first of a tie**, so a best that has stood all session isn't restamped by
     a later hit of the same size — this character's best melee crit is 629 and has landed three
     times.
+  - **Two records per category, because the hardest hit is not always a crit.** `best` is the
+    biggest crit; `bestHit` is the biggest hit of any kind, tracked before the crit test and
+    carrying `kind: null` when it wasn't one. Usually they are the same hit — but this character's
+    biggest spell hit is a **647 Denon's Desperate Dirge that never critted**, against a biggest
+    spell *crit* of 220, and its biggest heal is a 6,253 Lay on Hands X that likewise didn't. A
+    records board holding only crits would report 220 and read as broken to anyone who watched the
+    647 land. Verified against the raw log per category: melee 629, spell 647, DoT 201, heal 6,253,
+    proc 26 — all exact.
   - Costs nothing measurable: full-log replay is 14.7s against a 15.0s baseline (noise), and
     `snapshot()` goes 0.081ms → 0.088ms for the rebuild, at ~5 pushes/sec. No cache needed.
 - Separated from I/O so a whole file can be replayed for tests/backfill.
@@ -704,6 +712,14 @@ interface MetricStat {                // every metric group has this one shape
   times I dealt damage, how often did it crit**, and when it did, how hard. Its arithmetic lives in
   [`stats.ts`](../web/src/stats.ts), apart from the panel that draws it, for the same reason as the
   Sky model: these are exactly the rules that regress quietly into the wrong denominator.
+  - **A records board leads the tab** — biggest melee, spell and DoT crit, each with what did it,
+    to whom and when. It sits above the rates because it is the one thing here read at a glance
+    and the one thing that does not move on most pulls. Since the engine replays the whole log on
+    start, these are records over the **active log**, not just the current sitting.
+    - **Each tile also prints the outright record when it is a different hit**, marked *not a
+      crit* — the 647 case above. Without it the spell tile says 220 and looks wrong.
+    - Heals and procs have records too and keep them on their own rows, where a healing number
+      cannot be mistaken for a damage one.
   - **Four figures per category, in a fixed strip**, so the eye can run down the crit-rate column
     across all five rows — comparing melee to DoT is the reason the tab exists. Rate, crits/hits,
     the *share of damage* that arrived on a crit, and the multiplier against an ordinary hit. The

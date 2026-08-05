@@ -77,6 +77,7 @@ function critsOf(c?: Partial<CritStats>): CritStats {
           crittable: category !== "proc",
           byKind: [],
           best: null,
+          bestHit: null,
           abilities: [],
         },
     ),

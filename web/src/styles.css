@@ -890,3 +890,26 @@ body { margin: 0; }
   .crit-best { flex: 0 0 auto; order: 2; margin-left: auto; }
   .crit-body { padding-left: 0.6rem; }
 }
+
+/* --- the records board -------------------------------------------------------
+   Three tiles above the rates: the one thing on this tab read at a glance, and the one that
+   does not move on most pulls. `auto-fit` rather than `auto-fill` for the same reason as the
+   stance grid — at 540px two tiles must not hold open a third empty track. */
+.crit-records { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.4rem; margin-bottom: 0.55rem; }
+.crit-record { border: 1px solid var(--border); border-radius: 9px; background: var(--panel); padding: 0.45rem 0.6rem 0.5rem; min-width: 0; }
+.crit-record.nil { opacity: 0.6; }
+.crit-record-cap { display: flex; align-items: center; gap: 0.3rem; color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crit-record-amt { font-size: 1.7rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.crit-record-amt.none { color: var(--muted); font-weight: 400; }
+/* Wraps rather than ellipsising. At 540px three tiles share the width and an ellipsis ate the
+   ability itself ("Tuyen's Chant of Flame VI …"), which is the half of the line worth reading —
+   reflowing onto a second line costs a few pixels of height, which this panel has to spare. */
+.crit-record-by { font-size: 0.78rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.crit-record-by .muted { font-weight: 400; }
+.crit-record-when { font-size: 0.66rem; font-variant-numeric: tabular-nums; }
+/* The outright record, when it is a different hit from the biggest crit. Bordered off rather
+   than merely smaller: it answers a different question and must not read as a sub-heading of
+   the crit above it. */
+.crit-record-alt { margin-top: 0.35rem; padding-top: 0.3rem; border-top: 1px solid var(--hair); font-size: 0.68rem; color: var(--muted); line-height: 1.3; }
+.crit-record-alt b { color: var(--text); font-variant-numeric: tabular-nums; }
+.crit-record-nocrit { color: var(--partial); }

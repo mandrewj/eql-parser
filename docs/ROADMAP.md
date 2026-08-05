@@ -1157,6 +1157,17 @@ once the engine test file grew — the tally wobbled between 244 and 252 and a f
 end could have been dropped silently. The flag is no longer needed: the suite exits cleanly on its
 own in ~2.3s, and now reports a stable 260.
 
+**A records board leads the tab** — biggest melee, spell and DoT crit, with what did it, to whom
+and when. Records over the **active log**, since the engine replays all of it on start.
+
+**It needed a second record per category, and the reason is not a corner case.** The hardest thing
+you land is not always a crit: the biggest spell hit in this log is a **647 Denon's Desperate Dirge
+that never critted**, against a biggest spell *crit* of 220 — and the biggest heal is a 6,253 Lay
+on Hands X, likewise not a crit. A board holding only crits reports 220 and looks broken to anyone
+who watched the 647 land, so `bestHit` (biggest hit of any kind, `kind: null` when it wasn't a
+crit) sits beside `best`, and a tile prints it only when the two differ. Verified per category
+against the raw log: melee 629, spell 647, DoT 201, heal 6,253, proc 26 — all exact.
+
 **Not taken:** a crit rate per encounter window (10/25/50) to match the DPS chart. A 30-second pull
 is twenty swings, so the small windows would report noise, and the question "did that AA move my
 crit rate" wants a before/after the app cannot express anyway.

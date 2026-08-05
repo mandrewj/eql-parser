@@ -75,6 +75,7 @@ const cat = (o: Partial<CritCategoryStat>): CritCategoryStat => ({
   crittable: true,
   byKind: [],
   best: null,
+  bestHit: null,
   abilities: [],
   ...o,
 });

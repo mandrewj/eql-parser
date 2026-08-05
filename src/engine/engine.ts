@@ -173,7 +173,8 @@ interface CritAcc {
   total: number;
   critTotal: number;
   byKind: Map<CritKind, number>;
-  best: CritRecord | null;
+  best: CritRecord | null; // biggest crit
+  bestHit: CritRecord | null; // biggest hit of any kind — usually the same one
   abilities: Map<string, CritAbilityAcc>;
 }
 
@@ -184,6 +185,7 @@ const newCritAcc = (): CritAcc => ({
   critTotal: 0,
   byKind: new Map(),
   best: null,
+  bestHit: null,
   abilities: new Map(),
 });
 
@@ -1825,6 +1827,17 @@ export class Engine {
     a.hits++;
     a.total += amount;
 
+    // Ties keep the *first* one seen throughout, so a record that has stood all session isn't
+    // quietly restamped by a later hit of the same size — this character's best melee crit is
+    // 629 and it has landed three times.
+    //
+    // The outright record is tracked before the crit test below, because the hardest thing you
+    // land is not always a crit: the biggest spell hit in a real log is a 647 that never critted,
+    // against a biggest spell crit of 220.
+    if (!acc.bestHit || amount > acc.bestHit.amount) {
+      acc.bestHit = { amount, ability, target, tsMs, kind: kind ?? null, category };
+    }
+
     if (!kind) return;
 
     acc.crits++;
@@ -1834,9 +1847,6 @@ export class Engine {
     a.critTotal += amount;
 
     const record: CritRecord = { amount, ability, target, tsMs, kind, category };
-    // Ties keep the *first* one seen, so a record that has stood all session isn't quietly
-    // restamped with a later hit of the same size — this character's best melee crit is 629 and
-    // it has landed three times.
     if (!acc.best || amount > acc.best.amount) acc.best = record;
     if (!a.best || amount > a.best.amount) a.best = record;
 
@@ -1873,6 +1883,7 @@ export class Engine {
           .map(([kind, count]) => ({ kind, count }))
           .sort((x, y) => y.count - x.count),
         best: acc.best,
+        bestHit: acc.bestHit,
         abilities,
       };
     });

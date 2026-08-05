@@ -260,12 +260,15 @@ export type CritKind = "critical" | "crippling" | "slay" | "finishing";
  *  because it is damage the game never flags. */
 export type CritCategory = "melee" | "spell" | "dot" | "heal" | "proc";
 
+/** `kind` is null when the hit was not a crit — which only `bestHit` produces, and which is not a
+ *  corner case: this character's biggest spell hit is a 647 that never critted, against a biggest
+ *  spell crit of 220. */
 export interface CritRecord {
   amount: number;
   ability: string;
   target: string;
   tsMs: number;
-  kind: CritKind;
+  kind: CritKind | null;
   category: CritCategory;
 }
 
@@ -289,7 +292,11 @@ export interface CritCategoryStat {
    *  "0.0%", because "cannot crit" and "did not crit" are different answers. */
   crittable: boolean;
   byKind: Array<{ kind: CritKind; count: number }>;
+  /** The biggest **crit**. Null until one lands. */
   best: CritRecord | null;
+  /** The biggest hit of any kind — the outright record. Normally the same hit as `best`; the
+   *  panel calls it out only when it is not. */
+  bestHit: CritRecord | null;
   abilities: CritAbility[];
 }
 

@@ -1915,3 +1915,55 @@ test("crits: a session with no crits still reports every category", () => {
   assert.equal(s.categories.every((c) => c.best === null || c.crits > 0), true);
   assert.equal(s.recent.length, 0);
 });
+
+test("crits: the outright record is kept even when it never critted", () => {
+  // The case that makes this a separate field, from a real log: the biggest spell hit is a 647
+  // that did not crit, against a biggest spell *crit* of 220. A records board holding only crits
+  // would report 220 and read as broken to anyone who watched the 647 land.
+  const engine = feed([
+    L("01:00:00", "You hit an imp protector for 647 points of magic damage by Denon's Desperate Dirge."),
+    L("01:00:01", "You hit a froglok gaz knight for 220 points of magic damage by Careless Lightning. (Critical)"),
+    L("01:00:02", "You have slain an imp protector!"),
+  ]);
+  const spell = critsOf(engine).spell!;
+  assert.equal(spell.best!.amount, 220, "the biggest crit");
+  assert.equal(spell.best!.kind, "critical");
+  assert.equal(spell.bestHit!.amount, 647, "the biggest hit of any kind");
+  assert.equal(spell.bestHit!.kind, null, "…which was not a crit, and says so");
+  assert.equal(spell.bestHit!.ability, "Denon's Desperate Dirge");
+});
+
+test("crits: when the hardest hit *is* a crit, both records are that hit", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 535 points of damage."),
+    L("01:00:01", "You slash orc for 629 points of damage. (Critical)"),
+    L("01:00:02", "You have slain orc!"),
+  ]);
+  const melee = critsOf(engine).melee!;
+  assert.equal(melee.best!.amount, 629);
+  assert.equal(melee.bestHit!.amount, 629);
+  assert.equal(melee.bestHit!.kind, "critical");
+});
+
+test("crits: a category that never crits still has an outright record", () => {
+  // Damage shields carry no flag, so `best` stays null while `bestHit` is the hardest one seen —
+  // "no crits yet" and "nothing happened" have to stay distinguishable.
+  const engine = feed([
+    L("01:00:00", "Orc is pierced by YOUR thorns for 12 points of non-melee damage."),
+    L("01:00:01", "Orc is pierced by YOUR thorns for 31 points of non-melee damage."),
+    L("01:00:02", "You have slain orc!"),
+  ]);
+  const proc = critsOf(engine).proc!;
+  assert.equal(proc.best, null);
+  assert.equal(proc.bestHit!.amount, 31);
+  assert.equal(proc.bestHit!.kind, null);
+});
+
+test("crits: the outright record keeps the first of a tie too", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 400 points of damage."),
+    L("01:00:30", "You slash orc for 400 points of damage."),
+    L("01:00:31", "You have slain orc!"),
+  ]);
+  assert.equal(new Date(critsOf(engine).melee!.bestHit!.tsMs).getSeconds(), 0);
+});
