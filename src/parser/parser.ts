@@ -7,6 +7,7 @@ import { CHARM_SPELL_RE } from "./spells.js";
 import type {
   CharmEvent,
   CombatEvent,
+  CritKind,
   DeathEvent,
   DotTickEvent,
   HealEvent,
@@ -113,6 +114,42 @@ const VERB_BASE: Record<string, string> = {
 };
 const baseVerb = (v: string): string => VERB_BASE[v] ?? v;
 
+// --- the trailing flag ------------------------------------------------------
+// Damage and heal lines can end with a parenthetical after the sentence terminator, and it is
+// the only place the game says a hit critted. Every flag seen in a 2M-line log, by count:
+//
+//   Critical 26463 · Riposte 11231 · Flurry 977 · Slay Undead 363 · Rampage 236
+//   Riposte Critical 159 · Finishing Blow 114 · Crippling Blow 112 · Strikethrough 32 · …
+//
+// Two things follow. **They compose** — `(Riposte Strikethrough Critical)` is a real line — so
+// reading one is a search, not a match. And **three of them are crits that never say
+// "Critical"**: Crippling Blow, Slay Undead and Finishing Blow are emitted in its place, never
+// beside it, so counting only the literal word loses them. The self's own melee rate moves
+// 8.24% → 8.32% on the strength of 107 Crippling Blows.
+//
+// The others describe how the swing resolved (Riposte, Strikethrough) or that it was an extra
+// one (Flurry, Rampage, Double Bow Shot). Those are not critical hits and stay out.
+const CRIT_KINDS: ReadonlyArray<readonly [RegExp, CritKind]> = [
+  [/\bcritical\b/i, "critical"],
+  [/\bcrippling blow\b/i, "crippling"],
+  [/\bslay undead\b/i, "slay"],
+  [/\bfinishing blow\b/i, "finishing"],
+];
+
+/** Classify a trailing flag, or undefined when there is none or it isn't a crit. */
+function critKind(modifier: string | undefined): CritKind | undefined {
+  if (!modifier) return undefined;
+  for (const [re, kind] of CRIT_KINDS) if (re.test(modifier)) return kind;
+  return undefined;
+}
+
+/** The crit half of an event, spread into it. Omitting `critKind` entirely on a non-crit keeps
+ *  the event shape identical to before for the ~99% of lines that don't carry one. */
+function critFields(modifier: string | undefined): { crit: boolean; critKind?: CritKind } {
+  const kind = critKind(modifier);
+  return kind ? { crit: true, critKind: kind } : { crit: false };
+}
+
 const STANCE_RE = /^You assume an? (.+?) stance\.$/;
 // Caster "stances" are invocations: "You begin reciting the spellblade invocation."
 const INVOKE_RE = /^You begin reciting the (.+?) invocation\.$/;
@@ -150,8 +187,12 @@ const SELF_NONMELEE_RE = /^You were hit by non-melee for (\d+) damage\.$/;
 // (The sibling "absorbs the blow!" needs nothing — it arrives inside a "tries to …, but
 // …!" line, which the miss patterns already read.)
 const SHIELD_ABSORB_RE = /^(.+?)'s magical skin absorbs the damage of (.+?)\.$/;
+// The flag is captured rather than skipped even though no non-melee line in a 2M-line log has
+// ever carried one. That zero is a *measurement*, and the crit panel reports it as one — so the
+// parser reads what the line says and lets the count be the evidence, instead of the pattern
+// deciding the answer in advance.
 const NONMELEE_RE =
-  /^(.+?) (?:is|are|was|were) .+? by (.+?) for (\d+) points? of non-melee damage[.!](?: \([^)]+\))?$/;
+  /^(.+?) (?:is|are|was|were) .+? by (.+?) for (\d+) points? of non-melee damage[.!](?: \(([^)]+)\))?$/;
 // A named ability resolving as typed damage rather than a plain swing. That adjective sits
 // exactly where the melee patterns require "points of damage" with nothing in between, which is
 // why these went unparsed at first: 26,864 lines in a real log, 564,644 points of them the
@@ -456,7 +497,7 @@ export function parseLine(raw: string): CombatEvent | null {
       amount: Number(m[3]), // effective
       ...(m[4] ? { attempted: Number(m[4]) } : {}),
       ...(m[5] ? { spell: m[5] } : {}),
-      crit: m[6] ? /critical/i.test(m[6]) : false,
+      ...critFields(m[6]),
     };
     return ev;
   }
@@ -473,7 +514,7 @@ export function parseLine(raw: string): CombatEvent | null {
       target: normName(m[1]!),
       spell,
       amount: Number(m[2]),
-      crit: m[4] ? /critical/i.test(m[4]) : false,
+      ...critFields(m[4]),
     };
     return ev;
   }
@@ -490,6 +531,8 @@ export function parseLine(raw: string): CombatEvent | null {
       target: normName(m[1]!),
       effect,
       amount: Number(m[3]),
+      form: "nonmelee",
+      ...critFields(m[4]),
     };
     return ev;
   }
@@ -506,6 +549,7 @@ export function parseLine(raw: string): CombatEvent | null {
       target: "You",
       effect: "non-melee",
       amount: Number(m[1]),
+      form: "nonmelee",
     };
     return ev;
   }
@@ -521,7 +565,7 @@ export function parseLine(raw: string): CombatEvent | null {
       target: normName(m[2]!),
       verb: baseVerb(m[1]!),
       amount: Number(m[3]),
-      crit: m[4] ? /critical/i.test(m[4]) : false,
+      ...critFields(m[4]),
       ...(m[4] ? { modifier: m[4] } : {}),
     };
     return ev;
@@ -538,7 +582,7 @@ export function parseLine(raw: string): CombatEvent | null {
       target: normName(m[3]!),
       verb: baseVerb(m[2]!),
       amount: Number(m[4]),
-      crit: m[5] ? /critical/i.test(m[5]) : false,
+      ...critFields(m[5]),
       ...(m[5] ? { modifier: m[5] } : {}),
     };
     return ev;
@@ -559,7 +603,8 @@ export function parseLine(raw: string): CombatEvent | null {
       // The line names the real ability, so it needs no damage-message table to be readable.
       effect: m[4]!,
       amount: Number(m[3]),
-      crit: m[5] ? /critical/i.test(m[5]) : false,
+      form: "ability",
+      ...critFields(m[5]),
     };
     return ev;
   }

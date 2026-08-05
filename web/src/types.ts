@@ -249,6 +249,55 @@ export interface SkyStats {
   completed: SkyCompletion[];
 }
 
+// ---- critical hits (self only, session-wide) ----
+
+/** Which flag the crit arrived under. Three of the four never say "Critical" — the game emits
+ *  them in its place — so a rate that reads only the literal word is short by their count. */
+export type CritKind = "critical" | "crippling" | "slay" | "finishing";
+
+/** Grouped by what can crit and how often, which is not the same split as `DamageType`.
+ *  `proc` is the `non-melee` line form — procs and damage shields — and exists precisely
+ *  because it is damage the game never flags. */
+export type CritCategory = "melee" | "spell" | "dot" | "heal" | "proc";
+
+export interface CritRecord {
+  amount: number;
+  ability: string;
+  target: string;
+  tsMs: number;
+  kind: CritKind;
+  category: CritCategory;
+}
+
+export interface CritAbility {
+  name: string;
+  category: CritCategory;
+  hits: number;
+  crits: number;
+  total: number;
+  critTotal: number;
+  best: CritRecord | null;
+}
+
+export interface CritCategoryStat {
+  category: CritCategory;
+  hits: number;
+  crits: number;
+  total: number;
+  critTotal: number;
+  /** False for a form that has never once carried a flag — the panel prints "—" rather than
+   *  "0.0%", because "cannot crit" and "did not crit" are different answers. */
+  crittable: boolean;
+  byKind: Array<{ kind: CritKind; count: number }>;
+  best: CritRecord | null;
+  abilities: CritAbility[];
+}
+
+export interface CritStats {
+  categories: CritCategoryStat[];
+  recent: CritRecord[]; // newest first
+}
+
 export interface CombatantStats {
   name: string;
   kind: EntityKind;
@@ -337,6 +386,7 @@ export interface Snapshot {
   stats: LongTermStats;
   motes: MoteStats;
   sky: SkyStats;
+  crits: CritStats;
 }
 
 export interface LogInfo {

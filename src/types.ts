@@ -33,12 +33,32 @@ export interface Entity {
 
 export type DamageType = "melee" | "spell" | "dot" | "unknown";
 
+/** Which flag a critical hit arrived under.
+ *
+ *  `(Critical)` is the common one, but three more are critical hits under another name, and the
+ *  game emits them **instead of** `(Critical)` rather than alongside it — so a rate that reads
+ *  only the literal word is short by exactly their count. Measured over a 2M-line log: 26,463
+ *  `(Critical)`, 363 `(Slay Undead)`, 114 `(Finishing Blow)`, 112 `(Crippling Blow)`.
+ *
+ *  The rest of the flag set is deliberately *not* here: `(Riposte)` and `(Strikethrough)` say how
+ *  a swing resolved, `(Flurry)`, `(Rampage)` and `(Double Bow Shot)` say it was an extra one.
+ *  Neither is a critical hit. */
+export type CritKind = "critical" | "crippling" | "slay" | "finishing";
+
 interface BaseEvent {
   tsMs: number; // event timestamp (ms) from the log line
   raw: string; // original line body, for debugging
 }
 
-export interface MeleeDamageEvent extends BaseEvent {
+/** The half of a damage event that says it critted. Flags **compose** — `(Riposte Strikethrough
+ *  Critical)` occurs in a real log — so `crit` is the answer to "did this crit" and `critKind`
+ *  names which of the four it was, for the breakdown. */
+interface CritFlagged {
+  crit?: boolean;
+  critKind?: CritKind;
+}
+
+export interface MeleeDamageEvent extends BaseEvent, CritFlagged {
   type: "melee";
   attacker: string; // "You" is normalized to the self character name by the engine
   target: string;
@@ -48,7 +68,21 @@ export interface MeleeDamageEvent extends BaseEvent {
   modifier?: string; // raw "(Critical)" etc.
 }
 
-export interface SpellDamageEvent extends BaseEvent {
+/** Which line form a spell-damage event was read from. They look nothing alike and, more to the
+ *  point, only one of them can ever be flagged as a critical:
+ *
+ *  - `ability` — `You hit orc taskmaster for 84 points of fire damage by Ignite. (Critical)`
+ *  - `nonmelee` — `An orc is pierced by YOUR thorns for 12 points of non-melee damage.`
+ *
+ *  The `nonmelee` form carries no crit flag in 2M lines of log, because it is how procs and
+ *  damage shields report and those do not crit. Folding the two together would divide 5 crits by
+ *  55,000 hits and call the answer a spell crit rate, so the crit tracker keeps them apart.
+ *
+ *  Not exported: nothing outside this file names the type, only the field, and an export with no
+ *  reader is the finding two audits here have already turned up. */
+type SpellForm = "ability" | "nonmelee";
+
+export interface SpellDamageEvent extends BaseEvent, CritFlagged {
   type: "spell";
   owner: string; // caster/owner: self name, another name, or "Unknown"
   target: string;
@@ -56,10 +90,11 @@ export interface SpellDamageEvent extends BaseEvent {
    *  damage the real ability name, which that form states outright ("Smiting Strike"). */
   effect: string;
   amount: number;
+  form: SpellForm;
   crit?: boolean; // typed ability damage carries "(Critical)"; the non-melee form never does
 }
 
-export interface DotTickEvent extends BaseEvent {
+export interface DotTickEvent extends BaseEvent, CritFlagged {
   type: "dot";
   caster: string;
   target: string;
@@ -90,7 +125,7 @@ export interface StanceEvent extends BaseEvent {
   stance: string; // offensive/defensive/… or spellblade/arcane mastery/… (self only)
 }
 
-export interface HealEvent extends BaseEvent {
+export interface HealEvent extends BaseEvent, CritFlagged {
   type: "heal";
   healer: string;
   target: string;
@@ -498,6 +533,69 @@ export interface SkyStats {
    *  before this log begins is still `done` (the reward is held) but is not dated, which is
    *  why the panel lists these separately rather than every completed quest. */
   completed: SkyCompletion[];
+}
+
+// ---------------------------------------------------------------------------
+// Critical hits (self only, session-wide)
+// ---------------------------------------------------------------------------
+
+/** How a crit rate is grouped. Not the same split as `DamageType`: that one classifies damage
+ *  for the meters, this one classifies it by **what can crit and how often**, which is a
+ *  different question — `proc` exists precisely because it is damage the game never flags. */
+export type CritCategory =
+  | "melee" // plain swings: `You slash X for 137 points of damage. (Riposte Critical)`
+  | "spell" // named abilities: `You hit X for 84 points of fire damage by Ignite. (Critical)`
+  | "dot" // ticks: `X has taken 33 damage from your Chords of Dissonance V. (Critical)`
+  | "heal" // `You heal X for 210 (260) hit points by Superior Healing. (Critical)`
+  | "proc"; // procs and damage shields — the `non-melee` form, which never carries a flag
+
+/** A single crit worth remembering: the biggest of its kind, or one of the last few. */
+export interface CritRecord {
+  amount: number;
+  ability: string; // melee verb, spell name, or heal spell
+  target: string;
+  tsMs: number;
+  kind: CritKind;
+  category: CritCategory;
+}
+
+/** One ability's crit record. `hits` counts every landing, crit or not, so the rate below it
+ *  divides by the same denominator the panel promises: times this ability dealt damage. */
+export interface CritAbility {
+  name: string;
+  category: CritCategory;
+  hits: number;
+  crits: number;
+  total: number; // damage (or healing) from every hit
+  critTotal: number; // …and the part of it that critted
+  best: CritRecord | null;
+}
+
+export interface CritCategoryStat {
+  category: CritCategory;
+  hits: number;
+  crits: number;
+  total: number;
+  critTotal: number;
+  /** False for the `proc` form, which the game has never once flagged. The panel prints "—"
+   *  rather than "0.0%", because the two mean different things: one is a form that cannot
+   *  crit, the other is a run of bad luck. */
+  crittable: boolean;
+  byKind: Array<{ kind: CritKind; count: number }>; // biggest first, zero kinds omitted
+  best: CritRecord | null;
+  abilities: CritAbility[]; // most crits first, then most used
+}
+
+/** The self's critical hits over the whole session. Never trimmed with the encounter window:
+ *  a crit rate is a property of the character, and a rate over the last 50 encounters would be
+ *  a noisier answer to a question nobody asked.
+ *
+ *  There is no session-wide "biggest crit" field because the categories already carry one each
+ *  and a single list of them would be all melee — a 629 swing and a 33 DoT tick are not
+ *  competing for the same record. */
+export interface CritStats {
+  categories: CritCategoryStat[]; // fixed order, present even when empty
+  recent: CritRecord[]; // newest first — the "did that just crit" readout
 }
 
 export interface CombatantStats {

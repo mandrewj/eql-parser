@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Fight, LogsResponse, MoteStats, SkyClass, SkyStats, Snapshot } from "./types";
+import type {
+  CritCategory,
+  CritStats,
+  Fight,
+  LogsResponse,
+  MoteStats,
+  SkyClass,
+  SkyStats,
+  Snapshot,
+} from "./types";
+
+/** The crit panel's categories, in the order it lists them. Mirrors the engine's own list —
+ *  the two have to agree, and the client needs its own copy to rebuild the empty ledger. */
+const CRIT_CATEGORIES: readonly CritCategory[] = ["melee", "spell", "dot", "heal", "proc"];
 
 export interface AppData {
   snapshot: Snapshot | null;
@@ -44,6 +57,30 @@ function skyOf(s?: Partial<SkyStats>): SkyStats {
     held: s?.held ?? [],
     recentLoot: s?.recentLoot ?? [],
     completed: s?.completed ?? [],
+  };
+}
+
+/** Same defaulting rule again. The five categories are rebuilt rather than defaulted to `[]`,
+ *  so the panel's rows exist before the first fight and it opens as an empty ledger instead of
+ *  a blank pane — which is also what it looks like on a server predating this tab. */
+function critsOf(c?: Partial<CritStats>): CritStats {
+  const seen = new Map((c?.categories ?? []).map((cat) => [cat.category, cat]));
+  return {
+    categories: CRIT_CATEGORIES.map(
+      (category) =>
+        seen.get(category) ?? {
+          category,
+          hits: 0,
+          crits: 0,
+          total: 0,
+          critTotal: 0,
+          crittable: category !== "proc",
+          byKind: [],
+          best: null,
+          abilities: [],
+        },
+    ),
+    recent: c?.recent ?? [],
   };
 }
 
@@ -104,6 +141,7 @@ export function useAppData(): AppData {
           },
           motes: motesOf(msg.motes),
           sky: skyOf(msg.sky),
+          crits: critsOf(msg.crits),
         });
       } else if (msg.t === "activeLogChanged") {
         void refreshLogs();

@@ -1116,6 +1116,51 @@ Kept here so the reasoning isn't re-derived. Ranked by value-per-effort as judge
   which is exactly the "mob as a row" this entry was holding the styling for. `.erow.npc` is still
   unreachable and still deliberate.
 
+## Post-v1 — A critical-hit tracker  ✅
+A fourth top-level tab: of the times I dealt damage, how often did it crit, and how hard. Self only
+and session-wide — a crit rate is a property of the character, not of a fight, and it needs volume
+before the percentage settles.
+
+**Three things the log turned out to be doing, none of them guessable from the code:**
+- **Three crits never say "Critical".** `(Crippling Blow)`, `(Slay Undead)` and `(Finishing Blow)`
+  are critical hits emitted *instead of* `(Critical)`, never beside it. The old
+  `/critical/i.test(modifier)` scored all 589 of them as ordinary hits; 107 were the self's own, and
+  reading them moves the melee crit rate 8.24% → 8.32%. `(Riposte)`, `(Strikethrough)`, `(Flurry)`,
+  `(Rampage)` and `(Double Bow Shot)` stay out — those say how a swing resolved or that it was an
+  extra one, which is a different question.
+- **Flags compose.** `(Riposte Strikethrough Critical)`, `(Critical Double Bow Shot)` and
+  `(Riposte Crippling Blow)` all occur, so reading one is a search, not a match.
+- **Spell damage arrives in two forms and only one can crit.** Named abilities
+  (`…84 points of fire damage by Ignite.`) carry flags; the `non-melee` form — every proc and damage
+  shield — has **never once** carried one in 2M lines. Folded together they would divide 5 crits by
+  55,000 hits and call it a spell crit rate. `SpellDamageEvent` now carries a `form`, procs get
+  their own row marked "cannot crit", and the spell rate divides by the 15,528 hits that could
+  actually have critted.
+
+**Reconciled against the raw log**, category by category, engine total vs. independent grep:
+melee 131,372 hits / 10,954 crits · spells 15,528 / 5 · DoT 78,050 / 647 · heals 42,626 / 25 ·
+procs 39,563 / 0. Every one exact. Heals are recorded *before* the fight guard the other heal
+figures sit behind, so the denominator is every heal cast rather than every heal cast in combat —
+which is also what the grep counts.
+
+**Measured, and nothing needed optimising:** full-log replay 14.7s against a 15.0s baseline (inside
+the noise), `snapshot()` 0.081ms → 0.088ms for the ledger rebuild at ~5 pushes/sec. Fixed size
+regardless of session length, so no trimming and no cache.
+
+**Two thin-sample thresholds, because the figures have different denominators.** `THIN_SAMPLE`
+(100 hits) governs the rate; `THIN_CRITS` (20 crits) governs the damage share and the
+crit-vs-normal multiplier, which divide by crits alone. Without the second, this character's
+spells reported "0.90× a normal hit" off five crits — noise presented as a finding.
+
+**Also fixed here:** `npm test` carried `--test-force-exit`, which truncated the TAP output mid-run
+once the engine test file grew — the tally wobbled between 244 and 252 and a failing test near the
+end could have been dropped silently. The flag is no longer needed: the suite exits cleanly on its
+own in ~2.3s, and now reports a stable 260.
+
+**Not taken:** a crit rate per encounter window (10/25/50) to match the DPS chart. A 30-second pull
+is twenty swings, so the small windows would report noise, and the question "did that AA move my
+crit rate" wants a before/after the app cannot express anyway.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

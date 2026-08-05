@@ -18,6 +18,12 @@ import { matchSkyItem, questConsumedFor, skyQuestFromTurnIn } from "../parser/sk
 import { isUnexportedStorage, locationLabel, type Inventory } from "../parser/inventory.js";
 import type {
   AbilityBreakdown,
+  CritAbility,
+  CritCategory,
+  CritKind,
+  CritRecord,
+  CritCategoryStat,
+  CritStats,
   MoteStats,
   MoteTierStat,
   SkyStats,
@@ -138,6 +144,48 @@ interface AbilityAgg {
   hits: number;
   crits: number;
 }
+
+// --- critical hits ----------------------------------------------------------
+
+/** The order the crit panel lists them in: what you swing, what you cast, what ticks, what you
+ *  heal, and last the form that cannot crit at all. */
+const CRIT_CATEGORIES: readonly CritCategory[] = ["melee", "spell", "dot", "heal", "proc"];
+
+/** How many recent crits to keep. Enough to glance at between pulls, few enough that the
+ *  ledger stays a fixed size over a session that runs for hours. */
+const CRIT_RECENT = 8;
+
+interface CritAbilityAcc {
+  name: string;
+  hits: number;
+  crits: number;
+  total: number;
+  critTotal: number;
+  best: CritRecord | null;
+}
+
+/** One category's running ledger. `hits` counts every landing and `crits` the flagged subset,
+ *  so the rate divides by exactly what the panel claims: times this dealt damage. Misses never
+ *  reach here — an attack that did nothing is not an attack that failed to crit. */
+interface CritAcc {
+  hits: number;
+  crits: number;
+  total: number;
+  critTotal: number;
+  byKind: Map<CritKind, number>;
+  best: CritRecord | null;
+  abilities: Map<string, CritAbilityAcc>;
+}
+
+const newCritAcc = (): CritAcc => ({
+  hits: 0,
+  crits: 0,
+  total: 0,
+  critTotal: 0,
+  byKind: new Map(),
+  best: null,
+  abilities: new Map(),
+});
 
 interface MetricAcc {
   total: number;
@@ -369,6 +417,20 @@ export class Engine {
   private readonly deaths: DeathReport[] = []; // newest first, last 5
   private deathSeq = 0;
 
+  // Critical hits, self only and session-wide. Deliberately outside the encounter window every
+  // other panel is trimmed to: a crit rate is a property of the character rather than of a
+  // fight, and it needs volume before the percentage settles — a 30-second pull is twenty
+  // swings. Fixed size regardless of session length: five categories, each holding a small map
+  // of the abilities actually used.
+  private readonly critAcc: Record<CritCategory, CritAcc> = {
+    melee: newCritAcc(),
+    spell: newCritAcc(),
+    dot: newCritAcc(),
+    heal: newCritAcc(),
+    proc: newCritAcc(),
+  };
+  private readonly critRecent: CritRecord[] = []; // chronological, last CRIT_RECENT
+
   // Running session totals for the long-term boxes. Snapshotting these when a level or an
   // ability point lands makes "since then" a subtraction, which is both O(1) and immune to
   // `milestones` being trimmed as encounters age out — the anchor would otherwise vanish
@@ -579,7 +641,7 @@ export class Engine {
     }
     this.maybeCloseForInactivity(ev.tsMs);
     if (ev.type === "heal") {
-      this.recordHeal(ev.healer, ev.target, ev.amount, ev.spell, ev.tsMs, ev.crit ?? false);
+      this.recordHeal(ev.healer, ev.target, ev.amount, ev.spell, ev.tsMs, ev.crit ?? false, ev.critKind);
       return;
     }
     switch (ev.type) {
@@ -625,6 +687,7 @@ export class Engine {
     stats: LongTermStats;
     motes: MoteStats;
     sky: SkyStats;
+    crits: CritStats;
   } {
     // Built once and shared: the history chart and the encounter list both want them, and
     // each view carries a sparkline that is not worth computing twice per push.
@@ -649,6 +712,7 @@ export class Engine {
       stats: this.buildStats(),
       motes: this.buildMoteStats(),
       sky: this.buildSkyStats(),
+      crits: this.buildCritStats(),
     };
   }
 
@@ -1696,6 +1760,17 @@ export class Engine {
     if (aKey !== this.selfKey) pushHit(f.hitsBy, aKey, ev.tsMs, ev.amount);
 
     if (aKey === this.selfKey) {
+      // My own blows only. A summoned pet's swings fold into my row in the meters, but they are
+      // its crits and not mine — a pet's rate would quietly move a number the panel presents as
+      // a fact about this character.
+      this.recordCrit(
+        ev.type === "melee" ? "melee" : ev.type === "dot" ? "dot" : ev.form === "ability" ? "spell" : "proc",
+        abilityName,
+        this.nameOf(tKey),
+        ev.amount,
+        ev.critKind,
+        ev.tsMs,
+      );
       const c = this.combatant(f, aKey);
       for (const dim of STANCE_DIMS) {
         const s = this.currentStances[dim];
@@ -1723,6 +1798,85 @@ export class Engine {
       });
       this.trimDeathWindow(ev.tsMs);
     }
+  }
+
+  // --- critical hits ------------------------------------------------------
+
+  /** File one of my own landings — crit or not. The non-crit path is the common one by a
+   *  factor of twelve, so it costs two map lookups and some addition and nothing else. */
+  private recordCrit(
+    category: CritCategory,
+    ability: string,
+    target: string,
+    amount: number,
+    kind: CritKind | undefined,
+    tsMs: number,
+  ): void {
+    const acc = this.critAcc[category];
+    acc.hits++;
+    acc.total += amount;
+
+    const key = ability.toLowerCase();
+    let a = acc.abilities.get(key);
+    if (!a) {
+      a = { name: ability, hits: 0, crits: 0, total: 0, critTotal: 0, best: null };
+      acc.abilities.set(key, a);
+    }
+    a.hits++;
+    a.total += amount;
+
+    if (!kind) return;
+
+    acc.crits++;
+    acc.critTotal += amount;
+    acc.byKind.set(kind, (acc.byKind.get(kind) ?? 0) + 1);
+    a.crits++;
+    a.critTotal += amount;
+
+    const record: CritRecord = { amount, ability, target, tsMs, kind, category };
+    // Ties keep the *first* one seen, so a record that has stood all session isn't quietly
+    // restamped with a later hit of the same size — this character's best melee crit is 629 and
+    // it has landed three times.
+    if (!acc.best || amount > acc.best.amount) acc.best = record;
+    if (!a.best || amount > a.best.amount) a.best = record;
+
+    this.critRecent.push(record);
+    if (this.critRecent.length > CRIT_RECENT) this.critRecent.shift();
+  }
+
+  private buildCritStats(): CritStats {
+    const categories: CritCategoryStat[] = CRIT_CATEGORIES.map((category) => {
+      const acc = this.critAcc[category];
+      const abilities: CritAbility[] = [...acc.abilities.values()]
+        .map((a) => ({
+          name: a.name,
+          category,
+          hits: a.hits,
+          crits: a.crits,
+          total: a.total,
+          critTotal: a.critTotal,
+          best: a.best,
+        }))
+        .sort((x, y) => y.crits - x.crits || y.hits - x.hits);
+      return {
+        category,
+        hits: acc.hits,
+        crits: acc.crits,
+        total: acc.total,
+        critTotal: acc.critTotal,
+        // Asserted for the four forms that carry a flag; for `proc` it is left to the evidence.
+        // 39,472 of those hits in a real log produced not one flag, so the panel says "cannot
+        // crit" — but it says so on the strength of the count, and the day one of them does
+        // crit the row starts reporting a rate instead of arguing with the log.
+        crittable: category !== "proc" || acc.crits > 0,
+        byKind: [...acc.byKind]
+          .map(([kind, count]) => ({ kind, count }))
+          .sort((x, y) => y.count - x.count),
+        best: acc.best,
+        abilities,
+      };
+    });
+    return { categories, recent: [...this.critRecent].reverse() };
   }
 
   /** Drop blows and heals that no future death report could reach back for. */
@@ -1787,7 +1941,14 @@ export class Engine {
     spell: string | undefined,
     tsMs: number,
     crit: boolean,
+    critKind?: CritKind,
   ): void {
+    // Before the fight guard below, deliberately. A heal landing between pulls is still a heal
+    // that critted or didn't, and the crit ledger is session-wide rather than fight-scoped — so
+    // its denominator is every heal I cast, which is also what a grep of the log counts.
+    if (this.keyOf(healer) === this.selfKey) {
+      this.recordCrit("heal", spell ?? "Heal", this.nameOf(this.keyOf(target)), amount, critKind, tsMs);
+    }
     // Attribute heals to an ongoing fight, but don't let healing alone keep a
     // fight alive (that would bridge separate pulls). Out-of-combat heals — where
     // the inactivity check above has already closed the fight — are ignored.

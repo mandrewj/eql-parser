@@ -212,6 +212,51 @@ test("crits are read on every form that carries the flag", () => {
   assert.equal(both?.type === "melee" && both.crit, true);
 });
 
+test("the three crits that never say 'Critical' are still crits", () => {
+  // Each is emitted *instead of* (Critical), so reading only the literal word loses them —
+  // 589 hits in a real log, 107 of them the self's own Crippling Blows.
+  const kinds: Array<[string, string]> = [
+    ["Crippling Blow", "crippling"],
+    ["Slay Undead", "slay"],
+    ["Finishing Blow", "finishing"],
+    ["Critical", "critical"],
+  ];
+  for (const [flag, kind] of kinds) {
+    const e = parseLine(TS + `You slash a ghoul for 64 points of damage. (${flag})`);
+    assert.equal(e?.type === "melee" && e.crit, true, flag);
+    assert.equal(e?.type === "melee" && e.critKind, kind, flag);
+  }
+
+  // Flags compose, and the crit word can sit anywhere inside the parenthetical.
+  for (const flag of ["Riposte Strikethrough Critical", "Critical Double Bow Shot", "Riposte Crippling Blow"]) {
+    const e = parseLine(TS + `You shoot an orc for 83 points of damage. (${flag})`);
+    assert.equal(e?.type === "melee" && e.crit, true, flag);
+  }
+
+  // Resolution and extra-attack flags are not crits, and carry no kind at all.
+  for (const flag of ["Riposte", "Strikethrough", "Flurry", "Rampage", "Double Bow Shot"]) {
+    const e = parseLine(TS + `You kick an orc for 20 points of damage. (${flag})`);
+    assert.equal(e?.type === "melee" && e.crit, false, flag);
+    assert.equal(e?.type === "melee" && e.critKind, undefined, flag);
+  }
+});
+
+test("spell damage says which line form it came from", () => {
+  // The two forms are not interchangeable: only the named-ability one can carry a crit flag,
+  // so the crit panel's spell denominator would be swamped by damage shields without this.
+  const ability = parseLine(TS + "You hit orc taskmaster for 84 points of fire damage by Ignite. (Critical)");
+  assert.equal(ability?.type === "spell" && ability.form, "ability");
+  assert.equal(ability?.type === "spell" && ability.crit, true);
+  assert.equal(ability?.type === "spell" && ability.critKind, "critical");
+
+  const shield = parseLine(TS + "An orc pawn is pierced by YOUR thorns for 12 points of non-melee damage.");
+  assert.equal(shield?.type === "spell" && shield.form, "nonmelee");
+  assert.equal(shield?.type === "spell" && shield.crit, false);
+
+  const unnamed = parseLine(TS + "You were hit by non-melee for 200 damage.");
+  assert.equal(unnamed?.type === "spell" && unnamed.form, "nonmelee");
+});
+
 test("dot — a tick on me reads 'You have taken', not 'has taken'", () => {
   const e = parseLine(TS + "You have taken 50 damage from Burrowing Scarab by a death beetle.");
   assert.equal(e?.type, "dot");

@@ -68,6 +68,25 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
   `parse:check` reported the log clean throughout, because its own relevance regex shared the
   blind spot; that regex now allows the adjective, which is what makes the check honest.
 - Event types: `MeleeDamage`, `SpellDamage`, `DotTick`, `Miss`, `Death`, **`Stance`**, `Heal`, `Pet`, **`Charm`**, **`Who`**, **`Loot`**, **`Given`**, **`OutputFile`**, `Zone`, **`Progress`**. Grammar in [`LOG_FORMAT.md`](LOG_FORMAT.md).
+- **The trailing flag is read once, by one helper**, for every form that can carry one — melee,
+  typed ability, DoT tick and heal. Two facts about it drove the shape:
+  - **Flags compose.** `(Riposte Strikethrough Critical)` is a real line, as are
+    `(Critical Double Bow Shot)` and `(Riposte Crippling Blow)`, so reading one is a *search*
+    across the parenthetical rather than a match against it.
+  - **Three crits never say "Critical".** `(Crippling Blow)`, `(Slay Undead)` and
+    `(Finishing Blow)` are critical hits emitted **in its place**, never beside it — so counting
+    only the literal word loses them. In a 2M-line log: 26,463 `Critical`, 363 `Slay Undead`, 114
+    `Finishing Blow`, 112 `Crippling Blow`. The self's own melee crit rate moves 8.24% → 8.32% on
+    the strength of 107 Crippling Blows alone. The event carries a `critKind` naming which of the
+    four it was, so the panel can break them out.
+  - The rest of the set stays out, because it answers a different question: `(Riposte)` and
+    `(Strikethrough)` say how the swing *resolved*, `(Flurry)`, `(Rampage)` and
+    `(Double Bow Shot)` say it was an *extra* one. Neither is a critical hit.
+- **`SpellDamage` carries the line form it was read from** (`ability` | `nonmelee`). The two look
+  nothing alike and, more to the point, only one of them can ever be flagged — see the crit ledger
+  under [Engine](#engine). The `nonmelee` pattern captures its trailing parenthetical even though
+  no such line has ever carried one: that zero is a *measurement*, and the panel reports it as
+  one, so the parser reads what the line says instead of deciding the answer in advance.
 - **`Who`** carries a player's level and classes from a `/who` result. It is not combat and
   never touches a fight; it exists solely because that line is the only place the log states
   anyone's class, which is what makes a charm attributable (below).
@@ -479,6 +498,36 @@ difficulty) and the Plane of Sky pair below.
   - **damage-by-type** (melee / spell / DoT) for drill-down;
   - **per-ability breakdown** (verb for melee, real spell name from DoT/spell lines);
   - **damage-by-stance** and a per-fight stance split (self).
+- **The critical-hit ledger is self-only and session-wide** — deliberately outside the encounter
+  window everything else is trimmed to. A crit rate is a property of the character rather than of
+  a fight, and it needs volume before it settles: a 30-second pull is twenty swings. It stays a
+  fixed size regardless of session length (five categories, each holding a small map of the
+  abilities actually used), so nothing has to be trimmed to keep it affordable.
+  - **Only my own blows.** A summoned pet's swings fold into my row in the meters, but they are
+    its crits, not mine — a pet's rate would quietly move a number the panel presents as a fact
+    about this character. Recorded inside the existing `aKey === selfKey` branch of
+    `recordDamage`, so it costs no extra test on the hot path.
+  - **Its five categories are not `DamageType`.** They split by *what can crit and how often*,
+    which is a different question with a surprising answer: `melee`, `spell` (named abilities),
+    `dot`, `heal`, and **`proc`** — the `non-melee` line form, every proc and damage shield in the
+    game, which has **never once carried a crit flag** in a 2M-line log. That is why
+    `SpellDamageEvent` now carries a `form` (`ability` | `nonmelee`): folded together, the two
+    forms divide 5 crits by 55,000 hits and call the answer a spell crit rate. Kept apart, the
+    spell rate divides by the 15,528 named-ability hits that could actually have critted, and the
+    proc row reports "cannot crit" instead.
+    - **That last claim is left to the evidence, not asserted.** `crittable` is `true` for the
+      four flagged forms and, for `proc`, is simply whether any crit has ever been seen. 39,563
+      hits produced none, so the panel says so on the strength of the count — and the day one of
+      them does crit, the row starts reporting a rate rather than arguing with the log.
+  - **Heals are counted before the fight guard**, unlike every other heal figure. A heal cast
+    between pulls is still a heal that critted or didn't, and the ledger is session-wide rather
+    than fight-scoped — so its denominator is every heal I cast, which is also what a grep of the
+    log counts. (Verified: 42,626 either way.)
+  - **A record keeps the first of a tie**, so a best that has stood all session isn't restamped by
+    a later hit of the same size — this character's best melee crit is 629 and has landed three
+    times.
+  - Costs nothing measurable: full-log replay is 14.7s against a 15.0s baseline (noise), and
+    `snapshot()` goes 0.081ms → 0.088ms for the rebuild, at ~5 pushes/sec. No cache needed.
 - Separated from I/O so a whole file can be replayed for tests/backfill.
 
 ### Server
@@ -651,6 +700,30 @@ interface MetricStat {                // every metric group has this one shape
   redesign, and the drill-downs (type split, per-ability, stance split) answer those questions instead.
   A live stance indicator in the topbar shows the active melee stance and invocation.
 - **History pane** — fight list; select a fight to **drill down**: per-combatant rows → expand to damage-type split, per-ability breakdown, and (for self) the stance split active during that fight.
+- **Crits pane** ([`crits.tsx`](../web/src/crits.tsx)) — one question asked five ways: **of the
+  times I dealt damage, how often did it crit**, and when it did, how hard. Its arithmetic lives in
+  [`stats.ts`](../web/src/stats.ts), apart from the panel that draws it, for the same reason as the
+  Sky model: these are exactly the rules that regress quietly into the wrong denominator.
+  - **Four figures per category, in a fixed strip**, so the eye can run down the crit-rate column
+    across all five rows — comparing melee to DoT is the reason the tab exists. Rate, crits/hits,
+    the *share of damage* that arrived on a crit, and the multiplier against an ordinary hit. The
+    first two are not the same reading: a melee crit lands on 8.35% of swings and carries 12.5% of
+    the damage, and only the pair says that.
+  - **A missing rate and a zero rate are drawn differently.** `crittable: false` prints `—`, not
+    `0.0%`, because "this form cannot crit" and "this rolled badly all session" are different
+    answers to the same question and must not look alike.
+  - **Thin samples are marked, not hidden**, in amber with a `?` — the number is still the best
+    answer available, it just should not be read as settled. Two thresholds, because the two kinds
+    of figure have different denominators: `THIN_SAMPLE` (100 hits) governs the *rate*, and
+    `THIN_CRITS` (20 crits) governs the share and the multiplier, which divide by crits alone.
+    Real case: 15,581 spell casts is a solid denominator for a 0.03% rate, and the five crits
+    behind "0.90× a normal hit" are a solid denominator for nothing.
+  - **The per-ability table shows anything that has ever critted, plus anything used 100+ times**,
+    so a spell cast 599 times without a single crit keeps its row — that absence is the finding.
+    Its "biggest" column is a bar against the *category's* best rather than each row's own, which
+    is what makes "my best kick is two-thirds of my best slash" legible without dividing.
+  - Categories reuse the meters' `--melee`/`--spell`/`--dot` colours deliberately: a reader who has
+    learned them on an encounter card should not have to learn a second set here.
 - **Sky pane** ([`sky.tsx`](../web/src/sky.tsx)) — the Plane of Sky class quests, in **two views
   over the same data**, because the tab answers two questions that want opposite arrangements and
   neither is a filter of the other. The arithmetic behind both lives in

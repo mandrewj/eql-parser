@@ -796,3 +796,97 @@ body { margin: 0; }
   color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 0.2rem;
 }
 .skyrow.held .skywhere { border-color: var(--border-strong); }
+
+/* --- critical hits -----------------------------------------------------------
+   One block per category, each a button that opens its ability table. The four figures
+   sit in a fixed strip so the eye can run down the crit-rate column across all five rows
+   — comparing melee to DoT is the reason the panel exists.
+
+   `--melee`, `--spell` and `--dot` already exist as the meters' damage-type colours and are
+   reused deliberately: a reader who has learned them on an encounter card should not have to
+   learn a second set here. Heals borrow the player green; procs take the muted grey, which
+   also reads as "this row is not a rate". */
+.crit-panel { max-width: 76rem; }
+.crit-scope { font-weight: 400; }
+.crit-cats { border: 1px solid var(--border); border-radius: 9px; background: var(--panel); overflow: hidden; }
+.crit-cat + .crit-cat { border-top: 1px solid var(--hair); }
+.crit-cat.open { background: var(--panel2); }
+
+.crit-head {
+  width: 100%; display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.6rem;
+  background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.crit-head:hover:not(:disabled) { background: #ffffff08; }
+/* A category with no hits cannot be opened — there is nothing behind it. */
+.crit-head:disabled { cursor: default; opacity: 0.45; }
+.crit-caret { flex: 0 0 0.8rem; color: var(--muted); font-size: 0.7rem; }
+.crit-label { flex: 0 0 9.5rem; font-weight: 600; font-size: 0.84rem; }
+
+/* the category's colour, also used as a legend dot on a record line */
+.crit-dot { flex: none; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--muted); }
+.crit-dot.melee { background: var(--melee); }
+.crit-dot.spell { background: var(--spell); }
+.crit-dot.dot { background: var(--dot); }
+.crit-dot.heal { background: var(--player); }
+.crit-dot.proc { background: var(--muted); }
+
+.crit-figs { display: flex; align-items: baseline; gap: 1.1rem; flex: 1 1 auto; min-width: 0; }
+.crit-fig { display: flex; flex-direction: column; min-width: 0; }
+.crit-big { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.crit-mid { font-size: 0.86rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.crit-of { font-weight: 400; color: var(--muted); font-size: 0.76rem; }
+.crit-unit { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+/* A percentage resting on too few hits. Marked rather than hidden: the number is still the
+   best answer available, it just should not be read as settled. */
+.crit-big.thin, .crit-rate.thin, .crit-mid.thin { color: var(--partial); }
+.crit-thin-mark { font-size: 0.7em; vertical-align: super; opacity: 0.8; margin-left: 0.05rem; }
+
+/* The biggest crit of the category, right-aligned so the column reads as a leaderboard.
+   `overflow: hidden` is what makes the ellipsis below fire: mob names run long ("a froglok gaz
+   knight") and without it the line overruns the panel's own edge instead of trimming. */
+.crit-best { flex: 0 0 15rem; text-align: right; min-width: 0; overflow: hidden; }
+.crit-rec { display: inline-flex; align-items: baseline; gap: 0.3rem; min-width: 0; max-width: 100%; font-size: 0.78rem; }
+.crit-rec-amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+.crit-rec-by { display: inline-flex; align-items: center; gap: 0.28rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crit-rec-at { color: var(--muted); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.crit-body { padding: 0.1rem 0.6rem 0.55rem 1.9rem; }
+.crit-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.9rem; padding-bottom: 0.4rem; line-height: 1.35; }
+.crit-avg { font-variant-numeric: tabular-nums; }
+.crit-kinds { display: flex; gap: 0.7rem; }
+.crit-kind { white-space: nowrap; color: var(--muted); }
+.crit-none { padding: 0.3rem 0 0.2rem; line-height: 1.35; }
+
+/* --- the per-ability table --- */
+.crit-atable { font-size: 0.76rem; max-width: 44rem; }
+.crit-arow { display: flex; align-items: center; gap: 0.5rem; padding: 0.2rem 0; }
+.crit-arow + .crit-arow { border-top: 1px solid var(--hair); }
+.crit-arow.head { color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+.crit-aname { flex: 1 1 12rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crit-anum { flex: 0 0 4rem; text-align: right; font-variant-numeric: tabular-nums; }
+.crit-arow.head .crit-anum { font-variant-numeric: normal; }
+.crit-rate { font-weight: 600; }
+/* The biggest crit, as a bar against the category's best — so "my best kick is two-thirds of
+   my best slash" is legible without reading two numbers and dividing. */
+.crit-abar { flex: 0 0 9rem; position: relative; display: flex; align-items: center; justify-content: flex-end; height: 1.15rem; }
+.crit-arow.head .crit-abar { height: auto; }
+.crit-abar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: #ffffff14; border-radius: 3px; }
+.crit-abar-num { position: relative; padding-right: 0.15rem; font-variant-numeric: tabular-nums; }
+
+/* --- the recent-crits strip --- */
+.crit-recent { display: flex; flex-direction: column; font-size: 0.74rem; max-width: 34rem; margin-top: 0.55rem; }
+.crit-cap { color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 0.2rem; border-bottom: 1px solid var(--border); }
+.crit-recent-row { display: flex; align-items: baseline; gap: 0.55rem; padding: 0.18rem 0; }
+.crit-recent-row + .crit-recent-row { border-top: 1px solid var(--hair); }
+.crit-when { flex: 0 0 5.5rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.crit-note { max-width: 52rem; margin-top: 0.6rem; line-height: 1.4; }
+
+@media (max-width: 900px) {
+  /* In the narrow side-panel layout the four figures cannot sit on one line with the record.
+     The label and rate lead; the rest wraps beneath rather than being dropped. */
+  .crit-head { flex-wrap: wrap; }
+  .crit-label { flex: 1 1 auto; }
+  .crit-figs { gap: 0.8rem; order: 3; flex-basis: 100%; padding-left: 1.3rem; }
+  .crit-best { flex: 0 0 auto; order: 2; margin-left: auto; }
+  .crit-body { padding-left: 0.6rem; }
+}

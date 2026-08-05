@@ -79,7 +79,8 @@ to real spell names later needs a spell-message table (EQLogParser ships one).
 - The verb is always the literal **`hit`** (past tense, for every attacker including `You`) and
   the spell is **always named**, across all 26,864. Anchoring on ` hit ` is what splits a
   multi-word attacker correctly (`Ranshi\`s warder hit …`).
-- `(Critical)` is the only trailing flag observed.
+- `(Critical)` is the only trailing flag observed **on this form** — the crit-family flags that
+  never say "Critical" are all melee-only (see [Modifier flags](#modifier-flags-crits-placement)).
 - **The element is `\w+`, not a list.** Observed: magic, fire, cold, poison, disease,
   unresistable — and then a boss turned up dealing **chromatic**, and four lines went unparsed
   against a fixed alternation. Nothing else can reach this pattern anyway: a plain swing has no
@@ -139,20 +140,48 @@ damage — e.g. `… has taken 33 damage from Stinging Swarm by Orson. (Critical
 `Orson healed you for 318 hit points by Healing. (Critical)`. DoT, non-melee, and heal patterns
 therefore allow an optional trailing ` (flag)` after the closing `.`/`!`.
 
-Every flag seen in a real log, and what it means for parsing:
+Every flag seen in a real log — the **complete** census over 2,006,911 lines, not a sample — and
+what it means for parsing. `crit` marks the ones the crit tracker counts:
 
-| flag | count | handling |
-|---|---|---|
-| `(Critical)` | 6,737 | sets `crit` on melee, typed ability, DoT and heal |
-| `(Riposte)` | 4,422 | a counter-attack; real damage, already melee, **not** a crit |
-| `(Slay Undead)` | 204 | an ability proc; real melee damage |
-| `(Flurry)` | 137 | an extra swing; real melee damage |
-| `(Riposte Critical)` | 35 | **is** a crit — the test is `/critical/i`, not equality |
-| `(Finishing Blow)` | 49 | real melee damage |
+| flag | count | crit | what it is |
+|---|---|:--:|---|
+| `(Critical)` | 26,463 | ✅ | a critical hit; melee, typed ability, DoT and heal |
+| `(Riposte)` | 11,231 | — | a counter-attack; real damage, already melee |
+| `(Flurry)` | 977 | — | an extra swing; real melee damage |
+| `(Slay Undead)` | 363 | ✅ | a paladin's crit against undead — **not** a separate proc |
+| `(Rampage)` | 236 | — | an extra swing |
+| `(Riposte Critical)` | 159 | ✅ | |
+| `(Finishing Blow)` | 114 | ✅ | a crit on a mob near death |
+| `(Crippling Blow)` | 112 | ✅ | the heavy critical |
+| `(Strikethrough)` | 32 | — | got past a defence; how it resolved, not how hard |
+| `(Riposte Strikethrough)` | 11 | — | |
+| `(Double Bow Shot)` | 9 | — | an extra shot |
+| `(Riposte Rampage)` | 6 | — | |
+| `(Riposte Slay Undead)` | 5 | ✅ | |
+| `(Strikethrough Critical)` | 3 | ✅ | |
+| `(Critical Double Bow Shot)` | 3 | ✅ | |
+| `(Riposte Strikethrough Critical)` | 1 | ✅ | |
+| `(Riposte Flurry)` | 1 | — | |
+| `(Riposte Crippling Blow)` | 1 | ✅ | |
 
-**Tolerating a flag is not the same as reading it.** Every pattern allowed the trailing group
-from the start, but only melee ever captured it, so 289 DoT crits and 202 heal crits were
-counted as ordinary hits. Crit *counts* were understated; totals were always right.
+Three consequences, each of which cost something before it was noticed:
+
+- **Flags compose**, so reading one is a *search* across the parenthetical, never equality — as
+  `(Riposte Strikethrough Critical)` shows.
+- **Three crits never say "Critical".** `Crippling Blow`, `Slay Undead` and `Finishing Blow` are
+  critical hits emitted **instead of** it — the two words never appear in the same parenthetical.
+  A `/critical/i` test alone therefore scores all 589 of them as ordinary hits. They are melee-only
+  in every occurrence.
+- **Tolerating a flag is not the same as reading it.** Every pattern allowed the trailing group
+  from the start, but only melee ever captured it, so 289 DoT crits and 202 heal crits were
+  counted as ordinary hits. Crit *counts* were understated; totals were always right.
+
+One trailing parenthetical is **not** a modifier flag: `(not a bard song)`, 6 occurrences, which
+belongs to a different line shape entirely and carries no damage.
+
+**The `non-melee` form has never carried a flag** — 39,563 of the self's own in this log, zero
+flagged, because that form is how procs and damage shields report and those do not crit. The
+pattern captures the group anyway, so the zero stays a measurement rather than an assumption.
 
 Melee verbs are data-driven from the game's skill set (from `tries to <verb>`): includes `reave`
 and `shoot` (archery) beyond the common ones; all normalized to base form for category merging.

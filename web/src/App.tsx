@@ -11,6 +11,7 @@ import {
   StanceOverview,
 } from "./components";
 import { SkyPanel } from "./sky";
+import { CritPanel } from "./crits";
 import { FolderPicker } from "./FolderPicker";
 import { metricMeta, rankedCombatants } from "./filters";
 import type { Fight, Filters, FightSummary } from "./types";
@@ -36,7 +37,7 @@ function currentSummary(f: Fight): FightSummary {
 
 export default function App() {
   const { snapshot, logs, connected, skyQuests, selectLog, setLogDir, fetchFight } = useAppData();
-  const [tab, setTab] = useState<"live" | "history" | "sky">("live");
+  const [tab, setTab] = useState<"live" | "history" | "crits" | "sky">("live");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -209,12 +210,21 @@ export default function App() {
         <button className={tab === "history" ? "tab on" : "tab"} onClick={() => setTab("history")}>
           History
         </button>
+        <button className={tab === "crits" ? "tab on" : "tab"} onClick={() => setTab("crits")}>
+          Crits
+        </button>
         <button className={tab === "sky" ? "tab on" : "tab"} onClick={() => setTab("sky")}>
           Sky
         </button>
       </nav>
 
-      {tab === "sky" ? (
+      {tab === "crits" ? (
+        <main className="pane wide">
+          <PanelBoundary name="Critical hits">
+            <CritPanel crits={snapshot?.crits ?? { categories: [], recent: [] }} />
+          </PanelBoundary>
+        </main>
+      ) : tab === "sky" ? (
         <main className="pane wide">
           <PanelBoundary name="Plane of Sky">
             <SkyPanel

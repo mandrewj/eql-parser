@@ -1781,3 +1781,137 @@ test("sky: a held item reports where it was last seen", () => {
   feedSky(engine, [STORED("10:00:00", "Wind Rune Dena", "currency")]);
   assert.equal(engine.snapshot().sky.held.find((h) => h.name === "Wind Rune Dena")!.where, "currency");
 });
+
+// --- critical hits ---------------------------------------------------------------
+
+/** The crit panel's five categories, by key, from one snapshot. */
+const critsOf = (engine: Engine) => {
+  const s = engine.snapshot().crits;
+  return Object.fromEntries(s.categories.map((c) => [c.category, c]));
+};
+
+test("crits: each damage form gets its own rate, over its own hits", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 100 points of damage."),
+    L("01:00:01", "You slash orc for 300 points of damage. (Critical)"),
+    L("01:00:02", "You hit orc for 40 points of fire damage by Ignite."),
+    L("01:00:03", "You hit orc for 90 points of fire damage by Ignite. (Critical)"),
+    L("01:00:04", "Orc has taken 10 damage from your Chords of Dissonance V."),
+    L("01:00:05", "Orc has taken 30 damage from your Chords of Dissonance V. (Critical)"),
+    L("01:00:06", "Orc is pierced by YOUR thorns for 12 points of non-melee damage."),
+    L("01:00:07", "You have slain orc!"),
+  ]);
+  const c = critsOf(engine);
+
+  for (const key of ["melee", "spell", "dot"] as const) {
+    assert.equal(c[key]!.hits, 2, key);
+    assert.equal(c[key]!.crits, 1, key);
+  }
+  assert.equal(c.melee!.total, 400);
+  assert.equal(c.melee!.critTotal, 300);
+
+  // The damage shield lands in its own category, and is not folded into the spell rate —
+  // that is the whole point of the split: 1 crit in 2 named-ability hits, not 1 in 3.
+  assert.equal(c.proc!.hits, 1);
+  assert.equal(c.proc!.crits, 0);
+  assert.equal(c.proc!.crittable, false);
+  assert.equal(c.spell!.hits, 2);
+});
+
+test("crits: the biggest is kept per type and per ability", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 300 points of damage. (Critical)"),
+    L("01:00:01", "You slash orc for 500 points of damage. (Critical)"),
+    L("01:00:02", "You kick orc for 200 points of damage. (Critical)"),
+    L("01:00:03", "You have slain orc!"),
+  ]);
+  const c = critsOf(engine);
+  assert.equal(c.melee!.best!.amount, 500);
+  assert.equal(c.melee!.best!.ability, "slash");
+  assert.equal(c.melee!.best!.target, "orc");
+
+  const byName = Object.fromEntries(c.melee!.abilities.map((a) => [a.name, a]));
+  assert.equal(byName.slash!.best!.amount, 500);
+  assert.equal(byName.kick!.best!.amount, 200, "a weaker ability keeps its own record");
+});
+
+test("crits: a tie keeps the record that has stood longest", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 629 points of damage. (Critical)"),
+    L("01:00:01", "You slash orc for 629 points of damage. (Critical)"),
+    L("01:00:02", "You have slain orc!"),
+  ]);
+  const best = critsOf(engine).melee!.best!;
+  assert.equal(best.amount, 629);
+  assert.equal(new Date(best.tsMs).getSeconds(), 0, "the first of the two, not the latest");
+});
+
+test("crits: the kinds that never say 'Critical' are counted and named", () => {
+  const engine = feed([
+    L("01:00:00", "You slash a ghoul for 100 points of damage. (Crippling Blow)"),
+    L("01:00:01", "You slash a ghoul for 100 points of damage. (Critical)"),
+    L("01:00:02", "You slash a ghoul for 100 points of damage. (Riposte)"),
+    L("01:00:03", "You have slain a ghoul!"),
+  ]);
+  const melee = critsOf(engine).melee!;
+  assert.equal(melee.hits, 3);
+  assert.equal(melee.crits, 2, "the Riposte is not a crit; the Crippling Blow is");
+  assert.deepEqual(
+    melee.byKind.map((k) => k.kind).sort(),
+    ["crippling", "critical"],
+  );
+});
+
+test("crits: only my own — a pet's swings are its crits, not mine", () => {
+  const engine = feed([
+    L("01:00:00", "A fire beetle told you, 'Attacking orc Master.'"),
+    L("01:00:01", "A fire beetle slashes orc for 90 points of damage. (Critical)"),
+    L("01:00:02", "Feydie kicks orc for 80 points of damage. (Critical)"),
+    L("01:00:03", "You slash orc for 100 points of damage."),
+    L("01:00:04", "You have slain orc!"),
+  ]);
+  const melee = critsOf(engine).melee!;
+  assert.equal(melee.hits, 1, "my swing alone");
+  assert.equal(melee.crits, 0);
+});
+
+test("crits: heals count, including the ones cast between pulls", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 100 points of damage."),
+    L("01:00:01", "You have slain orc!"),
+    // Long after the fight closed: still a heal, and still one that critted.
+    L("02:00:00", "You healed Feydie for 210 (260) hit points by Superior Healing. (Critical)"),
+    L("02:00:05", "You healed Feydie for 180 hit points by Superior Healing."),
+  ]);
+  const heal = critsOf(engine).heal!;
+  assert.equal(heal.hits, 2);
+  assert.equal(heal.crits, 1);
+  assert.equal(heal.critTotal, 210, "effective healing, the same figure the meters use");
+});
+
+test("crits: someone else's heal is not mine", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 100 points of damage."),
+    L("01:00:01", "Orson healed you over time for 62 hit points by Sprouting Heal. (Critical)"),
+    L("01:00:02", "You have slain orc!"),
+  ]);
+  assert.equal(critsOf(engine).heal!.hits, 0);
+});
+
+test("crits: the recent list is newest first and stays bounded", () => {
+  const lines = [];
+  for (let i = 0; i < 12; i++) {
+    lines.push(L(`01:00:${String(i).padStart(2, "0")}`, `You slash orc for ${100 + i} points of damage. (Critical)`));
+  }
+  const s = feed(lines).snapshot().crits;
+  assert.equal(s.recent.length, 8);
+  assert.equal(s.recent[0]!.amount, 111, "the last crit landed sits at the top");
+  assert.equal(s.recent[7]!.amount, 104);
+});
+
+test("crits: a session with no crits still reports every category", () => {
+  const s = feed([L("01:00:00", "You slash orc for 10 points of damage.")]).snapshot().crits;
+  assert.equal(s.categories.length, 5);
+  assert.equal(s.categories.every((c) => c.best === null || c.crits > 0), true);
+  assert.equal(s.recent.length, 0);
+});
