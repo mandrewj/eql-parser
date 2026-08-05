@@ -2,12 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildIslands,
+  completedQuestNames,
   groupByMob,
   islandOrder,
   primaryMob,
   progressOf,
   readyQuests,
-  resolveCompletions,
+  recentCompletions,
+  RECENT_COMPLETIONS,
   RUNE_GROUP,
   RUNE_SOURCE,
   type NeedRow,
@@ -301,7 +303,7 @@ test("ready — every component held, reward not yet", () => {
 
 test("completions — a reward resolves back to its quest and class", () => {
   const cat = [cls("WAR", [quest({ quest: "Warrior Test of Skill", rewards: ["Azure Ruby Ring"] })])];
-  const out = resolveCompletions(cat, [{ reward: "Azure Ruby Ring", tsMs: 1000, quest: null }]);
+  const out = recentCompletions(cat, [{ reward: "Azure Ruby Ring", tsMs: 1000, quest: null }]).shown;
   assert.equal(out.length, 1);
   assert.equal(out[0]!.quest, "Warrior Test of Skill");
   assert.equal(out[0]!.code, "WAR");
@@ -311,5 +313,63 @@ test("completions — a reward resolves back to its quest and class", () => {
  *  `You have been given: Void-Touched Potential`. Those must not appear as completions. */
 test("completions — an item that is no quest reward is dropped, not shown bare", () => {
   const cat = [cls("WAR", [quest()])];
-  assert.deepEqual(resolveCompletions(cat, [{ reward: "Void-Touched Potential", tsMs: 1000, quest: null }]), []);
+  assert.deepEqual(recentCompletions(cat, [{ reward: "Void-Touched Potential", tsMs: 1000, quest: null }]).shown, []);
+});
+
+/** A long Sky session turns in a steady stream, and every completed row pushes the actionable
+ *  half of the box — what is ready to hand in — further down the panel. */
+test("completions — the recent list is capped, newest first", () => {
+  const quests = [];
+  const completed = [];
+  for (let i = 0; i < 14; i++) {
+    quests.push(quest({ quest: `Test ${i}`, rewards: [`Reward ${i}`] }));
+    completed.push({ reward: `Reward ${i}`, tsMs: 1000 + i, quest: null });
+  }
+  const { shown, more } = recentCompletions([cls("WAR", quests)], completed);
+  assert.equal(shown.length, RECENT_COMPLETIONS);
+  assert.equal(more, 4);
+  assert.equal(shown[0]!.quest, "Test 13", "newest first");
+  assert.equal(shown[9]!.quest, "Test 4", "…down to the tenth-newest");
+});
+
+test("completions — under the cap, nothing is held back", () => {
+  const cat = [cls("WAR", [quest({ quest: "Warrior Test", rewards: ["Azure Ruby Ring"] })])];
+  const { shown, more } = recentCompletions(cat, [{ reward: "Azure Ruby Ring", tsMs: 1000, quest: null }]);
+  assert.equal(shown.length, 1);
+  assert.equal(more, 0);
+});
+
+/** The "+N earlier" note counts rows that *would* have been listed, so it cannot be derived from
+ *  the raw array — a handover that is no quest reward never belonged on the list at all. */
+test("completions — the held-back count ignores rewards that are not quest rewards", () => {
+  const quests = [];
+  const completed = [];
+  for (let i = 0; i < 11; i++) {
+    quests.push(quest({ quest: `Test ${i}`, rewards: [`Reward ${i}`] }));
+    completed.push({ reward: `Reward ${i}`, tsMs: 1000 + i, quest: null });
+  }
+  completed.push({ reward: "Void-Touched Potential", tsMs: 9999, quest: null });
+  const { shown, more } = recentCompletions([cls("WAR", quests)], completed);
+  assert.equal(shown.length, RECENT_COMPLETIONS);
+  assert.equal(more, 1, "eleven real completions, ten shown — the junk handover counts for nothing");
+});
+
+/** The regression the cap could have caused, and the reason it is display-only: the same
+ *  `completed` array marks quests ✓ across the class and island views. Capping what reaches
+ *  `completedQuestNames` would un-finish every turn-in past the tenth, sending you back to an
+ *  NPC who has nothing left for you. */
+test("completions — capping the list does not un-finish the older quests", () => {
+  const quests = [];
+  const completed = [];
+  for (let i = 0; i < 14; i++) {
+    quests.push(quest({ quest: `Test ${i}`, rewards: [`Reward ${i}`] }));
+    completed.push({ reward: `Reward ${i}`, tsMs: 1000 + i, quest: null });
+  }
+  const cat = [cls("WAR", quests)];
+  const names = completedQuestNames(cat, completed);
+  assert.equal(names.size, 14, "every turn-in still counts as finished");
+  // The oldest one is off the list and still done — with nothing at all in the bags.
+  assert.equal(names.has("Test 0"), true);
+  assert.equal(progressOf(quests[0]!, holding({}), names).state, "done");
+  assert.equal(recentCompletions(cat, completed).shown.some((c) => c.quest === "Test 0"), false);
 });

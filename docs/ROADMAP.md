@@ -1172,6 +1172,22 @@ against the raw log: melee 629, spell 647, DoT 201, heal 6,253, proc 26 — all 
 is twenty swings, so the small windows would report noise, and the question "did that AA move my
 crit rate" wants a before/after the app cannot express anyway.
 
+## Post-v1 — Cap the Sky tracker's completed list  ✅
+"Recently complete" listed every turn-in the log had ever witnessed — 36 of them in a real log,
+each row pushing "Ready to turn in" further down the panel. That is backwards: the completed half
+is a record, the ready half is the half you act on. Capped at 10, newest first, with what is held
+back said outright ("+26 earlier") instead of silently dropped.
+
+**The cap is display-only, and that is the whole subtlety.** The same `completed` array feeds
+`completedQuestNames`, which marks a quest ✓ in the class and island views. Capping what reaches
+*that* would un-finish every turn-in past the tenth — already-handed-in quests reading as ready
+again, sending you back to an NPC with nothing left for you. A test pins it, because the bug would
+be invisible in the capped list itself.
+
+The "+N earlier" count is taken from the *resolved* completions rather than the raw array: a
+handover that is no quest reward was never going to be listed, so counting it as held back would
+overstate what is hidden.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

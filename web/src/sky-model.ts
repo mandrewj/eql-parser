@@ -186,7 +186,33 @@ export function completedQuestNames(catalogue: SkyClass[], completed: SkyComplet
   return out;
 }
 
-export function resolveCompletions(catalogue: SkyClass[], completed: SkyCompletion[]): ResolvedCompletion[] {
+/** How many finished quests the "Recently complete" list shows. A long Sky session turns in a
+ *  steady stream of them, and every row pushes the *actionable* half of the box — what is ready
+ *  to hand in — further down the panel. Ten is enough to cover a sitting and still leave the
+ *  ready list on screen.
+ *
+ *  **Display only, and it has to be.** The same `completed` array feeds `completedQuestNames`,
+ *  which is what marks a quest ✓ in the class and island views. Capping the list that reaches
+ *  *that* would un-finish every turn-in past the tenth — quests already handed in would read as
+ *  ready again, and the panel would send you back to an NPC who has nothing left for you. */
+export const RECENT_COMPLETIONS = 10;
+
+/** The completions to list, newest first, and how many older ones are being held back. Returning
+ *  the count rather than the rows keeps the "+N earlier" note honest: unrecognised rewards are
+ *  dropped by `resolveCompletions`, so it is not `completed.length` minus the cap. */
+export function recentCompletions(
+  catalogue: SkyClass[],
+  completed: SkyCompletion[],
+  limit = RECENT_COMPLETIONS,
+): { shown: ResolvedCompletion[]; more: number } {
+  const all = resolveCompletions(catalogue, completed);
+  return { shown: all.slice(0, limit), more: Math.max(0, all.length - limit) };
+}
+
+/** Not exported: `recentCompletions` is the only caller, and an export whose sole reader is a
+ *  test is the finding past audits here have turned up three times. The behaviour below is
+ *  reachable — and is tested — through that function. */
+function resolveCompletions(catalogue: SkyClass[], completed: SkyCompletion[]): ResolvedCompletion[] {
   const byReward = new Map<string, { code: string; className: string; quest: string }>();
   for (const c of catalogue) {
     for (const q of c.quests) {

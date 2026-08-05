@@ -757,6 +757,20 @@ interface MetricStat {                // every metric group has this one shape
     (`You have been given:`), which is why a quest finished before this log begins is still ✓ in
     the class view but is not listed here — that is what "recently" means. The box renders
     nothing when there is neither.
+    - **The completed half is capped at `RECENT_COMPLETIONS` (10), newest first.** A real log had
+      36 turn-ins in it, and every row pushed the *actionable* half — what is ready to hand in —
+      further down the panel, which is the one thing in the box you act on. What the cap holds
+      back is said outright ("+26 earlier") rather than silently dropped, and the badge counts the
+      rows beneath it rather than every turn-in ever: the same rule the mote list follows, because
+      a number above a shorter list reads as a bug.
+    - **The cap is display-only, and it has to be.** The same `completed` array feeds
+      `completedQuestNames`, which is what marks a quest ✓ across the class and island views.
+      Capping what reaches *that* would un-finish every turn-in past the tenth — quests already
+      handed in would read as ready again, sending you back to an NPC with nothing left for you.
+      A test pins exactly this, because it is invisible in the capped list itself.
+    - The "+N earlier" count comes from the resolved list, not the raw array: a handover that is
+      no quest reward (a real log has three `You have been given: Void-Touched Potential`) was
+      never going to be listed, so counting it as held back would overstate what is hidden.
   - **By island** — "I am standing on Island 5, what do I look for". Every outstanding component
     across all 16 classes, grouped by where it drops and **sorted most-wanted first**, so the item
     two classes need is the one you learn to recognise. Three things are left out, each a rule

@@ -5,7 +5,8 @@ import {
   completedQuestNames,
   progressOf,
   readyQuests,
-  resolveCompletions,
+  recentCompletions,
+  RECENT_COMPLETIONS,
   RUNE_SOURCE,
   type CompletedSet,
   type NeedRow,
@@ -291,7 +292,7 @@ function ProgressBox({
   completed: SkyStats["completed"];
 }) {
   const ready = useMemo(() => readyQuests(catalogue, held, doneNames), [catalogue, held, doneNames]);
-  const done = useMemo(() => resolveCompletions(catalogue, completed), [catalogue, completed]);
+  const { shown: done, more } = useMemo(() => recentCompletions(catalogue, completed), [catalogue, completed]);
   if (!ready.length && !done.length) return null;
 
   return (
@@ -315,8 +316,19 @@ function ProgressBox({
       )}
       {done.length > 0 && (
         <>
+          {/* The badge counts the rows beneath it, not every turn-in ever — the same rule the
+              mote list follows, and for the same reason: a number above a shorter list reads as
+              a bug. What the cap is hiding gets said outright instead. */}
           <div className="skypghead done">
             Recently complete<span className="skypgn">{done.length}</span>
+            {more > 0 && (
+              <span
+                className="skypgmore"
+                title={`${more} finished earlier. They are still ✓ in the class and island views — only this list is capped, at ${RECENT_COMPLETIONS}.`}
+              >
+                +{more} earlier
+              </span>
+            )}
           </div>
           {done.map((d) => (
             <div className="skypgrow" key={`${d.reward}-${d.tsMs}`}>
