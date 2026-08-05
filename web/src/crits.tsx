@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmt, fmtDrill, time } from "./format";
 import {
   critAverages,
@@ -10,7 +10,17 @@ import {
   THIN_CRITS,
   THIN_SAMPLE,
 } from "./stats";
-import type { CritAbility, CritCategory, CritCategoryStat, CritKind, CritRecord, CritStats } from "./types";
+import type {
+  CritAbility,
+  CritCategory,
+  CritCategoryStat,
+  CritKind,
+  CritRecord,
+  CritRecords,
+  CritStats,
+  CritWindow,
+  CritWindowKey,
+} from "./types";
 
 /** The critical-hit tracker.
  *
@@ -70,7 +80,7 @@ const RECORD_LABEL: Record<string, string> = {
  *  whenever it is a different hit. That is not a hypothetical: this character's biggest spell hit
  *  is a 647 Denon's Desperate Dirge that never critted, against a biggest spell crit of 220.
  *  Leading with 220 alone would read as broken to anyone who watched the 647 land. */
-function RecordTile({ c }: { c: CritCategoryStat }) {
+function RecordTile({ c }: { c: CritRecords }) {
   const { best, bestHit } = c;
   const outright = bestHit && (!best || bestHit.amount > best.amount) ? bestHit : null;
 
@@ -94,7 +104,7 @@ function RecordTile({ c }: { c: CritCategoryStat }) {
         <>
           <div className="crit-record-amt none">—</div>
           <div className="crit-record-by muted">
-            {c.crittable ? "no crits yet" : "this form never crits"}
+            {bestHit ? "no crits yet" : "nothing recorded yet"}
           </div>
           <div className="crit-record-when" />
         </>
@@ -269,38 +279,159 @@ function CategoryBlock({ c, open, onToggle }: { c: CritCategoryStat; open: boole
   );
 }
 
+/** The windows, in the order they are offered — narrowest first, so moving right is reaching
+ *  further back. */
+const WINDOWS: Array<{ key: CritWindowKey; label: string; note: string }> = [
+  {
+    key: "session",
+    label: "Session",
+    note: "Since you last logged in — or the last 12 hours, whichever is shorter, so a client left running overnight can't fold yesterday into tonight.",
+  },
+  { key: "enc25", label: "25 fights", note: "The last 25 mobs you fought — about a camp." },
+  { key: "enc100", label: "100 fights", note: "The last 100 mobs you fought — enough for the percentages to settle." },
+  { key: "d14", label: "2 weeks", note: "The last 14 days, which is as far back as the tracker keeps hit-by-hit detail." },
+];
+
+/** The window last chosen, so the tab opens where it was left — the same courtesy the Sky tab
+ *  and the log picker extend. */
+const WINDOW_KEY = "eql.crits.window";
+
+const isWindowKey = (v: string | null): v is CritWindowKey =>
+  v !== null && WINDOWS.some((w) => w.key === v);
+
+/** What the chosen window actually turned out to cover — resolved against the log rather than
+ *  repeating the label's promise, which is the whole reason it is printed. */
+const spanLabel = (w: CritWindow): string => {
+  if (w.fromMs === null || w.toMs === null) return "nothing yet";
+  const days = Math.round((w.toMs - w.fromMs) / 86400_000);
+  const span = days >= 2 ? `${days} days` : hoursLabel(w.toMs - w.fromMs);
+  const since = new Date(w.fromMs).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${span} · since ${since}`;
+};
+
+const hoursLabel = (ms: number): string => {
+  const min = Math.round(ms / 60000);
+  if (min < 90) return `${min} min`;
+  return `${(min / 60).toFixed(1)} h`;
+};
+
 export function CritPanel({ crits }: { crits: CritStats }) {
   const [open, setOpen] = useState<CritCategory | null>(null);
-  const total = crits.categories.reduce((n, c) => n + c.crits, 0);
-  const anyHits = crits.categories.some((c) => c.hits > 0);
+  const [key, setKey] = useState<CritWindowKey>(() => {
+    try {
+      const saved = localStorage.getItem(WINDOW_KEY);
+      return isWindowKey(saved) ? saved : "session";
+    } catch {
+      return "session"; // private mode, or storage disabled
+    }
+  });
+  const [win, setWin] = useState<CritWindow | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  // The windows are fetched, not pushed — four of them is 72KB against a 92KB snapshot, for
+  // tables only this tab reads. So this polls while the tab is mounted rather than riding the
+  // stream: a crit rate over 100 fights does not move perceptibly in four seconds, and the
+  // badges and the recent-crits strip below *are* live off the snapshot.
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await fetch(`/api/crits?w=${key}`);
+        if (!r.ok) throw new Error(String(r.status));
+        const data = (await r.json()) as CritWindow;
+        if (alive) {
+          setWin(data);
+          setFailed(false);
+        }
+      } catch {
+        // An older server has no such route. Say so rather than showing an empty table that
+        // reads as "you have never critted".
+        if (alive) setFailed(true);
+      }
+    };
+    void load();
+    const timer = setInterval(() => void load(), 4000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [key]);
+
+  const choose = (k: CritWindowKey) => {
+    setKey(k);
+    setWin(null); // so the old window's numbers never sit under the new window's label
+    try {
+      localStorage.setItem(WINDOW_KEY, k);
+    } catch {
+      /* storage disabled */
+    }
+  };
+
+  const chosen = WINDOWS.find((w) => w.key === key)!;
+  const total = win ? win.categories.reduce((n, c) => n + c.crits, 0) : 0;
+  const anyHits = win ? win.categories.some((c) => c.hits > 0) : false;
+  const anyRecord = crits.records.some((r) => r.bestHit !== null);
 
   return (
     <section className="block crit-panel">
       <div className="section-title">
         Critical hits
-        <span className="muted small crit-scope">
-          {" "}
-          — yours alone, over the whole session
+        <span className="muted small crit-scope"> — yours alone</span>
+      </div>
+
+      {/* Records first, and outside the window entirely: "highest ever" is the one reading here
+          that must not move when the window does. They come off the snapshot, so they stay live
+          even while the tables below are between fetches. */}
+      {anyRecord && (
+        <div className="crit-records">
+          {RECORD_CATEGORIES.map((cat) => {
+            const r = crits.records.find((x) => x.category === cat);
+            return r ? <RecordTile key={cat} c={r} /> : null;
+          })}
+        </div>
+      )}
+
+      <div className="crit-windows" role="tablist">
+        {WINDOWS.map((w) => (
+          <button
+            key={w.key}
+            role="tab"
+            aria-selected={w.key === key}
+            className={`crit-win ${w.key === key ? "on" : ""}`}
+            title={w.note}
+            onClick={() => choose(w.key)}
+          >
+            {w.label}
+          </button>
+        ))}
+        <span className="crit-span muted">
+          {win ? spanLabel(win) : failed ? "" : "…"}
+          {win && win.encounters > 0 && ` · ${fmt(win.encounters)} fights`}
+          {/* A window the log cannot fill is marked, so 12 fights are never read as 100. */}
+          {win?.short && <span className="crit-short"> · all there is</span>}
         </span>
       </div>
 
-      {!anyHits ? (
+      {failed ? (
+        <div className="idle small">
+          This server has no <code>/api/crits</code> — it is running an engine from before the
+          window selector. Restart it to pick up the new build.
+        </div>
+      ) : !win ? (
+        <div className="idle small">Loading {chosen.label.toLowerCase()}…</div>
+      ) : !anyHits ? (
         <div className="idle">
-          No hits recorded yet — the ledger fills as you fight.
+          Nothing in this window yet — {chosen.note.charAt(0).toLowerCase() + chosen.note.slice(1)}
         </div>
       ) : (
         <>
-          {/* Records first. They are the one thing here that is read at a glance and never
-              changes on most pulls, so they sit above the rates rather than inside them. */}
-          <div className="crit-records">
-            {RECORD_CATEGORIES.map((key) => {
-              const c = crits.categories.find((x) => x.category === key);
-              return c ? <RecordTile key={key} c={c} /> : null;
-            })}
-          </div>
-
           <div className="crit-cats">
-            {crits.categories.map((c) => (
+            {win.categories.map((c) => (
               <CategoryBlock
                 key={c.category}
                 c={c}
@@ -313,7 +444,7 @@ export function CritPanel({ crits }: { crits: CritStats }) {
           {crits.recent.length > 0 && (
             <div className="crit-recent">
               <div className="crit-cap">
-                Last {crits.recent.length} crits · {fmt(total)} this session
+                Last {crits.recent.length} crits · {fmt(total)} in this window
               </div>
               {crits.recent.map((r) => (
                 <div key={`${r.tsMs}-${r.ability}-${r.amount}`} className="crit-recent-row">
@@ -328,7 +459,7 @@ export function CritPanel({ crits }: { crits: CritStats }) {
             A rate divides by the times that form of attack actually dealt damage — misses,
             parries and ripostes are not failed crits and are not in the denominator. Crippling
             blows, slay-undead and finishing blows count: the game emits them <em>instead of</em>{" "}
-            “Critical”, never alongside it.
+            “Critical”, never alongside it. The badges above are all-time and ignore the window.
           </div>
         </>
       )}

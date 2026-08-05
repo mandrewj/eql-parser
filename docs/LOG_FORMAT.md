@@ -133,6 +133,20 @@ Zero damage, so it counts as **avoidance**, not a damage event. Its sibling
 `<Target>'s magical skin absorbs the blow!` needs no pattern of its own — it arrives inside a
 `tries to …, but …!` line the miss patterns already read.
 
+## Session boundaries
+
+```
+[Tue Aug 04 23:19:41 2026] Welcome to EverQuest Legends!
+```
+```
+^Welcome to EverQuest(?: Legends)?!$
+```
+The only line that marks where a play session begins — 19 in a 2M-line log, exact wording stable
+across all of them. Not combat: it arrives on a loading screen, so it must not open a fight or hold
+one open. Read by the crit tracker, whose "this session" window is measured from it (capped at 12
+hours, so a client left logged in overnight cannot fold yesterday into tonight). There is no
+matching *logout* line — the log simply stops — which is why the cap exists rather than a pairing.
+
 ## Modifier flags (crits) placement
 
 `(Critical)` (and similar) can appear **after** the sentence terminator, not just after melee

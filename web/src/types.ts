@@ -300,8 +300,32 @@ export interface CritCategoryStat {
   abilities: CritAbility[];
 }
 
-export interface CritStats {
+/** Which stretch of the log a crit view covers. */
+export type CritWindowKey = "session" | "enc25" | "enc100" | "d14";
+
+/** One category's all-time records — the badges that never move with the window, and that have
+ *  to outlive the engine's 14-day retention on the per-hit log. */
+export interface CritRecords {
+  category: CritCategory;
+  best: CritRecord | null;
+  bestHit: CritRecord | null;
+}
+
+/** The crit figures over one window, fetched from `/api/crits` rather than pushed: four of these
+ *  is 72KB against a 92KB snapshot, for tables one tab reads. */
+export interface CritWindow {
+  key: CritWindowKey;
+  fromMs: number | null;
+  toMs: number | null;
+  encounters: number;
+  /** The log does not reach back as far as the window asks. */
+  short: boolean;
   categories: CritCategoryStat[];
+}
+
+/** The crit tracker's live half, small enough to ride along on every push. */
+export interface CritStats {
+  records: CritRecords[];
   recent: CritRecord[]; // newest first
 }
 

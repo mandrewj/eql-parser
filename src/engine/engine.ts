@@ -24,6 +24,8 @@ import type {
   CritRecord,
   CritCategoryStat,
   CritStats,
+  CritWindow,
+  CritWindowKey,
   MoteStats,
   MoteTierStat,
   SkyStats,
@@ -155,6 +157,36 @@ const CRIT_CATEGORIES: readonly CritCategory[] = ["melee", "spell", "dot", "heal
  *  ledger stays a fixed size over a session that runs for hours. */
 const CRIT_RECENT = 8;
 
+/** The longest window the panel offers, and therefore how far back the per-hit log has to reach.
+ *  Everything older is dropped: no view can see it, and a log that keeps growing for the life of
+ *  the process is how a small local tool turns into a memory problem. */
+const CRIT_RETAIN_DAYS = 14;
+
+/** A session is measured from the last login line — but capped, because a client left logged in
+ *  overnight would otherwise fold yesterday's raid into "tonight". Twelve hours is longer than a
+ *  sitting and shorter than a forgotten client. */
+const SESSION_CAP_HOURS = 12;
+
+/** How many encounters each encounter-scoped window reaches back over. */
+const CRIT_WINDOW_ENCOUNTERS: Record<"enc25" | "enc100", number> = { enc25: 25, enc100: 100 };
+
+/** One of my own landings, kept so the windows can be recomputed over any stretch.
+ *
+ *  Deliberately flat and numeric: there are ~307,000 of these in a 2M-line log, and the shape
+ *  below is what keeps that affordable. `ability` is an index into a shared name table rather
+ *  than a string per hit, and `enc` is the number of encounters finished when it landed — which
+ *  is what makes "the last 25 encounters" a subtraction rather than a search through fights the
+ *  engine has long since dropped. */
+interface CritEntry {
+  ts: number;
+  amount: number;
+  category: CritCategory;
+  ability: number; // index into Engine.critNames
+  target: number; // …and so is this — a window's best crit still names who it landed on
+  kind: CritKind | null;
+  enc: number;
+}
+
 interface CritAbilityAcc {
   name: string;
   hits: number;
@@ -188,6 +220,91 @@ const newCritAcc = (): CritAcc => ({
   bestHit: null,
   abilities: new Map(),
 });
+
+/** File one landing into an accumulator. **The single place the arithmetic lives**, because it
+ *  now runs twice over the same hits — once live as they arrive, once again whenever a window is
+ *  rebuilt from the retained log — and two copies of "what counts as a crit" is exactly the kind
+ *  of duplicated rule that goes wrong quietly.
+ *
+ *  `make` is a thunk: a record is only allocated when the hit actually beats something, which on
+ *  a 307,000-entry replay is the difference between four allocations and 307,000. */
+function addCritHit(
+  acc: CritAcc,
+  ability: string,
+  /** `ability` lowercased. Passed in rather than derived because a window build runs this over
+   *  309,000 entries, and lowercasing there allocated a string per hit — 40% of the build. */
+  key: string,
+  amount: number,
+  kind: CritKind | null,
+  make: () => CritRecord,
+): void {
+  acc.hits++;
+  acc.total += amount;
+
+  let a = acc.abilities.get(key);
+  if (!a) {
+    a = { name: ability, hits: 0, crits: 0, total: 0, critTotal: 0, best: null };
+    acc.abilities.set(key, a);
+  }
+  a.hits++;
+  a.total += amount;
+
+  // Ties keep the *first* one seen throughout, so a record that has stood all session isn't
+  // quietly restamped by a later hit of the same size — this character's best melee crit is 629
+  // and it has landed three times.
+  //
+  // The outright record is tracked before the crit test below, because the hardest thing you
+  // land is not always a crit: the biggest spell hit in a real log is a 647 that never critted,
+  // against a biggest spell crit of 220.
+  let record: CritRecord | null = null;
+  if (!acc.bestHit || amount > acc.bestHit.amount) acc.bestHit = record = make();
+
+  if (!kind) return;
+
+  acc.crits++;
+  acc.critTotal += amount;
+  acc.byKind.set(kind, (acc.byKind.get(kind) ?? 0) + 1);
+  a.crits++;
+  a.critTotal += amount;
+
+  if (!acc.best || amount > acc.best.amount) acc.best = record ??= make();
+  if (!a.best || amount > a.best.amount) a.best = record ?? make();
+}
+
+/** Turn the five accumulators into the shape the panel reads. Shared by the live snapshot and
+ *  every window, for the same reason `addCritHit` is. */
+function critCategoryStats(acc: Record<CritCategory, CritAcc>): CritCategoryStat[] {
+  return CRIT_CATEGORIES.map((category) => {
+    const a = acc[category];
+    const abilities: CritAbility[] = [...a.abilities.values()]
+      .map((x) => ({
+        name: x.name,
+        category,
+        hits: x.hits,
+        crits: x.crits,
+        total: x.total,
+        critTotal: x.critTotal,
+        best: x.best,
+      }))
+      .sort((x, y) => y.crits - x.crits || y.hits - x.hits);
+    return {
+      category,
+      hits: a.hits,
+      crits: a.crits,
+      total: a.total,
+      critTotal: a.critTotal,
+      // Asserted for the four forms that carry a flag; for `proc` it is left to the evidence.
+      // 39,563 of those hits in a real log produced not one flag, so the panel says "cannot
+      // crit" — but it says so on the strength of the count, and the day one of them does crit
+      // the row starts reporting a rate instead of arguing with the log.
+      crittable: category !== "proc" || a.crits > 0,
+      byKind: [...a.byKind].map(([kind, count]) => ({ kind, count })).sort((x, y) => y.count - x.count),
+      best: a.best,
+      bestHit: a.bestHit,
+      abilities,
+    };
+  });
+}
 
 interface MetricAcc {
   total: number;
@@ -432,6 +549,23 @@ export class Engine {
     proc: newCritAcc(),
   };
   private readonly critRecent: CritRecord[] = []; // chronological, last CRIT_RECENT
+  /** Every self landing, chronological, trimmed to `CRIT_RETAIN_DAYS`. The accumulators above
+   *  stay alongside it rather than being derived from it, because they are **all-time** — the
+   *  records board must survive this trim, and a personal best from three weeks ago is exactly
+   *  the kind of thing that should not quietly disappear. */
+  private readonly critLog: CritEntry[] = [];
+  /** Ability names, shared by index so 307k entries hold a number rather than a string. */
+  private readonly critNames: string[] = [];
+  /** …lowercased once, alongside. A window build groups by this key 309,000 times; deriving it
+   *  there was the single biggest cost in the rebuild. */
+  private readonly critNamesLower: string[] = [];
+  private readonly critNameIds = new Map<string, number>();
+  /** The last `Welcome to EverQuest Legends!`. Null until one is seen — a log that begins
+   *  mid-session has none, and the session window falls back to its 12-hour cap. */
+  private lastLoginMs: number | null = null;
+  /** The last window built, by key. One slot, not a map: the panel shows one window at a time,
+   *  so a second slot would only ever hold the one you just navigated away from. */
+  private critWindowCache: { key: string; value: CritWindow } | null = null;
 
   // Running session totals for the long-term boxes. Snapshotting these when a level or an
   // ability point lands makes "since then" a subtraction, which is both O(1) and immune to
@@ -499,6 +633,10 @@ export class Engine {
   private historyCache: SelfEncounterPoint[] | null = null;
   private progressCache: ProgressWindow[] | null = null;
   private fightSeq = 0;
+  /** Encounters finished so far. Doubles as the stamp on each crit-log entry, which is what
+   *  makes "the last 25 encounters" a subtraction against this counter rather than a walk
+   *  through retained encounters — of which the engine keeps 60, well short of the 100 the
+   *  widest encounter window asks for. */
   private encounterSeq = 0;
   private readonly now: () => number;
 
@@ -617,6 +755,12 @@ export class Engine {
       // Before the inactivity check below: a charm landing is not combat activity and
       // must not hold a dead fight open, but it does need the fight that is still live.
       this.applyCharm(ev);
+      return;
+    }
+    if (ev.type === "login") {
+      // Not combat, and it arrives on a loading screen: it must not open a fight or hold one
+      // open. It only moves where "this session" starts.
+      this.lastLoginMs = ev.tsMs;
       return;
     }
     if (ev.type === "zone") {
@@ -1814,80 +1958,175 @@ export class Engine {
     kind: CritKind | undefined,
     tsMs: number,
   ): void {
-    const acc = this.critAcc[category];
-    acc.hits++;
-    acc.total += amount;
+    const k = kind ?? null;
+    const make = (): CritRecord => ({ amount, ability, target, tsMs, kind: k, category });
 
-    const key = ability.toLowerCase();
-    let a = acc.abilities.get(key);
-    if (!a) {
-      a = { name: ability, hits: 0, crits: 0, total: 0, critTotal: 0, best: null };
-      acc.abilities.set(key, a);
-    }
-    a.hits++;
-    a.total += amount;
+    // The all-time half — the records board, which has to outlive the retained log's trim.
+    addCritHit(this.critAcc[category], ability, ability.toLowerCase(), amount, k, make);
 
-    // Ties keep the *first* one seen throughout, so a record that has stood all session isn't
-    // quietly restamped by a later hit of the same size — this character's best melee crit is
-    // 629 and it has landed three times.
-    //
-    // The outright record is tracked before the crit test below, because the hardest thing you
-    // land is not always a crit: the biggest spell hit in a real log is a 647 that never critted,
-    // against a biggest spell crit of 220.
-    if (!acc.bestHit || amount > acc.bestHit.amount) {
-      acc.bestHit = { amount, ability, target, tsMs, kind: kind ?? null, category };
-    }
+    // The windowed half. Written for every landing, crit or not: a rate needs its denominator as
+    // much as its numerator, and the denominator is the common case by twelve to one.
+    this.critLog.push({
+      ts: tsMs,
+      amount,
+      category,
+      ability: this.critNameId(ability),
+      target: this.critNameId(target),
+      kind: k,
+      enc: this.encounterSeq,
+    });
+    this.trimCritLog(tsMs);
 
-    if (!kind) return;
-
-    acc.crits++;
-    acc.critTotal += amount;
-    acc.byKind.set(kind, (acc.byKind.get(kind) ?? 0) + 1);
-    a.crits++;
-    a.critTotal += amount;
-
-    const record: CritRecord = { amount, ability, target, tsMs, kind, category };
-    if (!acc.best || amount > acc.best.amount) acc.best = record;
-    if (!a.best || amount > a.best.amount) a.best = record;
-
-    this.critRecent.push(record);
+    if (!k) return;
+    this.critRecent.push(make());
     if (this.critRecent.length > CRIT_RECENT) this.critRecent.shift();
   }
 
+  /** An ability's index in the shared name table, assigning one on first sight. */
+  private critNameId(name: string): number {
+    const found = this.critNameIds.get(name);
+    if (found !== undefined) return found;
+    const id = this.critNames.length;
+    this.critNames.push(name);
+    this.critNamesLower.push(name.toLowerCase());
+    this.critNameIds.set(name, id);
+    return id;
+  }
+
+  /** Drop entries no window could reach back for. Amortised: the log is chronological, so this
+   *  is a count of the head and one splice, and on a live session it almost always finds none. */
+  private trimCritLog(nowMs: number): void {
+    const cutoff = nowMs - CRIT_RETAIN_DAYS * 86400_000;
+    if (this.critLog.length === 0 || this.critLog[0]!.ts >= cutoff) return;
+    let drop = 0;
+    while (drop < this.critLog.length && this.critLog[drop]!.ts < cutoff) drop++;
+    this.critLog.splice(0, drop);
+  }
+
+  /** The encounter stamp `want` encounters back from the newest.
+   *
+   *  Walking the stamps rather than subtracting from `encounterSeq` is what makes this exact
+   *  whether or not the newest encounter has finished — subtracting is off by one the moment
+   *  there is no fight in progress, which is most of the time. It also means the window counts
+   *  **encounters I fought in**: one I stood through without swinging leaves no entry, so it
+   *  neither fills the window nor silently shortens it. */
+  private encFloor(want: number): number {
+    let seen = 0;
+    let cur = Infinity;
+    // `enc` never decreases along the log, so every change walking backwards is a new encounter.
+    for (let i = this.critLog.length - 1; i >= 0; i--) {
+      const e = this.critLog[i]!.enc;
+      if (e === cur) continue;
+      cur = e;
+      if (++seen >= want) return e;
+    }
+    return 0;
+  }
+
+  /** Where a window starts, as a timestamp and/or an encounter index. `null` means unbounded on
+   *  that axis — the two are applied together, so a window can be bounded by either or both. */
+  private critWindowBounds(key: CritWindowKey, nowMs: number): { fromMs: number; fromEnc: number } {
+    const capMs = nowMs - SESSION_CAP_HOURS * 3600_000;
+    switch (key) {
+      case "session":
+        // The later of the two, so a login is used when there is one and the cap catches a
+        // client left running overnight. With no login line at all the cap is the whole answer.
+        return { fromMs: Math.max(this.lastLoginMs ?? capMs, capMs), fromEnc: 0 };
+      case "d14":
+        return { fromMs: nowMs - CRIT_RETAIN_DAYS * 86400_000, fromEnc: 0 };
+      default:
+        return { fromMs: 0, fromEnc: this.encFloor(CRIT_WINDOW_ENCOUNTERS[key as "enc25" | "enc100"]) };
+    }
+  }
+
+  /** Build one window's figures by replaying the retained log over its span.
+   *
+   *  Cached on the log's length, which serves the idle case exactly as the stance overview's
+   *  cache does: while you are fighting, every hit invalidates it and it rebuilds; while you are
+   *  not, the panel's 4s poll costs nothing. That is the case worth covering — `d14` walks all
+   *  309,000 entries for 16ms, and the person parked on the two-week view is the person who has
+   *  stopped swinging. The clock is part of the key too, so a time-bounded window still moves
+   *  while idle rather than freezing at whatever it said when the last hit landed. */
+  buildCritWindow(key: CritWindowKey, nowMs = this.now()): CritWindow {
+    const cacheKey = `${key}:${this.critLog.length}:${Math.floor(nowMs / 60_000)}`;
+    if (this.critWindowCache?.key === cacheKey) return this.critWindowCache.value;
+    const built = this.computeCritWindow(key, nowMs);
+    this.critWindowCache = { key: cacheKey, value: built };
+    return built;
+  }
+
+  private computeCritWindow(key: CritWindowKey, nowMs: number): CritWindow {
+    const { fromMs, fromEnc } = this.critWindowBounds(key, nowMs);
+    const acc: Record<CritCategory, CritAcc> = {
+      melee: newCritAcc(),
+      spell: newCritAcc(),
+      dot: newCritAcc(),
+      heal: newCritAcc(),
+      proc: newCritAcc(),
+    };
+
+    // Both keys only ever rise along the log, so "inside the window" is false-then-true and one
+    // binary search finds the start on either axis. Searching on `enc` too is what keeps the
+    // encounter windows cheap: filtering them inside the loop instead meant walking all 309,000
+    // entries to reach the last 25, which cost 6.4ms to read 825 hits.
+    let lo = 0;
+    let hi = this.critLog.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const e = this.critLog[mid]!;
+      if (e.ts < fromMs || e.enc < fromEnc) lo = mid + 1;
+      else hi = mid;
+    }
+
+    let first: number | null = null;
+    let last: number | null = null;
+    let spanned = 0;
+    let curEnc = Infinity;
+    for (let i = lo; i < this.critLog.length; i++) {
+      const e = this.critLog[i]!;
+      const name = this.critNames[e.ability]!;
+      addCritHit(acc[e.category], name, this.critNamesLower[e.ability]!, e.amount, e.kind, () => ({
+        amount: e.amount,
+        ability: name,
+        target: this.critNames[e.target]!,
+        tsMs: e.ts,
+        kind: e.kind,
+        category: e.category,
+      }));
+      if (first === null) first = e.ts;
+      last = e.ts;
+      if (e.enc !== curEnc) {
+        curEnc = e.enc;
+        spanned++;
+      }
+    }
+
+    const want = key === "enc25" || key === "enc100" ? CRIT_WINDOW_ENCOUNTERS[key] : 0;
+    return {
+      key,
+      fromMs: first,
+      toMs: last,
+      encounters: spanned,
+      // Honest about reach: an encounter window is short when the log holds fewer encounters
+      // than it asks for, and `d14` when the retained log begins after the cutoff.
+      short:
+        want > 0
+          ? spanned < want
+          : key === "d14" && this.critLog.length > 0 && this.critLog[0]!.ts > fromMs,
+      categories: critCategoryStats(acc),
+    };
+  }
+
+  /** The all-time records, for the badges that never move with the window. */
   private buildCritStats(): CritStats {
-    const categories: CritCategoryStat[] = CRIT_CATEGORIES.map((category) => {
-      const acc = this.critAcc[category];
-      const abilities: CritAbility[] = [...acc.abilities.values()]
-        .map((a) => ({
-          name: a.name,
-          category,
-          hits: a.hits,
-          crits: a.crits,
-          total: a.total,
-          critTotal: a.critTotal,
-          best: a.best,
-        }))
-        .sort((x, y) => y.crits - x.crits || y.hits - x.hits);
-      return {
+    return {
+      records: CRIT_CATEGORIES.map((category) => ({
         category,
-        hits: acc.hits,
-        crits: acc.crits,
-        total: acc.total,
-        critTotal: acc.critTotal,
-        // Asserted for the four forms that carry a flag; for `proc` it is left to the evidence.
-        // 39,472 of those hits in a real log produced not one flag, so the panel says "cannot
-        // crit" — but it says so on the strength of the count, and the day one of them does
-        // crit the row starts reporting a rate instead of arguing with the log.
-        crittable: category !== "proc" || acc.crits > 0,
-        byKind: [...acc.byKind]
-          .map(([kind, count]) => ({ kind, count }))
-          .sort((x, y) => y.count - x.count),
-        best: acc.best,
-        bestHit: acc.bestHit,
-        abilities,
-      };
-    });
-    return { categories, recent: [...this.critRecent].reverse() };
+        best: this.critAcc[category].best,
+        bestHit: this.critAcc[category].bestHit,
+      })),
+      recent: [...this.critRecent].reverse(),
+    };
   }
 
   /** Drop blows and heals that no future death report could reach back for. */

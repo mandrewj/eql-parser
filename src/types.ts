@@ -217,6 +217,13 @@ export interface TradeCompleteEvent extends BaseEvent {
   to: string;
 }
 
+/** `Welcome to EverQuest Legends!` — the client entering the world, and the only line that marks
+ *  where a play session begins. Not combat: it arrives on a loading screen and must not open or
+ *  extend a fight. Read by the crit tracker, whose "this session" window is measured from it. */
+export interface LoginEvent extends BaseEvent {
+  type: "login";
+}
+
 export interface ZoneEvent extends BaseEvent {
   type: "zone";
   /** Destination zone, or null for the unnamed half of a transition (`LOADING, PLEASE
@@ -258,6 +265,7 @@ export type CombatEvent =
   | GivenEvent
   | TradeOfferEvent
   | TradeCompleteEvent
+  | LoginEvent
   | ZoneEvent
   | ProgressEvent;
 
@@ -596,15 +604,45 @@ export interface CritCategoryStat {
   abilities: CritAbility[]; // most crits first, then most used
 }
 
-/** The self's critical hits over the whole session. Never trimmed with the encounter window:
- *  a crit rate is a property of the character, and a rate over the last 50 encounters would be
- *  a noisier answer to a question nobody asked.
- *
- *  There is no session-wide "biggest crit" field because the categories already carry one each
- *  and a single list of them would be all melee — a 629 swing and a 33 DoT tick are not
- *  competing for the same record. */
-export interface CritStats {
+/** Which stretch of the log a crit view covers. Four, because they answer different questions:
+ *  "how am I doing tonight", "did that last camp go well", "what is my rate really", and "how has
+ *  it moved over the patch". */
+export type CritWindowKey =
+  | "session" // since the last `Welcome to EverQuest Legends!`, capped at 12h
+  | "enc25" // the last 25 per-mob encounters
+  | "enc100" // …and the last 100
+  | "d14"; // the last 14 days
+
+/** One category's all-time records. Kept apart from the windowed figures and **kept in the
+ *  snapshot**, because "highest ever" is the one reading that must never move with the window —
+ *  and because it has to outlive the per-hit log's retention trim. */
+export interface CritRecords {
+  category: CritCategory;
+  best: CritRecord | null; // biggest crit ever
+  bestHit: CritRecord | null; // biggest hit ever, crit or not
+}
+
+/** The crit figures over one window. Served from `/api/crits`, not pushed: four of these is 72KB
+ *  on top of a 92KB snapshot, for data one tab reads — the same trade the Sky catalogue was kept
+ *  out of the snapshot for. */
+export interface CritWindow {
+  key: CritWindowKey;
+  /** What the window actually covers, resolved against the log rather than promised. Null when
+   *  it holds nothing at all. */
+  fromMs: number | null;
+  toMs: number | null;
+  /** Encounters spanned — for the encounter windows, how many they really reached back over. */
+  encounters: number;
+  /** True when the log does not reach back as far as the window asks. The panel says so rather
+   *  than presenting a short window as a full one. */
+  short: boolean;
   categories: CritCategoryStat[]; // fixed order, present even when empty
+}
+
+/** The crit tracker's live half — small enough to ride along on every push. The windowed tables
+ *  are fetched separately; these two are what the panel shows without asking for anything. */
+export interface CritStats {
+  records: CritRecords[]; // one per category, all-time
   recent: CritRecord[]; // newest first — the "did that just crit" readout
 }
 

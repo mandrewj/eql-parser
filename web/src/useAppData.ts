@@ -60,26 +60,14 @@ function skyOf(s?: Partial<SkyStats>): SkyStats {
   };
 }
 
-/** Same defaulting rule again. The five categories are rebuilt rather than defaulted to `[]`,
- *  so the panel's rows exist before the first fight and it opens as an empty ledger instead of
- *  a blank pane — which is also what it looks like on a server predating this tab. */
+/** Same defaulting rule again. The five records are rebuilt rather than defaulted to `[]`, so the
+ *  badges exist before the first fight and the tab opens as an empty board instead of a blank
+ *  pane — which is also what it looks like on a server predating this tab. */
 function critsOf(c?: Partial<CritStats>): CritStats {
-  const seen = new Map((c?.categories ?? []).map((cat) => [cat.category, cat]));
+  const seen = new Map((c?.records ?? []).map((r) => [r.category, r]));
   return {
-    categories: CRIT_CATEGORIES.map(
-      (category) =>
-        seen.get(category) ?? {
-          category,
-          hits: 0,
-          crits: 0,
-          total: 0,
-          critTotal: 0,
-          crittable: category !== "proc",
-          byKind: [],
-          best: null,
-          bestHit: null,
-          abilities: [],
-        },
+    records: CRIT_CATEGORIES.map(
+      (category) => seen.get(category) ?? { category, best: null, bestHit: null },
     ),
     recent: c?.recent ?? [],
   };

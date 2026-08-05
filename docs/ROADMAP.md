@@ -1188,6 +1188,50 @@ The "+N earlier" count is taken from the *resolved* completions rather than the 
 handover that is no quest reward was never going to be listed, so counting it as held back would
 overstate what is hidden.
 
+## Post-v1 — Crit windows: session / 25 / 100 fights / 2 weeks  ✅
+The crit tab was one number per category over the whole log, which answers "what is my rate" and
+nothing else. Four windows now, with the all-time record badges deliberately outside all of them.
+It pays immediately: this character's melee rate is **8.37% over two weeks and 11.76% this
+session**, and DoT **0.86%** against **7.82%** — a change no single figure could show.
+
+**A session needed a real boundary, and the log has one.** `Welcome to EverQuest Legends!`, 19 in a
+2M-line log, exact wording stable across all of them. Capped at 12 hours: a client left logged in
+overnight would otherwise fold yesterday's raid into "tonight". With no marker at all — a log that
+begins mid-session — the cap is the whole answer.
+
+**Windowing needs history the engine did not keep**, so the ledger gained a per-hit log: ~309,000
+entries over this log, trimmed to 14 days (the longest window, so nothing retained is unreachable
+and nothing reachable is missing). Costs **31MB** (54 → 85MB heap on a full replay) and nothing
+measurable on the hot path — replay 14.9s against a 15.0s baseline. Entries hold indices into a
+shared name table rather than strings, for the target as well as the ability, since a window's best
+crit still has to name what it hit.
+
+**The all-time accumulators stayed.** The records badges must outlive the 14-day trim — a personal
+best from three weeks ago disappearing would be a bug, not a policy — so they are kept separately
+and O(1) per hit.
+
+**"The last N encounters" walks the stamps rather than subtracting from the counter.** Subtracting
+is off by one the moment no fight is in progress, which is most of the time: it reported 24 for a
+25-encounter window. The test that caught it is kept. Walking is also the honest meaning —
+*encounters I fought in*, since one stood through without swinging leaves no entry either way.
+
+**Measured, then fixed, then measured again.** Filtering the encounter windows inside the loop
+walked all 309,000 entries to reach the last 25 — 6.4ms to read 825 hits. Both keys rise along the
+log, so one binary search finds the start on either axis: **0.16ms**, 40× better. Lowercasing the
+ability name per entry was the other 40% of a rebuild, so the name table carries a lowercased copy.
+`d14` still walks everything at 16ms, cached on the log's length so the panel's 4s poll is free
+while idle — which is exactly when someone parks on the two-week view.
+
+**Served from `/api/crits`, not pushed.** Four windows is 72KB against a 92KB snapshot at ~5/sec,
+for tables one tab reads — the same trade that keeps the Sky catalogue out of the stream. The
+badges and the recent-crits strip stay in the snapshot, so the live half of the panel is still
+live; the tables poll every 4s, which a rate over 100 fights cannot outrun.
+
+**Validated against the raw log**, not just the tests: the session window's own bounds were taken
+from the engine and every figure inside them re-counted from the raw lines — melee 910 hits / 107
+crits / 131,334 damage, spells 105/0, DoT 307/24, heals 740/0, procs 0/0. All five categories exact
+on all three figures.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

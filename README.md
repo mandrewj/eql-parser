@@ -28,11 +28,17 @@ damage it costs you defensively, and how much of your combat time you spent in i
 
 **A critical-hit tracker.** Your record crits across the whole log — biggest melee, biggest spell,
 biggest damage-over-time tick — over a breakdown of how often each of them actually crits, as a
-share of the times it dealt damage. Plus what those crits are worth: the damage they carry, how
-they compare to an ordinary hit, and the biggest one of every individual attack and spell. It
-counts crippling blows, slay-undead and finishing blows too, which the game reports *instead of*
-"Critical" rather than alongside it — and where your hardest hit of all wasn't a crit, it says so
-rather than pretending the record belongs to something else.
+share of the times it dealt damage, what those crits are worth against an ordinary hit, and the
+biggest one of every individual attack and spell.
+
+Readable **over four windows** — this session, the last 25 fights, the last 100, or the last two
+weeks — so you can see a change rather than only an average. It is not a fine distinction: one
+character reads 8.4% melee crit over two weeks and 11.8% this session. The record badges ignore
+the window and always show your best ever.
+
+It counts crippling blows, slay-undead and finishing blows too, which the game reports *instead
+of* "Critical" rather than alongside it — and where your hardest hit of all wasn't a crit, it says
+so rather than pretending the record belongs to something else.
 
 **"What killed me."** Every death, reconstructed from the incoming hits before it — who, what, how
 much, and which stance you were in.
@@ -92,7 +98,7 @@ parser has nothing to read.
 The top bar shows the character being read, the melee stance and invocation you are currently in,
 and whether the connection is live. The **⚙** button opens the folder and character pickers.
 
-Three tabs:
+Four tabs:
 
 ### Live
 
@@ -113,6 +119,23 @@ row stays open, so your numbers are always on screen.
 Every fight the session has seen, oldest at the bottom. Pick one to inspect its full roster, with
 the same drill-downs plus the stance split for that fight. The combatant filter lives here rather
 than on the Live tab, because a finished fight is when you want to slice the roster.
+
+### Crits
+
+How often you crit, and how hard. Three badges across the top hold your biggest melee, spell and
+damage-over-time crit **of all time** — those never move. Below them, pick a window (session · 25
+fights · 100 fights · 2 weeks) and each kind of damage gets a row: its crit rate, the share of
+damage those crits carried, and how a crit compares to an ordinary hit. Open a row for the same
+figures per attack or spell.
+
+The strip beside the window buttons says what it actually covered — "76 min · since 11:21 PM · 26
+fights" — and warns you when the log does not reach back as far as the button promises.
+
+Two things worth knowing about the numbers. A rate divides by the times that attack *dealt
+damage*: a miss or a parry is not a failed crit. And procs and damage shields get a row that
+reports no rate at all, because the game has never once flagged one as a critical — folding them
+in with your spells would divide a handful of crits by tens of thousands of hits and call the
+answer a spell crit rate.
 
 ### Sky
 

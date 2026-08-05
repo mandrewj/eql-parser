@@ -221,7 +221,7 @@ export default function App() {
       {tab === "crits" ? (
         <main className="pane wide">
           <PanelBoundary name="Critical hits">
-            <CritPanel crits={snapshot?.crits ?? { categories: [], recent: [] }} />
+            <CritPanel crits={snapshot?.crits ?? { records: [], recent: [] }} />
           </PanelBoundary>
         </main>
       ) : tab === "sky" ? (

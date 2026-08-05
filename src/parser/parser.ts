@@ -11,6 +11,7 @@ import type {
   DeathEvent,
   DotTickEvent,
   HealEvent,
+  LoginEvent,
   LootEvent,
   OutputFileEvent,
   GivenEvent,
@@ -30,7 +31,7 @@ const TIMESTAMP_RE =
   /^\[([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\] (.*)$/;
 
 const RELEVANT_RE =
-  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: |looted|Outputfile|been given|You offered|complete the trade/;
+  /damage|slain|but |assume |heal|Master|invocation|entered|LOADING|a level|ability|better at|experience|glaze|[Cc]harm|Beguile|Bewitching|ZONE: |looted|Outputfile|been given|You offered|complete the trade|Welcome to/;
 
 // A `/who` result line — the only place the log states anyone's class:
 //   [42 PAL/MNK/BRD] Sanluen (Wood Elf) <Guild Name> ZONE: Nagafen's Lair (soldungb)
@@ -82,6 +83,14 @@ const GIVEN_RE = /^You have been given: (.+?)\s*$/;
 // (`High Quality Raiment +1`), which `sky.ts` folds away.
 const TRADE_OFFER_RE = /^You offered (\d+) (.+?) to (.+?)\.$/;
 const TRADE_DONE_RE = /^You complete the trade with (.+?)\.$/;
+
+// The client entering the world — the only line that marks where a play session begins:
+//   Welcome to EverQuest Legends!
+// Nineteen in a 2M-line log, and the exact wording is stable across all of them (the classic
+// "Welcome to EverQuest!" is allowed for too, since the two games share this message). It is the
+// boundary the crit tracker's "this session" window is measured from; without it a session could
+// only ever be a guess at a clock.
+const LOGIN_RE = /^Welcome to EverQuest(?: Legends)?!$/;
 
 // Zoning is a hard fight boundary: "You have entered The Greater Faydark."
 // (guard against the non-zone "You have entered an area where …" warning).
@@ -395,6 +404,13 @@ export function parseLine(raw: string): CombatEvent | null {
       level: Number(m[1]),
       classes: m[2]!.split("/"),
     };
+    return ev;
+  }
+
+  // Entering the world. Not combat, and it must not open or extend a fight — it arrives while
+  // the character is standing still on a loading screen.
+  if (LOGIN_RE.test(body)) {
+    const ev: LoginEvent = { type: "login", tsMs, raw: body };
     return ev;
   }
 

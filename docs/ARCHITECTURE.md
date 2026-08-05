@@ -498,11 +498,48 @@ difficulty) and the Plane of Sky pair below.
   - **damage-by-type** (melee / spell / DoT) for drill-down;
   - **per-ability breakdown** (verb for melee, real spell name from DoT/spell lines);
   - **damage-by-stance** and a per-fight stance split (self).
-- **The critical-hit ledger is self-only and session-wide** — deliberately outside the encounter
-  window everything else is trimmed to. A crit rate is a property of the character rather than of
-  a fight, and it needs volume before it settles: a 30-second pull is twenty swings. It stays a
-  fixed size regardless of session length (five categories, each holding a small map of the
-  abilities actually used), so nothing has to be trimmed to keep it affordable.
+- **The critical-hit ledger is self-only, and windowed.** It keeps two halves, because they answer
+  different questions and have different lifetimes:
+  - **All-time accumulators** — five categories, each a small map of the abilities used. O(1) per
+    hit and a fixed size regardless of session length. These feed the **records badges**, and they
+    are what makes those records survive the retention trim below: a personal best from three
+    weeks ago must not quietly disappear.
+  - **A per-hit log** (`critLog`), one entry per self landing, from which any window is rebuilt.
+    ~309,000 entries over a 2M-line log, trimmed to `CRIT_RETAIN_DAYS` (14) — the longest window
+    offered, so nothing retained is unreachable and nothing reachable is missing. Costs **31MB**
+    (54MB heap → 85MB after a full replay) and nothing measurable on the hot path: replay is
+    14.9s against a 15.0s baseline.
+    - Entries are flat and numeric, holding **indices into a shared name table** rather than
+      strings — for the ability *and* the target, since a window's best crit still has to name
+      what it landed on.
+    - Each carries the **encounter counter** (`encounterSeq`) as it stood when the hit landed.
+      That is what makes "the last 25 encounters" a comparison against a number rather than a walk
+      through retained encounters — of which the engine keeps 60, well short of the 100 the widest
+      encounter window asks for.
+  - **The four windows**: `session` (since the last login, capped at 12h), `enc25`, `enc100`,
+    `d14`. Their arithmetic goes through the **same `addCritHit`** the live path uses — it now runs
+    twice over the same hits, and two copies of "what counts as a crit" is exactly the duplicated
+    rule past audits here keep finding.
+  - **"The last N encounters" walks the stamps rather than subtracting from the counter.**
+    Subtracting is off by one the moment no fight is in progress, which is most of the time — it
+    reported 24 encounters for a 25-encounter window, and the test that caught it is kept. Walking
+    also gives the honest meaning: **encounters I fought in**, since one stood through without
+    swinging leaves no entry to count either way.
+  - **A window reports what it actually covered** (`fromMs`/`toMs`/`encounters`) and sets `short`
+    when the log does not reach back as far as the label promises, so 12 fights are never read
+    as 100.
+  - **Both keys rise along the log, so one binary search finds a window's start on either axis.**
+    Filtering the encounter windows inside the loop instead meant walking all 309,000 entries to
+    reach the last 25: 6.4ms to read 825 hits, now 0.16ms. Lowercasing the ability name per entry
+    was the other 40% of a rebuild, so the name table carries a lowercased copy alongside.
+  - **Cached on the log's length and the minute**, which serves the idle case exactly as the stance
+    overview's cache does: while you are fighting every hit invalidates it, and while you are not,
+    the panel's 4s poll costs nothing. That is the case worth covering — `d14` walks everything for
+    16ms, and the person parked on the two-week view is the person who has stopped swinging.
+  - **Validated against the raw log**, not just the tests: the session window's bounds were taken
+    from the engine and every figure inside them re-counted from the raw lines — melee 910 hits /
+    107 crits / 131,334 damage, spells 105/0, DoT 307/24, heals 740/0, procs 0/0. All five exact
+    on all three figures.
   - **Only my own blows.** A summoned pet's swings fold into my row in the meters, but they are
     its crits, not mine — a pet's rate would quietly move a number the panel presents as a fact
     about this character. Recorded inside the existing `aKey === selfKey` branch of
@@ -712,12 +749,25 @@ interface MetricStat {                // every metric group has this one shape
   times I dealt damage, how often did it crit**, and when it did, how hard. Its arithmetic lives in
   [`stats.ts`](../web/src/stats.ts), apart from the panel that draws it, for the same reason as the
   Sky model: these are exactly the rules that regress quietly into the wrong denominator.
+  - **Four windows**, narrowest first so moving right reaches further back: session, 25 fights,
+    100 fights, 2 weeks. The choice is remembered in `localStorage`, like the Sky tab's class.
+    - **Fetched from `/api/crits`, not pushed** — four of them is 72KB against a 92KB snapshot at
+      ~5/sec, for tables one tab reads. Polled every 4s while the tab is mounted, which a rate
+      over 100 fights cannot outrun; the badges and the recent-crits strip ride the snapshot, so
+      the genuinely live half of the panel stays live.
+    - **The strip prints what the window turned out to cover**, not what its label promised —
+      "76 min · since Aug 4, 11:21 PM · 26 fights" — and appends *all there is* when the log
+      cannot reach back far enough.
+    - An older server with no such route says so, rather than rendering an empty table that reads
+      as "you have never critted".
   - **A records board leads the tab** — biggest melee, spell and DoT crit, each with what did it,
     to whom and when. It sits above the rates because it is the one thing here read at a glance
     and the one thing that does not move on most pulls. Since the engine replays the whole log on
     start, these are records over the **active log**, not just the current sitting.
     - **Each tile also prints the outright record when it is a different hit**, marked *not a
       crit* — the 647 case above. Without it the spell tile says 220 and looks wrong.
+    - **The badges sit outside the window selector entirely.** "Highest ever" is the one reading
+      on this tab that must not move when the window does.
     - Heals and procs have records too and keep them on their own rows, where a healing number
       cannot be mistaken for a damage one.
   - **Four figures per category, in a fixed strip**, so the eye can run down the crit-rate column

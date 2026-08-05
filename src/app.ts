@@ -9,7 +9,7 @@ import { parseLine } from "./parser/parser.js";
 import { Engine } from "./engine/engine.js";
 import { Tailer } from "./tailer/tailer.js";
 import { inventoryMtime, inventoryPathFor, readInventory } from "./parser/inventory.js";
-import type { Fight, FightSummary, LogFileInfo, ParseMode } from "./types.js";
+import type { CritWindow, CritWindowKey, Fight, FightSummary, LogFileInfo, ParseMode } from "./types.js";
 
 export class App {
   private readonly config: AppConfig;
@@ -90,6 +90,13 @@ export class App {
 
   snapshot(): ReturnType<Engine["snapshot"]> {
     return this.engine.snapshot();
+  }
+
+  /** One crit window, built on request. Not folded into the snapshot: four of them is 72KB on
+   *  top of a 92KB push, for a table one tab reads — the same trade that keeps the Sky catalogue
+   *  out of it. */
+  critWindow(key: CritWindowKey): CritWindow {
+    return this.engine.buildCritWindow(key);
   }
 
   fightSummaries(): FightSummary[] {

@@ -916,3 +916,18 @@ body { margin: 0; }
 /* What the "Recently complete" cap is holding back. Muted and set apart from the count badge
    beside it — the badge is how many rows follow, this is how many do not. */
 .skypgmore { margin-left: 0.4rem; color: var(--muted); font-size: 0.66rem; font-weight: 400; }
+
+/* The window selector. A segmented row rather than a dropdown: four options that are compared
+   against each other, and the whole point is seeing that "session" and "2 weeks" disagree. */
+.crit-windows { display: flex; align-items: center; flex-wrap: wrap; gap: 1px; margin-bottom: 0.55rem; }
+.crit-win {
+  background: var(--panel); border: 1px solid var(--border); border-right-width: 0; padding: 0.3rem 0.7rem;
+  font: inherit; font-size: 0.76rem; font-weight: 600; color: var(--muted); cursor: pointer;
+}
+.crit-win:first-of-type { border-radius: 7px 0 0 7px; }
+.crit-win:last-of-type { border-radius: 0 7px 7px 0; border-right-width: 1px; }
+.crit-win:hover { background: #ffffff0a; color: var(--text); }
+.crit-win.on { background: var(--panel2); color: var(--text); box-shadow: inset 0 -2px 0 var(--self); }
+/* What the chosen window actually covers — resolved against the log, not the label's promise. */
+.crit-span { margin-left: 0.6rem; font-size: 0.68rem; font-variant-numeric: tabular-nums; }
+.crit-short { color: var(--partial); }

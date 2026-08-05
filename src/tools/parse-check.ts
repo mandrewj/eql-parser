@@ -37,6 +37,7 @@ function main(): void {
     given: 0,
     tradeOffer: 0,
     tradeComplete: 0,
+    login: 0,
     zone: 0,
     progress: 0,
   };

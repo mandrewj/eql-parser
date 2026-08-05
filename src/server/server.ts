@@ -7,7 +7,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AppConfig } from "../config.js";
 import type { App } from "../app.js";
-import type { ParseMode } from "../types.js";
+import type { CritWindowKey, ParseMode } from "../types.js";
+
+/** The windows `/api/crits` will build. Listed here so an unknown one is a 400 rather than a
+ *  silently-empty table. */
+const CRIT_WINDOW_KEYS: CritWindowKey[] = ["session", "enc25", "enc100", "d14"];
 import { EMBEDDED_WEB } from "./web-assets.js";
 import { SKY_CLASSES } from "../parser/sky-catalogue.js";
 import { browseDir } from "./browse.js";
@@ -197,6 +201,19 @@ export function startServer(config: AppConfig, app: App): Promise<ServerHandle> 
     if (pathname === "/api/sky-quests" && req.method === "GET") {
       res.setHeader("Cache-Control", "public, max-age=3600");
       sendJson(res, 200, SKY_CLASSES);
+      return;
+    }
+
+    // The crit windows, on request rather than on every push. Four of them is 72KB against a
+    // 92KB snapshot, for tables one tab reads — the same reasoning that keeps the Sky catalogue
+    // out of the stream. Explicitly uncached: unlike the catalogue this changes as you fight.
+    if (pathname === "/api/crits" && req.method === "GET") {
+      const key = url.searchParams.get("w") ?? "session";
+      if (!CRIT_WINDOW_KEYS.includes(key as CritWindowKey)) {
+        return sendJson(res, 400, { error: `unknown window: ${key}` });
+      }
+      res.setHeader("Cache-Control", "no-store");
+      sendJson(res, 200, app.critWindow(key as CritWindowKey));
       return;
     }
 

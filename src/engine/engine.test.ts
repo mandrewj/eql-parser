@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Engine } from "./engine.js";
+import type { CritWindowKey } from "../types.js";
 import { parseLine } from "../parser/parser.js";
 
 // Helper: build a chronological event stream from raw log lines.
@@ -1784,11 +1785,19 @@ test("sky: a held item reports where it was last seen", () => {
 
 // --- critical hits ---------------------------------------------------------------
 
-/** The crit panel's five categories, by key, from one snapshot. */
-const critsOf = (engine: Engine) => {
-  const s = engine.snapshot().crits;
-  return Object.fromEntries(s.categories.map((c) => [c.category, c]));
-};
+/** The crit panel's five categories, by key. Read from a **window** now that the snapshot
+ *  carries only the all-time records — `d14` is the widest, so it stands in for "everything"
+ *  in tests whose fixtures span seconds. */
+const critsOf = (engine: Engine, key: CritWindowKey = "d14") =>
+  Object.fromEntries(engine.buildCritWindow(key, WINDOW_NOW).categories.map((c) => [c.category, c]));
+
+/** The fixtures below are dated Sat Jul 18 2026; windows are resolved against a clock, so the
+ *  tests pin one a few minutes after the events rather than depending on today's date. */
+const WINDOW_NOW = Date.parse("2026-07-18T02:00:00Z");
+
+/** The all-time records, which stay in the snapshot and never move with a window. */
+const recordsOf = (engine: Engine) =>
+  Object.fromEntries(engine.snapshot().crits.records.map((r) => [r.category, r]));
 
 test("crits: each damage form gets its own rate, over its own hits", () => {
   const engine = feed([
@@ -1825,12 +1834,12 @@ test("crits: the biggest is kept per type and per ability", () => {
     L("01:00:02", "You kick orc for 200 points of damage. (Critical)"),
     L("01:00:03", "You have slain orc!"),
   ]);
-  const c = critsOf(engine);
+  const c = recordsOf(engine);
   assert.equal(c.melee!.best!.amount, 500);
   assert.equal(c.melee!.best!.ability, "slash");
   assert.equal(c.melee!.best!.target, "orc");
 
-  const byName = Object.fromEntries(c.melee!.abilities.map((a) => [a.name, a]));
+  const byName = Object.fromEntries(critsOf(engine).melee!.abilities.map((a) => [a.name, a]));
   assert.equal(byName.slash!.best!.amount, 500);
   assert.equal(byName.kick!.best!.amount, 200, "a weaker ability keeps its own record");
 });
@@ -1841,7 +1850,7 @@ test("crits: a tie keeps the record that has stood longest", () => {
     L("01:00:01", "You slash orc for 629 points of damage. (Critical)"),
     L("01:00:02", "You have slain orc!"),
   ]);
-  const best = critsOf(engine).melee!.best!;
+  const best = recordsOf(engine).melee!.best!;
   assert.equal(best.amount, 629);
   assert.equal(new Date(best.tsMs).getSeconds(), 0, "the first of the two, not the latest");
 });
@@ -1910,10 +1919,12 @@ test("crits: the recent list is newest first and stays bounded", () => {
 });
 
 test("crits: a session with no crits still reports every category", () => {
-  const s = feed([L("01:00:00", "You slash orc for 10 points of damage.")]).snapshot().crits;
-  assert.equal(s.categories.length, 5);
-  assert.equal(s.categories.every((c) => c.best === null || c.crits > 0), true);
-  assert.equal(s.recent.length, 0);
+  const engine = feed([L("01:00:00", "You slash orc for 10 points of damage.")]);
+  const w = engine.buildCritWindow("d14", WINDOW_NOW);
+  assert.equal(w.categories.length, 5);
+  assert.equal(w.categories.every((c) => c.best === null || c.crits > 0), true);
+  assert.equal(engine.snapshot().crits.recent.length, 0);
+  assert.equal(engine.snapshot().crits.records.length, 5);
 });
 
 test("crits: the outright record is kept even when it never critted", () => {
@@ -1925,7 +1936,7 @@ test("crits: the outright record is kept even when it never critted", () => {
     L("01:00:01", "You hit a froglok gaz knight for 220 points of magic damage by Careless Lightning. (Critical)"),
     L("01:00:02", "You have slain an imp protector!"),
   ]);
-  const spell = critsOf(engine).spell!;
+  const spell = recordsOf(engine).spell!;
   assert.equal(spell.best!.amount, 220, "the biggest crit");
   assert.equal(spell.best!.kind, "critical");
   assert.equal(spell.bestHit!.amount, 647, "the biggest hit of any kind");
@@ -1939,7 +1950,7 @@ test("crits: when the hardest hit *is* a crit, both records are that hit", () =>
     L("01:00:01", "You slash orc for 629 points of damage. (Critical)"),
     L("01:00:02", "You have slain orc!"),
   ]);
-  const melee = critsOf(engine).melee!;
+  const melee = recordsOf(engine).melee!;
   assert.equal(melee.best!.amount, 629);
   assert.equal(melee.bestHit!.amount, 629);
   assert.equal(melee.bestHit!.kind, "critical");
@@ -1953,7 +1964,7 @@ test("crits: a category that never crits still has an outright record", () => {
     L("01:00:01", "Orc is pierced by YOUR thorns for 31 points of non-melee damage."),
     L("01:00:02", "You have slain orc!"),
   ]);
-  const proc = critsOf(engine).proc!;
+  const proc = recordsOf(engine).proc!;
   assert.equal(proc.best, null);
   assert.equal(proc.bestHit!.amount, 31);
   assert.equal(proc.bestHit!.kind, null);
@@ -1965,5 +1976,116 @@ test("crits: the outright record keeps the first of a tie too", () => {
     L("01:00:30", "You slash orc for 400 points of damage."),
     L("01:00:31", "You have slain orc!"),
   ]);
-  assert.equal(new Date(critsOf(engine).melee!.bestHit!.tsMs).getSeconds(), 0);
+  assert.equal(new Date(recordsOf(engine).melee!.bestHit!.tsMs).getSeconds(), 0);
+});
+
+// --- crit windows ----------------------------------------------------------------
+
+/** A kill, which is what finishes an encounter and advances the counter the encounter windows
+ *  are measured against. */
+const kill = (t: string, mob: string) => L(t, `You have slain ${mob}!`);
+
+test("crits: an encounter window counts encounters, not hits", () => {
+  const lines: string[] = [];
+  // 30 encounters, one swing each, only the last 5 of them critting.
+  for (let i = 0; i < 30; i++) {
+    const t = `01:${String(i).padStart(2, "0")}:00`;
+    lines.push(L(t, `You slash mob${i} for 100 points of damage.${i >= 25 ? " (Critical)" : ""}`));
+    lines.push(kill(`01:${String(i).padStart(2, "0")}:01`, `mob${i}`));
+  }
+  const engine = feed(lines);
+
+  const w25 = engine.buildCritWindow("enc25", WINDOW_NOW);
+  const all = engine.buildCritWindow("d14", WINDOW_NOW);
+  assert.equal(all.categories.find((c) => c.category === "melee")!.hits, 30);
+  assert.equal(w25.categories.find((c) => c.category === "melee")!.hits, 25, "the last 25 only");
+  assert.equal(w25.categories.find((c) => c.category === "melee")!.crits, 5);
+  assert.equal(all.categories.find((c) => c.category === "melee")!.crits, 5);
+});
+
+test("crits: a window reports how far it really reached, and says when that is short", () => {
+  const lines: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    lines.push(L(`01:${String(i).padStart(2, "0")}:00`, `You slash mob${i} for 100 points of damage.`));
+    lines.push(kill(`01:${String(i).padStart(2, "0")}:01`, `mob${i}`));
+  }
+  const engine = feed(lines);
+  const w = engine.buildCritWindow("enc25", WINDOW_NOW);
+  assert.equal(w.encounters, 8, "eight is all there is");
+  assert.equal(w.short, true, "…and the panel is told so rather than presenting it as 25");
+
+  const w100 = engine.buildCritWindow("enc100", WINDOW_NOW);
+  assert.equal(w100.short, true);
+});
+
+test("crits: the session window runs from the last login", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 100 points of damage. (Critical)"),
+    L("01:00:01", "You have slain orc!"),
+    L("01:30:00", "Welcome to EverQuest Legends!"),
+    L("01:31:00", "You slash orc for 100 points of damage."),
+    L("01:31:01", "You have slain orc!"),
+  ]);
+  // Two swings in the log, one before the login and one after — the session sees only the later.
+  const session = engine.buildCritWindow("session", WINDOW_NOW).categories.find((c) => c.category === "melee")!;
+  assert.equal(session.hits, 1);
+  assert.equal(session.crits, 0, "the crit belongs to the session before this one");
+  const all = engine.buildCritWindow("d14", WINDOW_NOW).categories.find((c) => c.category === "melee")!;
+  assert.equal(all.hits, 2);
+  assert.equal(all.crits, 1);
+});
+
+test("crits: the session window is capped, so a client left logged in can't swallow yesterday", () => {
+  const engine = feed([
+    L("01:00:00", "Welcome to EverQuest Legends!"),
+    L("01:00:01", "You slash orc for 100 points of damage."),
+    L("01:00:02", "You have slain orc!"),
+  ]);
+  // A login 20 hours before "now" is older than the 12-hour cap, so the cap wins and the window
+  // holds nothing — the alternative is calling a day and a half of play "this session".
+  const twentyHoursLater = Date.parse("2026-07-18T01:00:01Z") + 20 * 3600_000;
+  const capped = engine.buildCritWindow("session", twentyHoursLater);
+  assert.equal(capped.categories.find((c) => c.category === "melee")!.hits, 0);
+  // …and within the cap, the same login is used as-is.
+  const soonAfter = Date.parse("2026-07-18T01:00:01Z") + 3600_000;
+  assert.equal(engine.buildCritWindow("session", soonAfter).categories.find((c) => c.category === "melee")!.hits, 1);
+});
+
+test("crits: with no login line at all, the session falls back to the 12-hour cap", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 100 points of damage."),
+    L("01:00:01", "You have slain orc!"),
+  ]);
+  const soonAfter = Date.parse("2026-07-18T01:00:01Z") + 3600_000;
+  assert.equal(engine.buildCritWindow("session", soonAfter).categories.find((c) => c.category === "melee")!.hits, 1);
+});
+
+test("crits: a login opens no fight and extends none", () => {
+  // It arrives on a loading screen. Treating it as activity would hold a dead fight open across
+  // the gap that logging out *is*.
+  const engine = feed([L("01:00:00", "Welcome to EverQuest Legends!")]);
+  assert.equal(engine.fights().length, 0);
+});
+
+test("crits: a window's best crit still names what it hit", () => {
+  // The retained log holds name *indices*, not strings — the target has to survive that.
+  const engine = feed([
+    L("01:00:00", "You slash a spiroc walker for 629 points of damage. (Critical)"),
+    L("01:00:01", "You have slain a spiroc walker!"),
+  ]);
+  const melee = engine.buildCritWindow("d14", WINDOW_NOW).categories.find((c) => c.category === "melee")!;
+  assert.equal(melee.best!.target, "a spiroc walker");
+  assert.equal(melee.best!.ability, "slash");
+});
+
+test("crits: the all-time records outlive what the windows can see", () => {
+  const engine = feed([
+    L("01:00:00", "You slash orc for 629 points of damage. (Critical)"),
+    L("01:00:01", "You have slain orc!"),
+  ]);
+  // A window resolved a month later reaches back 14 days and finds nothing…
+  const monthLater = Date.parse("2026-08-18T01:00:00Z");
+  assert.equal(engine.buildCritWindow("d14", monthLater).categories.find((c) => c.category === "melee")!.hits, 0);
+  // …while the badge still holds the record, which is the whole point of keeping it separately.
+  assert.equal(recordsOf(engine).melee!.best!.amount, 629);
 });
