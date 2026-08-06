@@ -7,13 +7,15 @@ import {
   critRate,
   critShare,
   THIN_CRITS,
+  VISIBLE_ROWS,
+  foldEncounterCards,
   isPartialWindow,
   isThinCrits,
   isThinSample,
   shownAbilities,
   weightedAvgDps,
 } from "./stats.js";
-import type { CritAbility, CritCategoryStat, SelfEncounterPoint } from "./types.js";
+import type { CritAbility, CritCategoryStat, EncounterCard, MetricStat, SelfEncounterPoint } from "./types.js";
 
 /** A history point with only the fields the chart's average reads. */
 const pt = (damage: number, durationSec: number): SelfEncounterPoint => ({
@@ -41,6 +43,71 @@ test("weightedAvgDps weighs each encounter by its length, not one vote each", ()
 
 test("weightedAvgDps is the plain rate when every encounter is the same length", () => {
   assert.equal(weightedAvgDps([pt(100, 10), pt(300, 10)]), 20); // 400 / 20s
+});
+
+// --- the encounter table's fold ---------------------------------------------
+
+/** An encounter card with only the fields the fold reads. */
+const card = (name: string, total: number, isSelf = false): EncounterCard => {
+  const nil: MetricStat = { total: 0, perSec: 0, hits: 0, crits: 0, avoided: 0, byType: { melee: 0, spell: 0, dot: 0, unknown: 0 }, entries: [] };
+  return {
+    name,
+    kind: isSelf ? "self" : "player",
+    isSelf,
+    damage: { ...nil, total, perSec: total },
+    healing: nil,
+    taken: nil,
+    activeSec: 10,
+    pct: 0,
+  };
+};
+
+/** Ten contributors ranked 100, 90, … 10, with me nowhere near the top. */
+const raid = (selfDamage: number): EncounterCard[] => {
+  const cards = Array.from({ length: 10 }, (_, i) => card(`P${i + 1}`, 100 - i * 10));
+  return [...cards, card("Sanluen", selfDamage, true)].sort((a, b) => b.damage.total - a.damage.total);
+};
+
+test("the fold opens on the top six and keeps the rest", () => {
+  const cards = raid(95); // I rank second, so nothing unusual happens
+  const { lead, folded } = foldEncounterCards(cards, 645);
+  assert.equal(lead.length, VISIBLE_ROWS);
+  assert.deepEqual(lead.map((c) => c.name), ["P1", "Sanluen", "P2", "P3", "P4", "P5"]);
+  assert.equal(folded.length, 5, "the tail is kept, not dropped");
+  assert.deepEqual(folded.map((c) => c.name), ["P6", "P7", "P8", "P9", "P10"]);
+});
+
+test("my row is in the opening six however far down I rank", () => {
+  const cards = raid(1); // dead last, as on a night spent healing
+  const { lead, folded } = foldEncounterCards(cards, 551);
+  assert.equal(lead.length, VISIBLE_ROWS, "still six rows — I displace the sixth, not add to it");
+  assert.equal(lead.at(-1)!.name, "Sanluen", "and I sit in rank order at the bottom of them");
+  assert.deepEqual(lead.map((c) => c.name), ["P1", "P2", "P3", "P4", "P5", "Sanluen"]);
+  assert.ok(!folded.some((c) => c.isSelf), "never folded away");
+  assert.equal(folded.length, 5);
+  assert.deepEqual(folded.map((c) => c.name), ["P6", "P7", "P8", "P9", "P10"]);
+});
+
+test("the fold reports the tail's share of the encounter, not of itself", () => {
+  const cards = raid(1);
+  const { foldedTotal, foldedPct } = foldEncounterCards(cards, 551);
+  assert.equal(foldedTotal, 50 + 40 + 30 + 20 + 10);
+  assert.equal(foldedPct, 27.2); // 150 / 551 — one decimal, so a thin tail doesn't read as 0
+});
+
+test("no fold when everyone already fits, and none of them go missing", () => {
+  const cards = [card("P1", 100), card("Sanluen", 40, true), card("P2", 10)];
+  const { lead, folded, foldedPct } = foldEncounterCards(cards, 150);
+  assert.equal(folded.length, 0, "nothing to expand to — the row hides");
+  assert.equal(foldedPct, 0);
+  assert.deepEqual(lead.map((c) => c.name), ["P1", "Sanluen", "P2"]);
+});
+
+test("a fight I did not fight in still folds by rank", () => {
+  const cards = Array.from({ length: 8 }, (_, i) => card(`P${i + 1}`, 100 - i * 10));
+  const { lead, folded } = foldEncounterCards(cards, 520);
+  assert.equal(lead.length, VISIBLE_ROWS, "no self row to hold, so six others fill it");
+  assert.deepEqual(folded.map((c) => c.name), ["P7", "P8"]);
 });
 
 test("an encounter I did nothing in still spends its seconds", () => {

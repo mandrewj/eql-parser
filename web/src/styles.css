@@ -310,6 +310,23 @@ body { margin: 0; }
 /* joined late — reads the rate differently. Warm, and so a near-neighbour of --melee; they
    never share a row (that gold is a dot in the drill-down line, this is right-aligned text). */
 .enum.time.part { color: var(--partial); opacity: 1; }
+/* The fold: everyone the table isn't drawing. Deliberately unlike a combatant row — no bar,
+   no numbers in the dps/hps/tank columns — because it is a control, not a participant, and
+   the eye must not read it as the seventh-place player. It keeps the grid all the same, so
+   its one cell is the bar column and its share lands exactly under the other percentages;
+   flexed to the panel edge instead, the figure would sit under `time` and read as a duration. */
+.erow.emore { padding: 2px 0; }
+.more-inner { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem;
+  padding: 0.15rem 0.4rem; font-size: 0.7rem; color: var(--muted); border-radius: 3px; }
+.erow.emore:hover .more-inner { background: #2b313d66; color: #9fb0cc; }
+.more-txt { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 600; letter-spacing: 0.01em; }
+/* Fixed width so the caret doesn't shift the label when it turns. */
+.more-caret { display: inline-block; width: 0.6rem; opacity: 0.8; }
+/* The tail's share of the damage — what says whether the fold is worth opening. Quiet: it
+   qualifies the rows above, it isn't one of them. Quieter still once they're all on screen,
+   where it has become "what closing would cost" rather than "what opening buys". */
+.more-pct { font-variant-numeric: tabular-nums; opacity: 0.75; }
+.erow.emore.open .more-pct { opacity: 0.45; }
 .erow-drill { display: flex; flex-wrap: wrap; gap: 0.45rem; padding: 0.2rem 0.4rem 0.35rem; font-size: 0.7rem; color: var(--muted); }
 .erow-drill.is-self { border-left: 2px solid var(--self); padding-left: 0.35rem; margin-left: 0.05rem; color: #9fb0cc; }
 /* The two drill rows are one block split in half: the totals row loses its bottom padding

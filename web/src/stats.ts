@@ -2,7 +2,7 @@
 // Kept out of the components so `node --test` can pin them without a DOM: these are
 // exactly the rules that are easy to regress into a mean-of-means or a stray threshold.
 
-import type { CritAbility, CritCategoryStat, SelfEncounterPoint } from "./types";
+import type { CritAbility, CritCategoryStat, EncounterCard, SelfEncounterPoint } from "./types";
 
 /** Below this share of an encounter, a row's engaged window is worth flagging. Anything
  *  stricter lights up nearly every row — almost nobody engages on the mob's first second. */
@@ -10,6 +10,41 @@ export const PARTIAL_WINDOW = 0.7;
 
 export const isPartialWindow = (activeSec: number, encounterSec: number) =>
   activeSec < encounterSec * PARTIAL_WINDOW;
+
+/** Rows an encounter table draws before it asks to be expanded. Six is what the engine used
+ *  to send and what the 540px panel is sized for — enough that an ordinary group fight needs
+ *  no interaction at all. */
+export const VISIBLE_ROWS = 6;
+
+/** Share of damage dealt, DPS as a tiebreak — the engine's own ranking, re-applied because
+ *  the lead pulls my row up out of the tail and has to re-seat it in rank order. */
+const byShare = (a: EncounterCard, b: EncounterCard) =>
+  b.damage.total - a.damage.total || b.damage.perSec - a.damage.perSec;
+
+/** How an encounter table splits a full contributor list: the rows it opens on, the tail it
+ *  folds behind a click, and what that tail is worth as a share of the mob's damage.
+ *
+ *  My own row is always in the lead however far down the ranking it lands — on a night spent
+ *  healing it is nowhere near the top, and a meter that cannot show you yourself without a
+ *  click is worse than one that never had the rest. Everyone else follows in rank order.
+ *
+ *  The share is the number that says whether opening is worth it: four archers who each landed
+ *  a shot and half a raid both read as "+n more" without it. It divides by the encounter total
+ *  rather than the tail's own sum, so a fold's percentages are comparable between fights. */
+export const foldEncounterCards = (
+  cards: EncounterCard[],
+  total: number,
+  visible = VISIBLE_ROWS,
+): { lead: EncounterCard[]; folded: EncounterCard[]; foldedTotal: number; foldedPct: number } => {
+  const self = cards.find((c) => c.isSelf);
+  const lead = [
+    ...(self ? [self] : []),
+    ...cards.filter((c) => !c.isSelf).slice(0, self ? visible - 1 : visible),
+  ].sort(byShare);
+  const folded = cards.filter((c) => !lead.includes(c));
+  const foldedTotal = folded.reduce((s, c) => s + c.damage.total, 0);
+  return { lead, folded, foldedTotal, foldedPct: total > 0 ? Math.round((foldedTotal / total) * 1000) / 10 : 0 };
+};
 
 /** Total damage ÷ total encounter seconds over the points given — the duration-weighted
  *  mean of the bars the chart draws, so a five-minute boss pulls on it harder than a

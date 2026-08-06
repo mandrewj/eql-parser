@@ -952,6 +952,33 @@ interface MetricStat {                // every metric group has this one shape
     cyan. It had been unreachable while every pet folded into its owner; now a charmed pet
     and a groupmate share a table, so the two must not read alike. Colour is never the only
     signal — the row also carries the glyph and its charmer's name.
+- **Every contributor ships; the table folds the tail.** `encounterView` used to send `self + top 5`
+  and nothing else, so a truncation taken in the engine was one the UI could never undo — on the
+  real log, encounters run to **10 contributors** and the four the cut discarded were **up to 15% of
+  the mob's damage** (a 10-card fire giant fight hid 13.2%; a King Tranix pull hid 15.1%). `cards`
+  is now the whole ranked list and the fold is the client's decision.
+  - The table opens on **six rows**, which is exactly what the engine used to send, so nothing about
+    an ordinary group fight changed. Below them a quiet control row — `▸ 4 more` with the tail's
+    **share of the encounter's damage** at the right — expands to everyone and collapses back to
+    `▾ top 6 only`.
+  - The share is the point of the row: `+4 more` alone cannot distinguish four archers who each
+    landed a shot from half a raid. It divides by the encounter total, not by the tail's own sum, so
+    the figure is comparable between fights, and it is placed in the **bar column** so it lines up
+    under the other percentages — flexed to the panel edge it landed under `time` and read as a
+    duration.
+  - **Your own row is held in the opening six however far down you rank** (`foldEncounterCards`,
+    `web/src/stats.ts`), which is what the old engine-side splice did. On a night spent healing you
+    are nowhere near the top, and a meter that cannot show you yourself without a click is worse
+    than one that never had the rest. You displace the sixth row rather than adding a seventh, and
+    sit in rank order among them.
+  - Fold state lives in App-level `expanded` under a `${enc.id}:*all*` key, beside the per-row
+    drills — not in the table's own state, where a snapshot push mid-fight would fold it back up
+    under someone reading it.
+  - Cost measured before shipping: a card is ~1KB and the median encounter has 5, so the full
+    snapshot moved by a few KB. This is not a payload worth truncating for.
+  - The newly visible tail exposes an existing (correct) rule: another player's **summoned** pet
+    keeps its own row in `--player` green, because only *your* pet folds into you (`petOwners` is
+    fed by `Master` lines, which only ever name your own) and `kind: "pet"` is reserved for charms.
 - **Your own row is always expanded** in every encounter table, marked with a blue left rule;
   everyone else toggles on click.
 - **The drill-down is two rows**, because they answer different questions and used to share one

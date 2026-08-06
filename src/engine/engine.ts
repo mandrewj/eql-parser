@@ -2329,7 +2329,7 @@ export class Engine {
     return out.sort((a, b) => b.total - a.total);
   }
 
-  /** Shared: build one per-mob encounter with per-character cards (self + top 5 by DPS). */
+  /** Shared: build one per-mob encounter with a card per contributor, ranked by damage share. */
   private encounterView(
     f: FightState,
     npcKey: string,
@@ -2429,10 +2429,10 @@ export class Engine {
     // Sort by share of damage dealt to the mob (i.e. total), DPS as a tiebreak.
     const byShare = (a: EncounterCard, b: EncounterCard) =>
       b.damage.total - a.damage.total || b.damage.perSec - a.damage.perSec;
+    // Everyone who fought it, not the leaders alone. The table still opens on six rows, but
+    // the decision of how many to draw is the client's now — a truncation here is one the UI
+    // cannot undo, and on a raid mob the tail it cut was most of the raid.
     allCards.sort(byShare);
-    const self = allCards.find((c) => c.isSelf);
-    const others = allCards.filter((c) => !c.isSelf).slice(0, 5);
-    const cards = (self ? [self, ...others] : others).sort(byShare);
     const { spark, bucketSec } = sparkline(f.selfHits.get(npcKey) ?? [], startMs, spanSec);
     // The mirror half of the strip, on the same buckets so the two line up bar for bar.
     const { spark: takenSpark } = sparkline(f.selfTaken.get(npcKey) ?? [], startMs, spanSec);
@@ -2461,7 +2461,7 @@ export class Engine {
       mobDealtSpark,
       sparkCombos,
       sparkBucketSec: bucketSec,
-      cards,
+      cards: allCards,
     };
   }
 

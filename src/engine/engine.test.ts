@@ -406,6 +406,24 @@ test("recent encounters: one per kill, newest first, oldest drops past 5", () =>
   assert.deepEqual(recent[0]!.cards.map((c) => c.name), ["Feydie", "Sanluen"]);
 });
 
+test("every contributor gets a card, however far down the damage ranking", () => {
+  // Twelve attackers on one mob, each doing less than the last, and me doing the least of all —
+  // the case the old top-6 cut was worst at: the tail vanished and my own row only survived
+  // because it was spliced back in.
+  const lines = [L("01:00:00", "You crush a griffon for 5 points of damage.")];
+  for (let i = 1; i <= 11; i++) lines.push(L("01:00:01", `Player${i} kicks a griffon for ${100 - i} points of damage.`));
+  lines.push(L("01:00:05", "You have slain a griffon!"));
+  const enc = feed(lines).snapshot().recentEncounters[0]!;
+  assert.equal(enc.cards.length, 12, "all twelve ride along, not the top six");
+  assert.deepEqual(
+    enc.cards.map((c) => c.name),
+    [...Array.from({ length: 11 }, (_, i) => `Player${i + 1}`), "Sanluen"],
+    "ranked by damage share, with my 5 last",
+  );
+  // The shares still add up to the whole, which is what makes the folded tail's % meaningful.
+  assert.equal(Math.round(enc.cards.reduce((s, c) => s + c.damage.total, 0)), enc.total);
+});
+
 test("per-person DPS uses each character's own active window (late joiner)", () => {
   const engine = feed([
     L("01:00:00", "You crush an orc for 100 points of damage."), // self engages at t0

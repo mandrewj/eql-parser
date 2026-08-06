@@ -23,7 +23,7 @@ import type {
 } from "./types";
 import { metricMeta } from "./filters";
 import { fmt, fmtDrill, fmtK, fmtTank, plural, span, time } from "./format";
-import { isPartialWindow, weightedAvgDps } from "./stats";
+import { VISIBLE_ROWS, foldEncounterCards, isPartialWindow, weightedAvgDps } from "./stats";
 
 const METRICS: Array<{ key: MetricKind; label: string }> = [
   { key: "damage", label: "Damage" },
@@ -1069,6 +1069,11 @@ function EncounterTimeline({ enc, colors }: { enc: EncounterView; colors: Map<st
   );
 }
 
+/** Key for "this table is showing everyone", in the same set the per-row drills use. Kept in
+ *  App-level state, not this component's, so a snapshot push mid-fight doesn't fold the table
+ *  back up under someone reading it. The sentinel can't collide with a combatant's name. */
+const allRowsKey = (encId: string) => `${encId}:*all*`;
+
 export function EncounterTable({
   enc,
   expanded,
@@ -1088,6 +1093,14 @@ export function EncounterTable({
   const maxPct = Math.max(1, ...enc.cards.map((c) => c.pct));
   // Both header figures cover the whole encounter, unlike the per-person rows below.
   const out = enc.npcDamage;
+
+  // The engine ships every contributor; the table opens on the leaders and folds the rest.
+  // The split is computed from the fold rather than from what's on screen, so the row can say
+  // what opening buys before you open it and what closing would cost once you have.
+  const showAll = expanded.has(allRowsKey(enc.id));
+  const { lead, folded, foldedTotal, foldedPct } = foldEncounterCards(enc.cards, enc.total);
+  const shown = showAll ? enc.cards : lead;
+  const self = enc.cards.find((c) => c.isSelf);
   return (
     <section className={`enc-table ${enc.active ? "live" : ""}`}>
       <div className="enc-th">
@@ -1122,7 +1135,7 @@ export function EncounterTable({
             </span>
           </div>
         )}
-        {enc.cards.map((c) => (
+        {shown.map((c) => (
           <EncounterRow
             key={c.name}
             card={c}
@@ -1133,6 +1146,29 @@ export function EncounterTable({
             onToggle={() => onToggle(`${enc.id}:${c.name}`)}
           />
         ))}
+        {folded.length > 0 && (
+          <div
+            className={`erow emore ${showAll ? "open" : ""}`}
+            onClick={() => onToggle(allRowsKey(enc.id))}
+            title={
+              `${plural(enc.cards.length, "character")} fought ${enc.name}. The ${folded.length} outside ` +
+              `the top ${VISIBLE_ROWS} dealt ${fmt(foldedTotal)} between them — ` +
+              `${foldedPct}% of the damage it took.` +
+              (self && enc.cards.indexOf(self) >= VISIBLE_ROWS
+                ? `\n\nYour own row is held in the opening ${VISIBLE_ROWS} regardless — your damage here ` +
+                  `ranks #${enc.cards.indexOf(self) + 1}.`
+                : "")
+            }
+          >
+            <span className="more-inner">
+              <span className="more-txt">
+                <span className="more-caret">{showAll ? "▾" : "▸"}</span>
+                {showAll ? `top ${VISIBLE_ROWS} only` : `${folded.length} more`}
+              </span>
+              <span className="more-pct">{foldedPct}%</span>
+            </span>
+          </div>
+        )}
       </div>
     </section>
   );

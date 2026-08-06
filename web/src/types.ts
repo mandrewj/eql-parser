@@ -378,7 +378,7 @@ export interface EncounterView {
   mobDealtSpark: number[]; // everything it dealt the group
   sparkCombos: string[]; // "melee|invocation" holding the most of each bucket — colours the strip
   sparkBucketSec: number; // seconds each bucket covers (>= 1, the log's own resolution)
-  cards: EncounterCard[];
+  cards: EncounterCard[]; // every contributor, ranked by damage share — the table folds the tail
 }
 
 export interface Fight {

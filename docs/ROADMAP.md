@@ -1232,6 +1232,34 @@ from the engine and every figure inside them re-counted from the raw lines — m
 crits / 131,334 damage, spells 105/0, DoT 307/24, heals 740/0, procs 0/0. All five categories exact
 on all three figures.
 
+## Post-v1 — Expand an encounter to everyone who fought it  ✅
+The encounter table showed six rows because the *engine* sent six: `encounterView` built a card
+per contributor, sorted them, then kept `self + top 5` and threw the rest away. A truncation taken
+there is one the UI can never undo — the tail was gone before it reached the browser.
+
+**It was hiding real damage.** Replaying the whole log: encounters run to **10 contributors**, and
+the rows the cut discarded were **up to 15.1% of the mob's damage** — 13.2% on a 10-card fire giant
+pull, 15.1% on King Tranix. A raid meter that silently omits a seventh of a boss fight is answering
+a different question than the one being asked of it.
+
+`cards` is now the whole ranked list; the table opens on six and folds the rest behind a quiet
+`▸ 4 more` row that expands to everyone. Six is exactly what the engine used to send, so an
+ordinary group fight looks identical and nobody has to click for the behaviour they already had.
+
+**The fold's row carries the tail's share of the encounter**, because `+4 more` alone cannot tell
+four archers who each landed a shot from half a raid — the number is what says whether opening it
+is worth doing. It sits in the bar column so it lines up under the other percentages; at the panel's
+right edge it landed under `time` and read as a duration, which the first screenshot caught.
+
+**Your own row is still held in the opening six however far down you rank.** That was the only
+thing the engine's splice was really for, and it moved to the client with it (`foldEncounterCards`,
+tested there): on a night spent healing you are nowhere near the top of a damage ranking, and a
+meter that cannot show you yourself without a click is worse than one that never had the rest.
+
+**Cost was measured before shipping, not assumed.** A card is ~1KB and the median encounter has 5,
+so sending every contributor moved the snapshot by a few KB against 90KB — nowhere near the trade
+that keeps the crit tables and the Sky catalogue out of the stream.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

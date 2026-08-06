@@ -702,7 +702,9 @@ export interface EncounterView {
   mobDealtSpark: number[];
   sparkCombos: string[]; // "melee|invocation" holding the most of each bucket — colours the strip
   sparkBucketSec: number; // seconds each bucket covers (>= 1, the log's own resolution)
-  cards: EncounterCard[]; // self + top others, ranked by DPS
+  /** Every character who dealt this NPC damage, ranked by share of it — the whole tail, not
+   *  the leaders alone. The table draws six and expands to the rest, so the cut is the UI's. */
+  cards: EncounterCard[];
 }
 
 export interface Fight {
