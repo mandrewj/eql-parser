@@ -204,9 +204,10 @@ export function startServer(config: AppConfig, app: App): Promise<ServerHandle> 
       return;
     }
 
-    // The crit windows, on request rather than on every push. Four of them is 72KB against a
-    // 92KB snapshot, for tables one tab reads — the same reasoning that keeps the Sky catalogue
-    // out of the stream. Explicitly uncached: unlike the catalogue this changes as you fight.
+    // The crit windows, on request rather than on every push. The four together weigh about as
+    // much as the whole snapshot, for tables one tab reads — the same reasoning that keeps the
+    // Sky catalogue out of the stream. Explicitly uncached: unlike the catalogue, this changes
+    // as you fight.
     if (pathname === "/api/crits" && req.method === "GET") {
       const key = url.searchParams.get("w") ?? "session";
       if (!CRIT_WINDOW_KEYS.includes(key as CritWindowKey)) {

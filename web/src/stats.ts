@@ -36,17 +36,18 @@ export const foldKeys = (encId: string, cards: EncounterCard[]): string[] => [
   ...cards.map((c) => rowKey(encId, c.name)),
 ];
 
-/** Share of damage dealt, DPS as a tiebreak — the engine's own ranking, re-applied because
- *  the lead pulls my row up out of the tail and has to re-seat it in rank order. */
-const byShare = (a: EncounterCard, b: EncounterCard) =>
-  b.damage.total - a.damage.total || b.damage.perSec - a.damage.perSec;
-
 /** How an encounter table splits a full contributor list: the rows it opens on, the tail it
  *  folds behind a click, and what that tail is worth as a share of the mob's damage.
  *
  *  My own row is always in the lead however far down the ranking it lands — on a night spent
  *  healing it is nowhere near the top, and a meter that cannot show you yourself without a
  *  click is worse than one that never had the rest. Everyone else follows in rank order.
+ *
+ *  **The ranking is the engine's, never re-derived here.** Both halves are `filter`s over the
+ *  received order, so `cards` arriving ranked is the only thing that decides how rows sit. An
+ *  earlier version re-sorted the lead by its own copy of the comparator — the same rule stated
+ *  in two places, which is the kind that drifts silently: nothing would have failed if the two
+ *  disagreed, the rows would just have been in an order the percentages contradicted.
  *
  *  The share is the number that says whether opening is worth it: four archers who each landed
  *  a shot and half a raid both read as "+n more" without it. It divides by the encounter total
@@ -57,11 +58,12 @@ export const foldEncounterCards = (
   visible = VISIBLE_ROWS,
 ): { lead: EncounterCard[]; folded: EncounterCard[]; foldedTotal: number; foldedPct: number } => {
   const self = cards.find((c) => c.isSelf);
-  const lead = [
+  const keep = new Set<EncounterCard>([
     ...(self ? [self] : []),
     ...cards.filter((c) => !c.isSelf).slice(0, self ? visible - 1 : visible),
-  ].sort(byShare);
-  const folded = cards.filter((c) => !lead.includes(c));
+  ]);
+  const lead = cards.filter((c) => keep.has(c));
+  const folded = cards.filter((c) => !keep.has(c));
   const foldedTotal = folded.reduce((s, c) => s + c.damage.total, 0);
   return { lead, folded, foldedTotal, foldedPct: total > 0 ? Math.round((foldedTotal / total) * 1000) / 10 : 0 };
 };

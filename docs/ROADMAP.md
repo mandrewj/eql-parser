@@ -1277,6 +1277,61 @@ trace: a button writing `enc-7:Mirad` while the row reads `live-x:Mirad` throws 
 nothing, and simply does half its job. `rowKey`/`allRowsKey`/`foldKeys` are now one definition with
 a test asserting the button's output is exactly the rows' input.
 
+## Post-v1 — Code and performance audit: the backfill read the whole log at once  ✅
+Measured first, as the last two audits concluded to. This time the measurement found something.
+
+**The tailer allocated one buffer the size of the whole file.** `readNew` reads "the new bytes
+since the last offset", which on a backfill is the entire 171MB log: one `Buffer.alloc(fileSize)`,
+one `toString`, one `split` into 2.2M strings, then 2.2M synchronous handler calls. Three costs,
+all measured on the real log, all fixed by reading in 1MB chunks:
+
+| | whole-file | 1MB chunks |
+|---|---|---|
+| first response on the port | **13.1s** | **0.13s** |
+| peak RSS during backfill | **1207MB** | **580MB** |
+| resident engine heap afterwards | **400MB** | **206MB** |
+
+The first is the one a user feels: the event loop never yielded, so the app served *nothing* for
+13 seconds — and `start.command` waits on `/api/config` before opening the browser, so the wait was
+staring right at it.
+
+**The third was the surprise, and is invisible in the code.** A substring in V8 is a slice holding
+a reference to its parent, and the engine keeps names out of the lines it is handed. One retained
+ability name pins the entire string it was cut from — so decoding the log in one piece kept all
+171MB alive for the rest of the session, long after the backfill. Chunking bounds any such slice
+to 1MB. Halving the resident footprint of a process that runs all evening beside the game was not
+what the change set out to do.
+
+Verified line-for-line rather than by eye: replayed against the live log frozen at 180,300,749
+bytes, the chunked tailer emitted **all 2,182,907 lines identically and in order** (it also picked
+up 710 more — the file grew 61KB mid-run, which is the point of a tailer). Three tests cover what
+chunking newly makes possible to get wrong: a multi-chunk backfill, a line longer than a chunk, and
+a multi-byte character split across the seam. That last one fails against a plain `toString`, which
+is how it earned its place — decoding now goes through `StringDecoder`, deleting the "log is ASCII"
+assumption instead of restating it.
+
+**What the code half found**, in the shape both previous audits predicted:
+- **A rule stated twice.** The encounter ranking — damage share, DPS as tiebreak — was implemented
+  in the engine *and* re-implemented in `foldEncounterCards` three commits ago, to re-seat my row
+  in the lead. Now both halves of the fold are `filter`s over the order the engine sent, so the
+  received ranking is the only thing deciding row order. Nothing would have *failed* had the two
+  drifted; the rows would just have sat in an order the percentages contradicted. A test pins it.
+- **An export nothing reads:** `Entity` in `src/types.ts`, referenced nowhere — not even in its own
+  file. The fourth of these. `noUnusedLocals` still cannot see them (`export` counts as a use), so
+  the scan stays a by-hand pass; separating *values* from *types* is what makes it quick, since an
+  exported interface used only as its own module's parameter type is API surface, not dead weight.
+- **A rationale duplicated six times, with its figures drifting apart in each.** "Four crit windows
+  is 72KB against a 92KB snapshot" appeared in `app.ts`, `server.ts`, both `types.ts`, `crits.tsx`
+  and the docs — and two copies had already diverged (90KB vs 92KB). Re-measured: **54KB against
+  75KB**. The conclusion still holds, so the copies now state the reason and the numbers live in
+  one place.
+
+**Measurements taken and not acted on**, so the next pass doesn't re-derive them: `snapshot()` costs
+0.07ms idle and 1.58ms mid-fight, and serialising it 0.16ms/1.74ms, against a ~5/sec push — under 2%
+of a core. Replay of the full log is 12.6s for 1.5M events (119k events/sec). The crit ledger is
+333,145 entries and 33MB, as recorded when it was built. Sending every encounter contributor instead
+of the top six costs **4.5KB** on a 75KB snapshot.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

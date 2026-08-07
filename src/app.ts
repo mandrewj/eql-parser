@@ -92,9 +92,10 @@ export class App {
     return this.engine.snapshot();
   }
 
-  /** One crit window, built on request. Not folded into the snapshot: four of them is 72KB on
-   *  top of a 92KB push, for a table one tab reads — the same trade that keeps the Sky catalogue
-   *  out of it. */
+  /** One crit window, built on request. Not folded into the snapshot: the four together weigh
+   *  about as much as the whole push, for tables one tab reads — the same trade that keeps the
+   *  Sky catalogue out of it. Figures in `docs/ARCHITECTURE.md`, measured rather than repeated
+   *  here: this rationale sat in six files with the numbers drifting apart in each. */
   critWindow(key: CritWindowKey): CritWindow {
     return this.engine.buildCritWindow(key);
   }

@@ -60,6 +60,50 @@ test("partial line is buffered until newline arrives", async () => {
   assert.deepEqual(got, ["half of a line and the rest"]);
 });
 
+test("backfill spanning many read chunks emits every line, in order, exactly once", async () => {
+  // Over the 1MB chunk size, so the read loop runs several times and lines land across the
+  // boundaries. The whole-file read this replaced could not get a boundary wrong because it
+  // had none; the risk moved here when it started reading in pieces.
+  const lines = Array.from({ length: 60_000 }, (_, i) => `line ${i} ${"x".repeat(50)}`);
+  const file = tmpFile(lines.join("\r\n") + "\r\n"); // ~3.5MB
+  const got: string[] = [];
+  const t = new Tailer({ path: file, fromStart: true, pollIntervalMs: 30 });
+  t.onData((l) => got.push(l));
+  t.start();
+  await waitFor(() => got.length >= lines.length, 20000);
+  t.stop();
+  assert.deepEqual(got, lines, "same lines, same order, none split at a chunk edge");
+});
+
+test("a line longer than a read chunk survives being split across reads", async () => {
+  // One line bigger than the buffer: it is *only* ever seen in pieces, so the pending buffer
+  // has to carry it across two reads rather than emitting half of it.
+  const long = `long ${"y".repeat(1 << 21)} end`; // 2MB, over the 1MB chunk
+  const file = tmpFile(`before\r\n${long}\r\nafter\r\n`);
+  const got: string[] = [];
+  const t = new Tailer({ path: file, fromStart: true, pollIntervalMs: 30 });
+  t.onData((l) => got.push(l));
+  t.start();
+  await waitFor(() => got.length >= 3, 10000);
+  t.stop();
+  assert.deepEqual(got, ["before", long, "after"]);
+});
+
+test("a multi-byte character split across a chunk boundary is decoded whole", async () => {
+  // The log is effectively ASCII, so this is the assumption the decoder removes rather than a
+  // case seen in the wild — but a chunk edge landing mid-character would corrupt a line
+  // silently, which is the kind of thing worth a test rather than a comment.
+  const pad = "z".repeat((1 << 20) - 2); // ends the first chunk two bytes short
+  const file = tmpFile(`${pad}日本\r\ntail\r\n`);
+  const got: string[] = [];
+  const t = new Tailer({ path: file, fromStart: true, pollIntervalMs: 30 });
+  t.onData((l) => got.push(l));
+  t.start();
+  await waitFor(() => got.length >= 2, 10000);
+  t.stop();
+  assert.deepEqual(got, [`${pad}日本`, "tail"]);
+});
+
 test("truncation/rotation resets and re-reads", async () => {
   const file = tmpFile("line one\r\nline two\r\nline three\r\n"); // 32 bytes
   const got: string[] = [];

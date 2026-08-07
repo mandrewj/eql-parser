@@ -106,6 +106,15 @@ test("no fold when everyone already fits, and none of them go missing", () => {
   assert.deepEqual(lead.map((c) => c.name), ["P1", "Sanluen", "P2"]);
 });
 
+test("the fold keeps the order it was given rather than ranking again", () => {
+  // Deliberately not in damage order: whatever the engine sent is what the rows show, so a
+  // second copy of the ranking rule here would have somewhere to disagree. If this ever fails
+  // by "correcting" the order, the comparator has crept back in.
+  const cards = [card("Last", 1), card("Sanluen", 5, true), card("First", 100), card("Mid", 50)];
+  const { lead } = foldEncounterCards(cards, 156, 3);
+  assert.deepEqual(lead.map((c) => c.name), ["Last", "Sanluen", "First"]);
+});
+
 test("the fold writes exactly the keys the rows read", () => {
   // The button opening every drill is only wired up if these two agree — and a mismatch is
   // silent: keys nobody reads, rows that never open, no error anywhere.

@@ -21,12 +21,6 @@ export type ParseMode = "live" | "backfill";
 
 export type EntityKind = "self" | "player" | "pet" | "npc" | "unknown";
 
-export interface Entity {
-  name: string;
-  kind: EntityKind;
-  ownerName?: string; // for pets, when derivable
-}
-
 // ---------------------------------------------------------------------------
 // Parsed combat events (output of the parser)
 // ---------------------------------------------------------------------------
@@ -523,8 +517,8 @@ export interface SkyCompletion {
 }
 
 /** The Sky tracker's *dynamic* half. The catalogue itself is immutable and is served once from
- *  `/api/sky-quests` rather than repeated on every push — at 28KB it would have been a third
- *  again on top of a 90KB snapshot, for data that never changes for the life of the process. */
+ *  `/api/sky-quests` rather than repeated on every push — it would have been a third again on
+ *  top of the snapshot, for data that never changes for the life of the process. */
 export interface SkyStats {
   /** The export the baseline came from. Null when the character has never run
    *  `/outputfile inventory`, which is the normal starting state and not an error. */
@@ -622,9 +616,9 @@ export interface CritRecords {
   bestHit: CritRecord | null; // biggest hit ever, crit or not
 }
 
-/** The crit figures over one window. Served from `/api/crits`, not pushed: four of these is 72KB
- *  on top of a 92KB snapshot, for data one tab reads — the same trade the Sky catalogue was kept
- *  out of the snapshot for. */
+/** The crit figures over one window. Served from `/api/crits`, not pushed: the four together
+ *  weigh about as much as the whole snapshot, for data one tab reads — the same trade the Sky
+ *  catalogue was kept out of the snapshot for. Measured figures live in `docs/ARCHITECTURE.md`. */
 export interface CritWindow {
   key: CritWindowKey;
   /** What the window actually covers, resolved against the log rather than promised. Null when

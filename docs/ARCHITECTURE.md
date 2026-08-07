@@ -55,6 +55,24 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 - Change detection: `fs.watch`/FSEvents **plus a stat-based polling fallback** (~500ms).
 - **Rotation/reset handling**: if size < last offset or inode changes, reset (truncation, `/log` toggle, new session).
 - Modes: **live** (start at EOF, follow) and **backfill** (parse whole file, then follow).
+- **Reads in 1MB chunks, never the whole span at once.** A live append is a few hundred bytes and
+  takes one pass either way; the chunking is for the backfill, where "the new bytes" is the entire
+  171MB log. Three separate costs, all measured (`READ_CHUNK_BYTES`):
+  - **The port answered nothing for 13.1 seconds.** One `Buffer.alloc(fileSize)`, one `toString`,
+    one `split`, then 2.2M synchronous `onLine` calls — the event loop never yielded, so the
+    launcher's "open the browser once `/api/config` answers" loop waited out the whole backfill.
+    Now **0.13s**, because the `await` between chunks lets the server breathe.
+  - **Peak RSS 1207MB → 580MB.** The buffer, the string it decoded to and the 2.2M-entry array it
+    split into were all live simultaneously.
+  - **Resident heap 400MB → 206MB, for the whole session.** This is the one that is not obvious
+    from the code: a substring in V8 is a *slice* holding a reference to its parent, and the engine
+    keeps names out of the lines it is handed — abilities, mobs, zones. A single retained name pins
+    the entire string it was cut from, so decoding the log in one piece kept all 171MB of it alive
+    long after the backfill finished. Chunking bounds any such slice to one chunk.
+  - Decoding is via `StringDecoder`, so a multi-byte character landing on a chunk boundary is held
+    and completed rather than corrupted — the old code carried a comment asserting the log was
+    ASCII, which is the sort of assumption worth deleting rather than restating. Tests cover a
+    multi-chunk backfill, a line longer than one chunk, and a character split across the seam.
 - **Switchable at runtime**: the active log is chosen by the UI; the tailer can stop and re-open on a new path without restarting the process.
 
 ### Parser
@@ -751,8 +769,11 @@ interface MetricStat {                // every metric group has this one shape
   Sky model: these are exactly the rules that regress quietly into the wrong denominator.
   - **Four windows**, narrowest first so moving right reaches further back: session, 25 fights,
     100 fights, 2 weeks. The choice is remembered in `localStorage`, like the Sky tab's class.
-    - **Fetched from `/api/crits`, not pushed** — four of them is 72KB against a 92KB snapshot at
-      ~5/sec, for tables one tab reads. Polled every 4s while the tab is mounted, which a rate
+    - **Fetched from `/api/crits`, not pushed** — the four together weigh about as much as the
+      whole snapshot at ~5/sec (measured 2026-08-06: **54KB against a 75KB snapshot**; the ratio
+      is what matters, and this is the one place the figures are kept, because the same sentence
+      had drifted to six different numbers across six files), for tables one tab reads. Polled
+      every 4s while the tab is mounted, which a rate
       over 100 fights cannot outrun; the badges and the recent-crits strip ride the snapshot, so
       the genuinely live half of the panel stays live.
     - **The strip prints what the window turned out to cover**, not what its label promised —

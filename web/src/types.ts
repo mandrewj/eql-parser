@@ -311,8 +311,8 @@ export interface CritRecords {
   bestHit: CritRecord | null;
 }
 
-/** The crit figures over one window, fetched from `/api/crits` rather than pushed: four of these
- *  is 72KB against a 92KB snapshot, for tables one tab reads. */
+/** The crit figures over one window, fetched from `/api/crits` rather than pushed: the four
+ *  together weigh about as much as the whole snapshot, for tables one tab reads. */
 export interface CritWindow {
   key: CritWindowKey;
   fromMs: number | null;

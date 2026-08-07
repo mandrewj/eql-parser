@@ -333,8 +333,8 @@ export function CritPanel({ crits }: { crits: CritStats }) {
   const [win, setWin] = useState<CritWindow | null>(null);
   const [failed, setFailed] = useState(false);
 
-  // The windows are fetched, not pushed — four of them is 72KB against a 92KB snapshot, for
-  // tables only this tab reads. So this polls while the tab is mounted rather than riding the
+  // The windows are fetched, not pushed — together they weigh about as much as the whole
+  // snapshot, for tables only this tab reads. So this polls while mounted rather than riding the
   // stream: a crit rate over 100 fights does not move perceptibly in four seconds, and the
   // badges and the recent-crits strip below *are* live off the snapshot.
   useEffect(() => {
