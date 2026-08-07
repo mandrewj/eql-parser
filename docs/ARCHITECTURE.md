@@ -348,10 +348,11 @@ difficulty) and the Plane of Sky pair below.
     that mob's still-running encounter and has to survive. Clearing indiscriminately in the other
     direction is just as wrong: preserving it wholesale made damage taken accumulate across every
     respawn and inflated the session total tenfold.
-  - **A charmed mob never folds into its owner**, unlike a summoned pet: a charm is
-    temporary, breakable, and often not even ours. A `Master` line from one therefore sets
-    the *charm's* owner rather than a `petOwners` entry — filing it as a summon would fold
-    it into that row, and in the twin case would fold the enemy in with it.
+  - **A charm is still told apart from a summon**, though neither folds into anyone now: a
+    charm is temporary, breakable, and often not even ours, so the two need different things
+    said about them (`EncounterCard.petKind`, `⛓` against `🐾`). A `Master` line from a charmed
+    mob therefore sets the *charm's* owner rather than a `petOwners` entry — filing it as a
+    summon would name the wrong owner, and in the twin case would name the enemy's.
   - **Breaks** that the log announces cover only your own charm, so two behavioural signals
     carry the rest: a pet turning on **its own charmer**, and blows traded with **me** in
     either direction (you cannot damage your own charmed pet, nor it you). Both wait out a
@@ -558,9 +559,9 @@ difficulty) and the Plane of Sky pair below.
     from the engine and every figure inside them re-counted from the raw lines — melee 910 hits /
     107 crits / 131,334 damage, spells 105/0, DoT 307/24, heals 740/0, procs 0/0. All five exact
     on all three figures.
-  - **Only my own blows.** A summoned pet's swings fold into my row in the meters, but they are
-    its crits, not mine — a pet's rate would quietly move a number the panel presents as a fact
-    about this character. Recorded inside the existing `aKey === selfKey` branch of
+  - **Only my own blows.** A pet's swings are its crits, not mine — its rate would quietly move
+    a number the panel presents as a fact about this character. This was already the rule while
+    the meters still folded pet damage into my row; the meters now agree with it. Recorded inside the existing `aKey === selfKey` branch of
     `recordDamage`, so it costs no extra test on the hot path.
   - **Its five categories are not `DamageType`.** They split by *what can crit and how often*,
     which is a different question with a surprising answer: `melee`, `spell` (named abilities),
@@ -957,11 +958,24 @@ interface MetricStat {                // every metric group has this one shape
   headline rate readable instead of suspicious. It stays deliberately quiet: everyone starts a second
   or two after the mob is first seen, so the accent fires only below **70%** of the encounter —
   otherwise every row lights up and the flag stops meaning anything.
-- **A charmed pet gets its own row**, never folded into its charmer — a summoned pet folds
-  (it is an extension of its owner's damage), but a charm is a temporary, breakable thing
-  whose contribution is worth reading on its own, and it is often not even *our* charm. So
-  `kind: "pet"` on an encounter card always means charmed, and it reuses the row styling
-  pets already had. The mob keeps its own name, which reads exactly like the enemy it was a
+- **Every pet gets its own row**, summoned as well as charmed. Nothing folds into anybody.
+  - A summoned pet used to collapse into its owner, which made the owner's dps a figure **no log
+    line supports** and put the two halves of one panel at odds: the sparkline beside the table is
+    built from `selfHits`, which is my swings alone, so my bar and my row disagreed by the whole of
+    the pet's output. The crit tracker had *always* excluded pet swings ("its crits, not mine"), so
+    the fold was already the odd one out.
+  - It was not a rounding difference. In a real bandit pull the pet dealt **117 of the 175** damage
+    — **66.9%** — and the old row presented all 175 as mine. Its `taken` went the same way: 134
+    points of tanking the pet did, credited to me.
+  - A pet also has **its own window**. It is summoned into fights already in progress and dies
+    mid-fight; dividing its damage by its owner's engaged time was another thing the fold got
+    wrong. In that same pull: pet 42s against my 45s.
+  - The two kinds stay distinguishable, because they need different things said about them —
+    `petKind: "summoned" | "charmed"`, drawn as **🐾** and **⛓** in the same slot at the same
+    weight (they answer one question, "why is this on our side?", with different answers). Both
+    carry the owner's name as a tag: whose pet it is stays readable without the damage moving.
+  - `ownerName` on an encounter card is therefore the **summoner or the charmer**, no longer the
+    charmer alone. The row styling pets already had is reused for both. The mob keeps its own name, which reads exactly like the enemy it was a
   moment ago, so a **⛓ glyph** carries the identity — at 540px the name is the first thing
   the ellipsis eats — and the charmer's name rides beside it as a quiet tag when known.
   Surfaced 91,180 damage across the real log that was previously invisible.

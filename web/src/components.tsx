@@ -869,18 +869,23 @@ function EncounterRow({
           <div className="fill" style={{ width: `${(card.pct / maxPct) * 100}%` }} />
           <div className="etxt">
             <span className="ename">
-              {/* A charmed mob fights for us under its own name, which reads exactly like
-                  the enemy it was a moment ago — the glyph is what tells them apart. */}
+              {/* Two kinds of pet, two glyphs. A charmed mob fights for us under its own name,
+                  which reads exactly like the enemy it was a moment ago; a summoned pet is a
+                  second fighter of its owner's making. Both are rows in their own right — the
+                  glyph says which, and the owner tag beside it says whose. */}
               {card.kind === "pet" && (
                 <span
-                  className="charm"
+                  className={card.petKind === "summoned" ? "petmark" : "charm"}
                   title={
-                    `${card.name} is charmed` +
-                    (card.ownerName ? ` by ${card.ownerName}` : "") +
-                    " — its damage counts for our side while the charm holds."
+                    card.petKind === "summoned"
+                      ? `${card.name} is ${card.ownerName ? `${card.ownerName}'s` : "a"} summoned pet. Its damage is ` +
+                        `its own row and no part of its owner's — a pet fights its own fight, on its own clock.`
+                      : `${card.name} is charmed` +
+                        (card.ownerName ? ` by ${card.ownerName}` : "") +
+                        " — its damage counts for our side while the charm holds."
                   }
                 >
-                  ⛓
+                  {card.petKind === "summoned" ? "🐾" : "⛓"}
                 </span>
               )}
               {card.name}
@@ -889,11 +894,13 @@ function EncounterRow({
                 <span
                   className={`tag owner ${card.ownerGuess ? "guess" : ""}`}
                   title={
-                    card.ownerGuess
-                      ? `Best guess: ${card.ownerName}. Several of the casting class were in this ` +
-                        `fight, so the charm's landing message narrows it to a class but not a person — ` +
-                        `this is the one seen casting charms most often.`
-                      : `Charmed by ${card.ownerName}.`
+                    card.petKind === "summoned"
+                      ? `${card.ownerName}'s pet.`
+                      : card.ownerGuess
+                        ? `Best guess: ${card.ownerName}. Several of the casting class were in this ` +
+                          `fight, so the charm's landing message narrows it to a class but not a person — ` +
+                          `this is the one seen casting charms most often.`
+                        : `Charmed by ${card.ownerName}.`
                   }
                 >
                   {card.ownerName}

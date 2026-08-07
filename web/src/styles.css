@@ -289,7 +289,11 @@ body { margin: 0; }
 .ename .tag.you { margin-left: 0.3rem; }
 /* A charmed mob keeps its own mob name, so the glyph carries the identity, not the
    text — at this width the name is the first thing the ellipsis eats. */
-.charm { margin-right: 0.25rem; opacity: 0.85; font-weight: 400; }
+.charm,
+/* A summoned pet's row. Same slot and weight as the charm glyph — they answer the same
+   question ("why is this thing on our side?") with different answers, so they must sit in
+   the same place and neither may shout. */
+.petmark { margin-right: 0.25rem; opacity: 0.85; font-weight: 400; }
 /* The charmer's name is context, never the row's own subject — so it stays quieter than
    the `you` tag, but still needs to read against the pet bar's fill underneath it. */
 .ename .tag.owner { background: #0b0f16aa; color: #b9c6da; font-weight: 500; margin-left: 0.3rem; }

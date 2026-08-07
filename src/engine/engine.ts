@@ -448,45 +448,24 @@ function lowerBound(log: ReadonlyArray<{ ts: number }>, from: number): number {
   return lo;
 }
 
-/** Merge one raw metric accumulator into another (used to fold pet → owner per encounter). */
-function mergeAcc(dst: MetricAcc, src: MetricAcc, petTag: string | null): void {
+/** Merge one raw metric accumulator into another. The pet-tagging half went with the fold: a
+ *  pet's abilities belong on the pet's own row, where they need no `🐾` to say whose they are. */
+function mergeAcc(dst: MetricAcc, src: MetricAcc): void {
   dst.total += src.total;
   dst.hits += src.hits;
   dst.crits += src.crits;
   dst.avoided += src.avoided;
   (Object.keys(dst.byType) as DamageType[]).forEach((t) => (dst.byType[t] += src.byType[t]));
   for (const [k, a] of src.abilities) {
-    const key = petTag ? `pet:${k}` : k;
-    const existing = dst.abilities.get(key);
+    const existing = dst.abilities.get(k);
     if (existing) {
       existing.total += a.total;
       existing.hits += a.hits;
       existing.crits += a.crits;
     } else {
-      dst.abilities.set(key, {
-        name: petTag ? `${petTag} ${a.name}` : a.name,
-        damageType: a.damageType,
-        total: a.total,
-        hits: a.hits,
-        crits: a.crits,
-      });
+      dst.abilities.set(k, { name: a.name, damageType: a.damageType, total: a.total, hits: a.hits, crits: a.crits });
     }
   }
-}
-
-/** Fold a pet's metric into its owner's (operates on already-built output objects). */
-function mergeStat(dst: MetricStat, src: MetricStat, dur: number): void {
-  if (src.total === 0 && src.avoided === 0 && src.entries.length === 0) return;
-  dst.total += src.total;
-  dst.hits += src.hits;
-  dst.crits += src.crits;
-  dst.avoided += src.avoided;
-  (Object.keys(dst.byType) as DamageType[]).forEach((t) => (dst.byType[t] += src.byType[t]));
-  for (const e of src.entries) {
-    dst.entries.push({ name: `🐾 ${e.name}`, damageType: e.damageType, total: e.total, hits: e.hits, crits: e.crits });
-  }
-  dst.entries.sort((a, b) => b.total - a.total);
-  dst.perSec = Math.round(dst.total / dur);
 }
 
 export class Engine {
@@ -1906,9 +1885,9 @@ export class Engine {
     if (aKey !== this.selfKey) pushHit(f.hitsBy, aKey, ev.tsMs, ev.amount);
 
     if (aKey === this.selfKey) {
-      // My own blows only. A summoned pet's swings fold into my row in the meters, but they are
-      // its crits and not mine — a pet's rate would quietly move a number the panel presents as
-      // a fact about this character.
+      // My own blows only — a pet's swings are its crits, not mine, and would quietly move a
+      // number the panel presents as a fact about this character. This was already the rule
+      // while the meters still folded pet damage into my row; now the meters agree with it.
       this.recordCrit(
         ev.type === "melee" ? "melee" : ev.type === "dot" ? "dot" : ev.form === "ability" ? "spell" : "proc",
         abilityName,
@@ -2341,13 +2320,15 @@ export class Engine {
     const attackers = f.perTarget.get(npcKey);
     if (!attackers) return null;
 
-    // Fold pets into owners; track each owner's first contact with the NPC.
-    const byOwner = new Map<string, MetricAcc>();
-    const ownerFirst = new Map<string, number>();
+    // One row per fighter, pets included — nothing folds into anyone. A summoned pet used to
+    // collapse into its owner, which made the owner's dps a figure no log line supports and
+    // put the two halves of this very panel at odds: the sparkline beside the table is built
+    // from `selfHits`, which is my swings alone, so my bar and my row disagreed by the whole
+    // of the pet's output. A pet is a second fighter with its own uptime, its own target and
+    // its own share of the mob — all of which a merged row destroys.
+    const byActor = new Map<string, MetricAcc>();
+    const actorFirst = new Map<string, number>();
     for (const [aKey, cell] of attackers) {
-      // A charmed mob never folds: the user reads it as its own participant, and its
-      // charmer may not even be in this fight. Only summoned pets collapse into an owner.
-      const ownerKey = (this.charmed.has(aKey) ? undefined : this.petOwners.get(aKey)) ?? aKey;
       // `everCharmed` and not just `friendly`: a charm on a name we are *also* fighting is
       // broken and re-applied over and over, because our swings at the other mobs of that
       // name land on the shared key. The mob is therefore un-charmed for most of the fight
@@ -2355,23 +2336,23 @@ export class Engine {
       // that it is hitting a *mob*: nothing hostile has a reason to do that, so its damage
       // here is ours no matter what the flag said at the time. (A charmed fire giant warrior
       // dealt 36,439 to Lord Nagafen over 609 hits and the table showed none of it.)
-      if (ownerKey !== this.selfKey && !friendly.has(ownerKey) && !f.everCharmed.has(ownerKey)) continue;
-      let dst = byOwner.get(ownerKey);
+      if (aKey !== this.selfKey && !friendly.has(aKey) && !f.everCharmed.has(aKey)) continue;
+      let dst = byActor.get(aKey);
       if (!dst) {
         dst = newMetric();
-        byOwner.set(ownerKey, dst);
+        byActor.set(aKey, dst);
       }
-      mergeAcc(dst, cell, ownerKey === aKey ? null : "🐾");
+      mergeAcc(dst, cell);
       const pf = f.pairFirst.get(`${aKey}>${npcKey}`);
-      if (pf !== undefined) ownerFirst.set(ownerKey, Math.min(ownerFirst.get(ownerKey) ?? Infinity, pf));
+      if (pf !== undefined) actorFirst.set(aKey, Math.min(actorFirst.get(aKey) ?? Infinity, pf));
     }
-    if (byOwner.size === 0) return null;
+    if (byActor.size === 0) return null;
 
     const startMs = f.firstSeen.get(npcKey) ?? f.startMs;
     // The encounter span is also the mob's own active window: firstSeen is its first
     // interaction with anyone, so the two whole-encounter rates below share one denominator.
     const spanSec = Math.max(1, (endMs - startMs) / 1000);
-    const total = [...byOwner.values()].reduce((s, a) => s + a.total, 0);
+    const total = [...byActor.values()].reduce((s, a) => s + a.total, 0);
 
     // What the mob dealt back, summed over every friendly it hit — the other half of the
     // header. Its outgoing cells are cleared with the rest of its tracking on death, so a
@@ -2393,34 +2374,41 @@ export class Engine {
       if (h.tsMs >= startMs && h.tsMs <= endMs) healByHealer.set(h.healer, (healByHealer.get(h.healer) ?? 0) + h.amount);
     }
 
-    const allCards: EncounterCard[] = [...byOwner.entries()].map(([ownerKey, acc]): EncounterCard => {
+    const allCards: EncounterCard[] = [...byActor.entries()].map(([aKey, acc]): EncounterCard => {
       // Per-person active window: from their first engagement (their attack, or the NPC first
-      // hitting/casting on them) to the encounter's end.
-      let first = ownerFirst.get(ownerKey) ?? Infinity;
-      const npcToOwner = f.pairFirst.get(`${npcKey}>${ownerKey}`);
-      if (npcToOwner !== undefined) first = Math.min(first, npcToOwner);
+      // hitting/casting on them) to the encounter's end. A pet's is its own — it is summoned
+      // mid-fight and dies mid-fight, and dividing its damage by its owner's window was one of
+      // the things the fold got wrong.
+      let first = actorFirst.get(aKey) ?? Infinity;
+      const npcToActor = f.pairFirst.get(`${npcKey}>${aKey}`);
+      if (npcToActor !== undefined) first = Math.min(first, npcToActor);
       const activeStart = Number.isFinite(first) ? first : startMs;
       const activeDur = Math.max(1, (endMs - activeStart) / 1000);
 
-      const takenAcc = f.perTarget.get(ownerKey)?.get(npcKey) ?? newMetric();
-      // A summoned pet folded into its owner above and never reaches here, so a "pet"
-      // card is always a charmed mob — its own row, per the owner's row alongside it.
-      const charm = this.charmed.get(ownerKey);
+      const takenAcc = f.perTarget.get(aKey)?.get(npcKey) ?? newMetric();
+      const charm = this.charmed.get(aKey);
       // A mob that was charmed at any point in this fight reads as a pet for the whole of it.
       // Flipping it back to a plain row for the stretches the flag happened to be off would
       // relabel the same combatant several times inside one encounter.
-      const isPet = charm !== undefined || f.everCharmed.has(ownerKey);
+      const charmed = charm !== undefined || f.everCharmed.has(aKey);
+      // Summoned pets are known only by a `Master` line, which in your own log only ever names
+      // *your* pet — another player's pet has always had its own row here, and now yours does
+      // too. The two kinds of pet are told apart because they need different things said about
+      // them: a charm is temporary, breakable and often not even ours.
+      const summonerKey = charmed ? undefined : this.petOwners.get(aKey);
+      const ownerKey = charm?.ownerKey ?? summonerKey;
       return {
-        name: this.nameOf(ownerKey),
-        kind: ownerKey === this.selfKey ? "self" : isPet ? "pet" : "player",
-        isSelf: ownerKey === this.selfKey,
-        ...(charm?.ownerKey ? { ownerName: this.nameOf(charm.ownerKey) } : {}),
+        name: this.nameOf(aKey),
+        kind: aKey === this.selfKey ? "self" : charmed || summonerKey ? "pet" : "player",
+        isSelf: aKey === this.selfKey,
+        ...(charmed || summonerKey ? { petKind: charmed ? ("charmed" as const) : ("summoned" as const) } : {}),
+        ...(ownerKey ? { ownerName: this.nameOf(ownerKey) } : {}),
         ...(charm?.ownerKey && charm.ownerGuess ? { ownerGuess: true } : {}),
         // This row is the charmed half of a same-named pair, so its figures are the whole
         // exchange between the two — an upper bound on the pet, not its output alone.
-        ...(isTwinKey(ownerKey) ? { ambiguous: true } : {}),
+        ...(isTwinKey(aKey) ? { ambiguous: true } : {}),
         damage: this.toStat(acc, activeDur),
-        healing: rateStat(healByHealer.get(ownerKey) ?? 0, activeDur),
+        healing: rateStat(healByHealer.get(aKey) ?? 0, activeDur),
         taken: this.toStat(takenAcc, activeDur),
         activeSec: Math.round(activeDur),
         pct: total > 0 ? Math.round((acc.total / total) * 1000) / 10 : 0,
@@ -2593,18 +2581,9 @@ export class Engine {
       byKey.set(c.key, { key: c.key, ownerKey, stats });
     }
 
-    // Fold each identified pet into its owner (when the owner is in this fight),
-    // tagging the pet's categories with 🐾 in the owner's drill-down.
-    for (const entry of [...byKey.values()]) {
-      const owner = entry.ownerKey ? byKey.get(entry.ownerKey) : undefined;
-      if (owner) {
-        mergeStat(owner.stats.damage, entry.stats.damage, dur);
-        mergeStat(owner.stats.healing, entry.stats.healing, dur);
-        mergeStat(owner.stats.taken, entry.stats.taken, dur);
-        byKey.delete(entry.key);
-      }
-    }
-
+    // Pets keep their own row here too, for the same reason as in an encounter table and so
+    // the two panels cannot disagree about the same fight. The card already carries `🐾 <owner>`,
+    // so whose pet it is stays readable without the damage being handed over.
     const combatants: CombatantStats[] = [...byKey.values()]
       .map((e) => e.stats)
       .filter((c) => c.damage.total > 0 || c.healing.total > 0 || c.taken.total > 0)

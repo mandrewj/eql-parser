@@ -348,9 +348,12 @@ export interface StanceSegment {
 
 export interface EncounterCard {
   name: string;
-  kind: EntityKind; // "pet" here always means a charmed mob — summoned pets fold into their owner
+  kind: EntityKind;
   isSelf: boolean;
-  ownerName?: string; // charmed pets only, and only when a charm cast identified the charmer
+  /** Which kind of pet, when `kind` is `"pet"` — they need different things said about them.
+   *  Neither folds into anybody. */
+  petKind?: "summoned" | "charmed";
+  ownerName?: string; // the summoner, or the charmer when a charm cast identified one
   ambiguous?: boolean; // charmed mob sharing a name with its target — figures are the pair's exchange
   /** The owner is the best of several candidates of the casting class, not the only one.
    *  Shown as a name either way — a blank helps nobody — but marked as inference. */

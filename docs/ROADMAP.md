@@ -1332,6 +1332,36 @@ of a core. Replay of the full log is 12.6s for 1.5M events (119k events/sec). Th
 333,145 entries and 33MB, as recorded when it was built. Sending every encounter contributor instead
 of the top six costs **4.5KB** on a 75KB snapshot.
 
+## Post-v1 — A pet is its own fighter, not part of its owner's damage  ✅
+A summoned pet's damage was folded into its owner's row — in the encounter tables and in the
+History tab's character cards. That made the owner's dps **a figure no log line supports**, and it
+had already broken the panel's internal agreement: the sparkline beside each encounter table is
+built from `selfHits`, which is my own swings, so my bar and my row disagreed by exactly the pet's
+output. The crit tracker had *always* excluded pet swings — "its crits, not mine" — so the fold was
+the odd rule out, not the consistent one.
+
+**The size of it, from the real log.** In a bandit pull the pet dealt **117 of the 175 damage —
+66.9%** — and the old row presented all 175 as mine. Its tanking went the same way: 134 points the
+pet absorbed, credited to me. Both figures now sit on the pet's own row, checked line-for-line
+against the raw log inside that fight's window: Sanluen 58 engine / 58 raw, Jonantik 117 / 117.
+(The first pass read 117 against 93 — the *grep* was wrong, missing the pet's typed-damage form
+`for 6 points of cold damage by Water Elemental Attack`. Worth recording: the independent check is
+only independent if it covers every line shape.)
+
+**A pet has its own window, too.** It is summoned into fights already in progress and dies
+mid-fight, so dividing its damage by its owner's engaged time was a third thing the fold got wrong.
+Same pull: the pet engaged for 42s of my 45s, and its dps now divides by its own.
+
+**Summoned and charmed stay distinguishable** — `petKind`, drawn as 🐾 and ⛓ in the same slot at the
+same weight, since they answer one question ("why is this on our side?") with different answers. A
+charm is temporary, breakable and frequently not even ours; a summon is not. Both carry the owner's
+name as a tag, so whose pet it is stays readable without the damage moving.
+
+Another player's pet already had its own row — `petOwners` is fed by `Master` lines and those name
+only your own pet — so this makes your pet behave like everyone else's, rather than inventing a new
+rule. `mergeStat` and `mergeAcc`'s paw-tagging went with the fold: a pet's abilities belong on the
+pet's row, where they need no `🐾` prefix to say whose they are.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

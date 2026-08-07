@@ -133,7 +133,7 @@ test("healing done is tracked per healer, with spell breakdown", () => {
   assert.equal(light.total, 10);
 });
 
-test("self's pet folds into the owner with a paw-tagged breakdown", () => {
+test("self's pet is its own row, and its damage is not the owner's", () => {
   const engine = feed([
     L("01:00:00", "Gore says, 'Attacking an orc Master.'"), // Gore is my pet
     L("01:00:01", "You crush an orc for 50 points of damage."),
@@ -141,13 +141,39 @@ test("self's pet folds into the owner with a paw-tagged breakdown", () => {
     L("01:00:03", "You have slain an orc!"),
   ]);
   const f = engine.fights()[0]!;
-  // The pet is not a separate row — its damage is attributed to Sanluen.
-  assert.equal(f.combatants.some((c) => c.name === "Gore"), false);
+  const gore = f.combatants.find((c) => c.name === "Gore")!;
+  assert.ok(gore, "the pet gets a row of its own rather than disappearing into mine");
+  assert.equal(gore.kind, "pet");
+  assert.equal(gore.ownerName, "Sanluen", "whose pet it is stays readable on its own row");
+  assert.equal(gore.damage.total, 30);
+  assert.ok(gore.damage.entries.some((e) => e.name.includes("bite")), "its abilities are its own");
+
   const self = f.combatants.find((c) => c.isSelf)!;
-  assert.equal(self.damage.total, 80); // 50 own + 30 pet
-  const petEntry = self.damage.entries.find((e) => e.name.includes("bite"))!;
-  assert.ok(petEntry, "owner drill-down includes the pet's ability");
-  assert.ok(petEntry.name.startsWith("🐾"), "pet ability is paw-tagged");
+  assert.equal(self.damage.total, 50, "my 50, not the pair's 80");
+  assert.ok(!self.damage.entries.some((e) => e.name.includes("bite")), "and none of its abilities");
+});
+
+test("a pet's encounter row is separate, with its own window and share", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 40 points of damage."), // I engage at t0
+    L("01:00:00", "Gore says, 'Attacking an orc Master.'"),
+    L("01:00:06", "Gore bites an orc for 60 points of damage."), // the pet joins 6s in
+    L("01:00:10", "You have slain an orc!"),
+  ]);
+  const enc = engine.snapshot().recentEncounters[0]!;
+  const gore = enc.cards.find((c) => c.name === "Gore")!;
+  const self = enc.cards.find((c) => c.isSelf)!;
+  assert.equal(gore.kind, "pet");
+  assert.equal(gore.petKind, "summoned", "told apart from a charmed mob, which needs other words");
+  assert.equal(gore.ownerName, "Sanluen");
+  assert.equal(gore.damage.total, 60);
+  assert.equal(self.damage.total, 40);
+  assert.equal(gore.pct + self.pct, 100, "the two shares split the mob between them");
+  // The window is the pet's own: it was summoned into a fight already in progress, and
+  // dividing its damage by my window was one of the things the fold got wrong.
+  assert.equal(self.activeSec, 10);
+  assert.equal(gore.activeSec, 4);
+  assert.equal(gore.damage.perSec, 15); // 60 over its own 4s, not 6 over mine
 });
 
 function at(t: string): number {
