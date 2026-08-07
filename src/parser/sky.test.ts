@@ -90,6 +90,14 @@ test("catalogue — corrections against both sources survive regeneration", () =
   assert.ok(staff, "Efreeti Great Staff is still a component");
   assert.equal(staff.dropsFrom, "Eye of Veeshan");
   assert.equal(staff.island, "Island 8 — Veeshan", "with the mob that drops it, not the cycle");
+
+  // The reverse move, and the one the log settles: both sources file this with Island 4's essence
+  // mobs, having inherited the same mistake from an older game. `island: null` is the load-bearing
+  // half — without it the second source infers Island 4 from the mob and the row leaves the cycle.
+  const statuette = component("Efreeti Statuette");
+  assert.ok(statuette, "Efreeti Statuette is still a component");
+  assert.equal(statuette.dropsFrom, "Noble Dojorn, Overseer of Air, The Hand of Veeshan");
+  assert.equal(statuette.island, null, "an Efreeti-cycle drop, so no island at all");
 });
 
 /** The reason the generator reads a second site at all. The wiki's loot table left 25 of the 113

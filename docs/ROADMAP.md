@@ -1465,6 +1465,23 @@ moves it to Island 8. And eqlposky sources `Gem of Invigoration` to **a greater 
 contradicts the previous session's instruction to leave it with no mob listed, though it agrees
 with the item's own `7-Trash` island tag, and is the more useful answer than a blank.
 
+**And one the log settles outright: `Efreeti Statuette` is an Efreeti-cycle drop.** Both sources
+file it with Island 4's essence mobs, having inherited the same mistake from an older game — which
+is worth knowing about them as sources, since agreement between two sites is not independence when
+one copied the other's ancestor. The log names all three cycle mobs and no essence mob at all:
+
+    Aug 03 23:45  You looted an Efreeti Statuette from Noble Dojorn's corpse …
+    Aug 07 00:08  … from the Hand of Veeshan's corpse …
+    Aug 07 01:49  … from Overseer of Air's corpse …
+    Aug 07 02:10  … from the Hand of Veeshan's corpse …
+
+Four pickups across all three, none from an essence harvester or tamer in 2.4M lines — the exact
+signature every other Efreeti item has. The override carries those lines in a comment, because the
+next person to read it will otherwise see a correction contradicting both public sources with
+nothing to justify it. **`island: null` is the load-bearing half**: the override check had to
+become "is the key present" rather than "is the value truthy", or "belongs to no island" fell
+through to the island the second source infers from the mob, and the row left the cycle again.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

@@ -190,9 +190,16 @@ difficulty) and the Plane of Sky pair below.
     credits `Gem of Invigoration` to the Protector of Sky (eqlposky names a greater sphinx, which
     matches the item's own `7-Trash` tag), and `Efreeti Great Staff` comes off the Eye of Veeshan
     rather than the Efreeti cycle both sources also list — which is what moves it onto Island 8.
-    Tests assert both survived, because a regenerated file looks freshly generated whether or not
-    they did, plus one that **every** component names a mob — if that fails, the merge silently
-    stopped merging.
+    A third puts `Efreeti Statuette` back in the cycle: both sources file it with Island 4's essence
+    mobs, having inherited the same mistake from an older game, and the log settles it — four
+    pickups, one from each of `Noble Dojorn`, `Overseer of Air` and `the Hand of Veeshan`, none from
+    an essence mob in 2.4M lines. Tests assert all three survived, because a regenerated file looks
+    freshly generated whether or not they did, plus one that **every** component names a mob — if
+    that fails, the merge silently stopped merging.
+    - **`island: null` in an override is a decision, not an absence**, so the check is whether the
+      key is *present* rather than whether its value is truthy. Without that, "belongs to no island"
+      fell through to the island the second source infers from the mob, and the Statuette left the
+      cycle again on the next run.
 - **[`sky.ts`](../src/parser/sky.ts) owns the matching**, which is where the wiki and the game
   disagree: the game writes a backtick apostrophe, appends `+N` to an upgraded item and
   `(Exaltation)` to an exalted copy, and disagrees on capitalisation (`Crown Of Elemental

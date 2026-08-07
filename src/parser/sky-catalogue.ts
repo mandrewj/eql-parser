@@ -498,8 +498,8 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           },
           {
             "name": "Efreeti Statuette",
-            "island": "Island 4 — Pegasus",
-            "dropsFrom": "an essence harvester, an essence tamer, Eternal Spirit"
+            "island": null,
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -1690,8 +1690,8 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           },
           {
             "name": "Efreeti Statuette",
-            "island": "Island 4 — Pegasus",
-            "dropsFrom": "an essence harvester, an essence tamer, Eternal Spirit"
+            "island": null,
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [

@@ -43,6 +43,16 @@ const DROPS_FROM_OVERRIDES = {
   // and not the cycle. Replacing rather than unioning is the point — it moves the item out of
   // the cycle group and onto Island 8, where the mob that drops it lives.
   "Efreeti Great Staff": { dropsFrom: "Eye of Veeshan", island: "Island 8 — Veeshan" },
+  // Both sources file this with Island 4's essence mobs, having inherited the same mistake from
+  // an older game. It is an Efreeti-cycle drop, and the log settles it outright — four pickups,
+  // one from each of the three cycle mobs:
+  //   Aug 03 23:45  You looted an Efreeti Statuette from Noble Dojorn's corpse …
+  //   Aug 07 00:08  … from the Hand of Veeshan's corpse …
+  //   Aug 07 01:49  … from Overseer of Air's corpse …
+  //   Aug 07 02:10  … from the Hand of Veeshan's corpse …
+  // …and none from an essence harvester or tamer in 2.4M lines. `island: null` is the load-bearing
+  // half: without it the second source's "Island 4" wins and the row leaves the cycle again.
+  "Efreeti Statuette": { dropsFrom: "Noble Dojorn, Overseer of Air, The Hand of Veeshan", island: null },
 };
 
 /** The island shorthand the quest tables use, spelled out. Keys are verbatim from the wiki —
@@ -282,8 +292,14 @@ async function main() {
         // The wiki's own tag wins when it has one; otherwise the island implied by the mob that
         // drops it, which is how `Efreeti Statuette` stops being an Efreeti-cycle item. An
         // override's island beats both, since it is the one claim a person made deliberately.
-        const overrideIsland = DROPS_FROM_OVERRIDES[clean]?.island;
-        const island = overrideIsland ?? (tag ? ISLANDS[tag] ?? null : null) ?? islandFromDrops.get(foldKey(clean)) ?? null;
+        // `island: null` in an override is a *decision* — "this belongs to no island" — and has
+        // to outrank the island the second source would otherwise infer from the mob. So the test
+        // is whether the key is present, not whether its value is truthy.
+        const o = DROPS_FROM_OVERRIDES[clean];
+        const island =
+          o && "island" in o
+            ? o.island
+            : (tag ? ISLANDS[tag] ?? null : null) ?? islandFromDrops.get(foldKey(clean)) ?? null;
         items.push({ name: clean, island, dropsFrom: dropsFrom.get(foldKey(clean)) ?? null });
       }
       // A quest awarding two items writes them as one cell joined by ", ".
