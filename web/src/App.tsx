@@ -69,6 +69,17 @@ export default function App() {
       return next;
     });
 
+  /** Open or close a batch of keys outright — what an encounter table's fold writes, since it
+   *  drives its own state and every row's drill at once. Deliberately not `toggle` per key:
+   *  that would close whichever rows were already open by hand, so the button would mean
+   *  something different depending on what you had clicked before pressing it. */
+  const setOpen = (keys: string[], open: boolean) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const k of keys) open ? next.add(k) : next.delete(k);
+      return next;
+    });
+
   const history: FightSummary[] = useMemo(() => {
     const list: FightSummary[] = [];
     if (snapshot?.current) list.push(currentSummary(snapshot.current));
@@ -259,6 +270,7 @@ export default function App() {
                   enc={e}
                   expanded={expanded}
                   onToggle={toggle}
+                  onSetOpen={setOpen}
                   showHead={i === 0}
                   colors={comboColors}
                 />
@@ -274,6 +286,7 @@ export default function App() {
                   enc={e}
                   expanded={expanded}
                   onToggle={toggle}
+                  onSetOpen={setOpen}
                   showHead={i === 0}
                   colors={comboColors}
                 />

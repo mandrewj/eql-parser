@@ -1260,6 +1260,23 @@ meter that cannot show you yourself without a click is worse than one that never
 so sending every contributor moved the snapshot by a few KB against 90KB — nowhere near the trade
 that keeps the crit tables and the Sky catalogue out of the stream.
 
+## Post-v1 — Expanding an encounter opens every row's breakdown  ✅
+Unfolding a raid encounter answered "who else was here" and then asked for ten more clicks to
+learn what any of them did. The fold now opens each row's drill-down with it, and closes them
+again on the way back — the only inverse that leaves the table as it was found.
+
+**A batch set, not a toggle, and that is the whole design decision.** Calling the existing
+per-key `toggle` once per row would *close* whichever rows you had already opened by hand, so the
+button would mean something different depending on what you had clicked before pressing it.
+`onSetOpen(keys, open)` states the intent instead. It only writes keys — it never forces a row's
+`open` past them — so an individual row still closes on its own click while the table stays
+expanded.
+
+**The keys moved into `stats.ts` and grew tests**, because this is the failure mode that leaves no
+trace: a button writing `enc-7:Mirad` while the row reads `live-x:Mirad` throws nothing, logs
+nothing, and simply does half its job. `rowKey`/`allRowsKey`/`foldKeys` are now one definition with
+a test asserting the button's output is exactly the rows' input.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

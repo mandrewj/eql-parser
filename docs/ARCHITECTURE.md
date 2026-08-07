@@ -971,9 +971,19 @@ interface MetricStat {                // every metric group has this one shape
     are nowhere near the top, and a meter that cannot show you yourself without a click is worse
     than one that never had the rest. You displace the sixth row rather than adding a seventh, and
     sit in rank order among them.
+  - **Expanding opens every row's drill-down with it**, so "who else was here" arrives together
+    with "and what did they do" instead of ten more things to click. Collapsing closes them again,
+    which is the only inverse that leaves the table as it was found.
+  - That makes the control a **batch set, not a toggle** (`onSetOpen(keys, open)` in `App.tsx`,
+    beside the single-key `toggle`). Toggling each key would *close* whichever rows you had
+    already opened by hand, so the same button would do different things depending on what you
+    had clicked before pressing it. The fold writes the keys; it never forces a row's `open` past
+    them, so any row still closes on its own click while the table stays expanded.
   - Fold state lives in App-level `expanded` under a `${enc.id}:*all*` key, beside the per-row
     drills — not in the table's own state, where a snapshot push mid-fight would fold it back up
-    under someone reading it.
+    under someone reading it. Both key shapes are built by `rowKey`/`allRowsKey`/`foldKeys` in
+    `stats.ts` and pinned by tests, because a button writing keys no row reads fails **silently**:
+    no error, just a control that does half its job.
   - Cost measured before shipping: a card is ~1KB and the median encounter has 5, so the full
     snapshot moved by a few KB. This is not a payload worth truncating for.
   - The newly visible tail exposes an existing (correct) rule: another player's **summoned** pet

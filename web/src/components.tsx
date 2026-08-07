@@ -23,7 +23,15 @@ import type {
 } from "./types";
 import { metricMeta } from "./filters";
 import { fmt, fmtDrill, fmtK, fmtTank, plural, span, time } from "./format";
-import { VISIBLE_ROWS, foldEncounterCards, isPartialWindow, weightedAvgDps } from "./stats";
+import {
+  VISIBLE_ROWS,
+  allRowsKey,
+  foldEncounterCards,
+  foldKeys,
+  isPartialWindow,
+  rowKey,
+  weightedAvgDps,
+} from "./stats";
 
 const METRICS: Array<{ key: MetricKind; label: string }> = [
   { key: "damage", label: "Damage" },
@@ -1069,21 +1077,23 @@ function EncounterTimeline({ enc, colors }: { enc: EncounterView; colors: Map<st
   );
 }
 
-/** Key for "this table is showing everyone", in the same set the per-row drills use. Kept in
- *  App-level state, not this component's, so a snapshot push mid-fight doesn't fold the table
- *  back up under someone reading it. The sentinel can't collide with a combatant's name. */
-const allRowsKey = (encId: string) => `${encId}:*all*`;
-
 export function EncounterTable({
   enc,
   expanded,
   onToggle,
+  onSetOpen,
   showHead = true,
   colors,
 }: {
   enc: EncounterView;
+  /** Which drills are open, and whether this table is showing everyone — one panel-wide set,
+   *  held in App state rather than here so a snapshot push mid-fight can't fold the table up
+   *  under someone reading it. */
   expanded: Set<string>;
   onToggle: (key: string) => void;
+  /** Open or close a batch outright. The fold needs this rather than `onToggle` per key:
+   *  toggling would *close* whichever rows you had already opened by hand. */
+  onSetOpen: (keys: string[], open: boolean) => void;
   /** Column labels only earn their row once per section — the grid keeps every
    *  table's columns aligned whether or not this one prints them. */
   showHead?: boolean;
@@ -1141,19 +1151,23 @@ export function EncounterTable({
             card={c}
             maxPct={maxPct}
             encSec={enc.durationSec}
-            // my own breakdown stays open in every encounter; others toggle
-            open={c.isSelf || expanded.has(`${enc.id}:${c.name}`)}
-            onToggle={() => onToggle(`${enc.id}:${c.name}`)}
+            // my own breakdown stays open in every encounter; others toggle — including back
+            // shut after the fold opened them, since the fold *sets* these keys, never forces
+            // the row's `open` past them.
+            open={c.isSelf || expanded.has(rowKey(enc.id, c.name))}
+            onToggle={() => onToggle(rowKey(enc.id, c.name))}
           />
         ))}
         {folded.length > 0 && (
           <div
             className={`erow emore ${showAll ? "open" : ""}`}
-            onClick={() => onToggle(allRowsKey(enc.id))}
+            onClick={() => onSetOpen(foldKeys(enc.id, enc.cards), !showAll)}
             title={
               `${plural(enc.cards.length, "character")} fought ${enc.name}. The ${folded.length} outside ` +
               `the top ${VISIBLE_ROWS} dealt ${fmt(foldedTotal)} between them — ` +
-              `${foldedPct}% of the damage it took.` +
+              `${foldedPct}% of the damage it took.\n\n` +
+              `Opens every row's breakdown with them, so the answer to "who else was here" arrives ` +
+              `with "and what did they do". Any row still closes on its own click.` +
               (self && enc.cards.indexOf(self) >= VISIBLE_ROWS
                 ? `\n\nYour own row is held in the opening ${VISIBLE_ROWS} regardless — your damage here ` +
                   `ranks #${enc.cards.indexOf(self) + 1}.`

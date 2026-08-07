@@ -11,10 +11,30 @@ export const PARTIAL_WINDOW = 0.7;
 export const isPartialWindow = (activeSec: number, encounterSec: number) =>
   activeSec < encounterSec * PARTIAL_WINDOW;
 
+// --- the encounter table's fold ---------------------------------------------
+// Not arithmetic like the rest of this file, but the same reason for being here: the fold is
+// a rule the components apply rather than receive, and `node --test` can hold it still.
+
 /** Rows an encounter table draws before it asks to be expanded. Six is what the engine used
  *  to send and what the 540px panel is sized for — enough that an ordinary group fight needs
  *  no interaction at all. */
 export const VISIBLE_ROWS = 6;
+
+/** One row's drill-down, in the panel-wide `expanded` set. */
+export const rowKey = (encId: string, cardName: string) => `${encId}:${cardName}`;
+
+/** "This table is showing everyone", in that same set. The sentinel cannot collide with a
+ *  combatant's name, which is what lets one set hold both kinds of key. */
+export const allRowsKey = (encId: string) => `${encId}:*all*`;
+
+/** Everything the fold control writes: the table's own key, plus every row's drill-down —
+ *  expanding is meant to answer "who else was here *and* what did they do", so the rows it
+ *  reveals arrive open rather than as ten more things to click. Built from the same `rowKey`
+ *  the rows read, because a button writing keys nobody reads fails silently. */
+export const foldKeys = (encId: string, cards: EncounterCard[]): string[] => [
+  allRowsKey(encId),
+  ...cards.map((c) => rowKey(encId, c.name)),
+];
 
 /** Share of damage dealt, DPS as a tiebreak — the engine's own ranking, re-applied because
  *  the lead pulls my row up out of the tail and has to re-seat it in rank order. */

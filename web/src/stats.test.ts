@@ -8,7 +8,10 @@ import {
   critShare,
   THIN_CRITS,
   VISIBLE_ROWS,
+  allRowsKey,
   foldEncounterCards,
+  foldKeys,
+  rowKey,
   isPartialWindow,
   isThinCrits,
   isThinSample,
@@ -101,6 +104,26 @@ test("no fold when everyone already fits, and none of them go missing", () => {
   assert.equal(folded.length, 0, "nothing to expand to — the row hides");
   assert.equal(foldedPct, 0);
   assert.deepEqual(lead.map((c) => c.name), ["P1", "Sanluen", "P2"]);
+});
+
+test("the fold writes exactly the keys the rows read", () => {
+  // The button opening every drill is only wired up if these two agree — and a mismatch is
+  // silent: keys nobody reads, rows that never open, no error anywhere.
+  const cards = raid(1);
+  const keys = foldKeys("enc-7", cards);
+  assert.equal(keys[0], allRowsKey("enc-7"), "the table's own key leads");
+  assert.deepEqual(
+    keys.slice(1),
+    cards.map((c) => rowKey("enc-7", c.name)),
+    "then one per contributor, the same key each row builds for itself",
+  );
+  assert.equal(new Set(keys).size, keys.length, "no duplicates to un-toggle each other");
+});
+
+test("the fold's sentinel cannot be mistaken for a row", () => {
+  assert.ok(!raid(1).some((c) => rowKey("e", c.name) === allRowsKey("e")));
+  // Both live in one panel-wide set, so the sentinel has to be something no mob is called.
+  assert.equal(allRowsKey("enc-7"), "enc-7:*all*");
 });
 
 test("a fight I did not fight in still folds by rank", () => {
