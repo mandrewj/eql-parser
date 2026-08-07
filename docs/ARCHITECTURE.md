@@ -52,7 +52,7 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
 ### Tailer
 - Opens the log and tracks a **byte offset**; on each change reads only new bytes.
 - **CRLF-safe & partial-line-safe**: buffer trailing bytes until `\n`; strip `\r`.
-- Change detection: `fs.watch`/FSEvents **plus a stat-based polling fallback** (~500ms).
+- Change detection: `fs.watch`/FSEvents **plus a stat-based polling fallback** (1s — `app.ts` passes it, and it is also the `Tailer` default).
 - **Rotation/reset handling**: if size < last offset or inode changes, reset (truncation, `/log` toggle, new session).
 - Modes: **live** (start at EOF, follow) and **backfill** (parse whole file, then follow).
 - **Reads in 1MB chunks, never the whole span at once.** A live append is a few hundred bytes and
@@ -178,24 +178,31 @@ difficulty) and the Plane of Sky pair below.
       `sky.ts` does for the game's own spelling, for the same reason.
     - **An island is adopted only when every mob it names is on one.** Several islands means the
       Efreeti cycle, which is exactly the case the wiki tags with no island — so "no island"
-      survives as the answer instead of being overwritten by whichever number came first. This is
-      what moved `Efreeti Statuette` (Island 4, essence mobs) out of the cycle it never belonged to.
+      survives as the answer instead of being overwritten by whichever number came first. In the
+      current data this rule moves nothing: every component either carries the wiki's own tag or is
+      a cycle drop. It is a **guard**, not a fill — without it the cycle dissolves into whichever
+      of its three islands each item happened to name first.
     - **`Various` and `None?` are discarded** rather than filtered downstream. They are the wiki
       declining to answer, and `Various` sorts to the front of a comma list — straight into the
       group heading, which is the one job a mob name has here.
   - **`DROPS_FROM_OVERRIDES` is where we disagree with *both* sources**, applied last and
     **replacing** rather than unioning — the point of an override is that a source is wrong, and a
     union would keep the wrong answer beside the right one. It throws if an override names an item
-    neither page lists, so a stale correction fails instead of sitting there. Two entries: the wiki
-    credits `Gem of Invigoration` to the Protector of Sky (eqlposky names a greater sphinx, which
-    matches the item's own `7-Trash` tag), and `Efreeti Great Staff` comes off the Eye of Veeshan
-    rather than the Efreeti cycle both sources also list — which is what moves it onto Island 8.
-    A third puts `Efreeti Statuette` back in the cycle: both sources file it with Island 4's essence
-    mobs, having inherited the same mistake from an older game, and the log settles it — four
-    pickups, one from each of `Noble Dojorn`, `Overseer of Air` and `the Hand of Veeshan`, none from
-    an essence mob in 2.4M lines. Tests assert all three survived, because a regenerated file looks
-    freshly generated whether or not they did, plus one that **every** component names a mob — if
-    that fails, the merge silently stopped merging.
+    neither page lists, so a stale correction fails instead of sitting there. Three entries:
+    - `Gem of Invigoration` — the wiki credits the Protector of Sky; eqlposky names a greater
+      sphinx, which matches the item's own `7-Trash` tag.
+    - `Efreeti Great Staff` — comes off the **Eye of Veeshan**, not the Efreeti cycle both sources
+      also list, which is what moves it onto Island 8.
+    - `Efreeti Statuette` — back **into** the cycle. Both sources file it with Island 4's essence
+      mobs, having inherited the same mistake from an older game; the log settles it with four
+      pickups, one from each of `Noble Dojorn`, `Overseer of Air` and `the Hand of Veeshan`, and
+      none from an essence mob in 2.4M lines.
+
+    That last pair is the caution about the sources: **agreement between two sites is not
+    independence** when one copied the other's ancestor, so the 106 items where they agree
+    corroborate each other less than the number suggests. Tests assert all three overrides
+    survived, because a regenerated file looks freshly generated whether or not they did, plus one
+    that **every** component names a mob — if that fails, the merge silently stopped merging.
     - **`island: null` in an override is a decision, not an absence**, so the check is whether the
       key is *present* rather than whether its value is truthy. Without that, "belongs to no island"
       fell through to the island the second source infers from the mob, and the Statuette left the
@@ -437,7 +444,7 @@ difficulty) and the Plane of Sky pair below.
   - Without this, a boss that hit you once, was left for fourteen minutes and then fought
     properly reported **one** encounter spanning the whole gap, with every rate divided by the
     idle time: a real Lady Vox read 669s at 79 dps where the actual engagement was 391s at 136.
-- **Encounters** (the primary view): each mob is a per-character table (one row per player/pet, a %-of-damage bar + DPS/HPS/tank columns, expandable to abilities). `snapshot()` exposes **`activeEncounters`** (mobs currently being fought — live tables at the top) and **`recentEncounters`** (a rolling last-5, newest first). A mob is finalized on death **or on fight close** (zone / 90s / abandon) for a boss you fled. On death the mob's per-encounter tracking is **reset**, so a same-named respawn (`a clay gargoyle`) is a fresh instance rather than merging into one inflated span; fled/closed mobs cap their end to their last combat activity. **Rates are per-person**: each character's active window starts at *their* first contact with the mob (their attack, or the mob first hitting/casting on them — tracked as per-`attacker>target` first-contact timestamps) and runs to the encounter end, so late-joiners aren't diluted. Per-(target, attacker) damage is kept as full metric accumulators.
+- **Encounters** (the primary view): each mob is a per-character table (one row per player/pet, a %-of-damage bar + DPS/HPS/tank columns, expandable to abilities). `snapshot()` exposes **`activeEncounters`** (mobs currently being fought — live tables at the top) and **`recentEncounters`** (a rolling last-5, newest first). A mob is finalized on death **or on fight close** (zone / 90s / abandon) for a boss you fled. On death the mob's per-encounter tracking is **reset**, so a same-named respawn (`a clay gargoyle`) is a fresh instance rather than merging into one inflated span; fled/closed mobs cap their end to their last combat activity. **Rates are per-person**: each character's active window starts at *their* first contact with the mob (their attack, or the mob first hitting/casting on them — tracked as per-`attacker>target` first-contact timestamps) and runs to the encounter end, so late-joiners aren't diluted. **A pet's window instead closes at its own last contact** — it is the one participant whose leaving the log shows. Per-(target, attacker) damage is kept as full metric accumulators.
 - **Per-encounter sparkline.** `selfHits` keeps my damage to each target timestamped — which
   `selfComboLog` cannot answer, since it is per-*session*, not per-mob, and would blend two mobs fought
   at once into one strip that disagreed with the row above it. `encounterView` buckets it into
@@ -732,10 +739,12 @@ interface EncounterView {             // one per-mob card
 
 interface EncounterCard {             // one row of that card
   name: string; kind: "self" | "player" | "pet"; isSelf: boolean;
-  ownerName?: string;                 // charmed pets only, when the charmer is known
+  petKind?: "summoned" | "charmed";   // which sort of pet — neither folds into anybody
+  ownerName?: string;                 // the summoner, or the charmer when one is known
   ambiguous?: boolean;                // charmed mob sharing its target's name: figures are the pair's exchange
   pct: number;                        // share of damage dealt to the mob (the bar)
   activeSec: number;                  // their engaged window — what all three rates divide by
+  startedSec: number;                 // where that window opens inside the encounter
   damage: MetricStat; healing: MetricStat; taken: MetricStat;
 }
 
@@ -811,13 +820,14 @@ interface MetricStat {                // every metric group has this one shape
   Sky model: these are exactly the rules that regress quietly into the wrong denominator.
   - **Four windows**, narrowest first so moving right reaches further back: session, 25 fights,
     100 fights, 2 weeks. The choice is remembered in `localStorage`, like the Sky tab's class.
-    - **Fetched from `/api/crits`, not pushed** — the four together weigh about as much as the
-      whole snapshot at ~5/sec (measured 2026-08-06: **54KB against a 75KB snapshot**; the ratio
-      is what matters, and this is the one place the figures are kept, because the same sentence
-      had drifted to six different numbers across six files), for tables one tab reads. Polled
-      every 4s while the tab is mounted, which a rate
-      over 100 fights cannot outrun; the badges and the recent-crits strip ride the snapshot, so
-      the genuinely live half of the panel stays live.
+    - **Fetched from `/api/crits`, not pushed.** The four together weigh about as much as the whole
+      snapshot, which goes out ~5/sec — too much for tables one tab reads. Polled every 4s while
+      that tab is mounted instead, which a rate over 100 fights cannot outrun; the badges and the
+      recent-crits strip ride the snapshot, so the genuinely live half of the panel stays live.
+      - **The figures live here and nowhere else** — measured 2026-08-06 at **54KB against a 75KB
+        snapshot**. The same sentence had been restated in six files with the numbers drifting
+        apart in each (two already disagreed, and all were ~25% stale), so the copies now give the
+        reason and this is the only place with a number in it. The ratio is the durable part.
     - **The strip prints what the window turned out to cover**, not what its label promised —
       "76 min · since Aug 4, 11:21 PM · 26 fights" — and appends *all there is* when the log
       cannot reach back far enough.
@@ -915,13 +925,15 @@ interface MetricStat {                // every metric group has this one shape
       Efreeti items alone spread over eight variants of "Noble Dojorn, …". The **first** named is
       taken as the primary source, with a trailing parenthetical dropped so `Bazzt Zzzt (Island 6
       Boss)` files with `Bazzt Zzzt`; the full list stays in the tooltip. Mobs are ordered by how
-      much they owe you, and the unsourced group sorts last.
+      much they owe you, and the unsourced group sorts last — a path no data reaches since the
+      second source closed the last of the 25 gaps, kept because "we don't know" stays a possible
+      answer whenever either source changes.
     - **The Efreeti cycle is one heading, not one per mob** (`EFREETI_MOBS` — `Dojorn / Overseer /
-      Hand`). First-named grouping is the right rule on an island, where the mobs are a choice; the
-      cycle is not a choice, and the wiki's per-item source lists are overlapping subsets of the
-      same three names, so the rule split one thing you do into four headings. Rows the wiki
-      sources elsewhere or not at all (`Efreeti Statuette`, `Brass Knuckles`) sit under it too —
-      the category is a place, and each row's own tooltip still names its sources.
+      Hand`). First-named grouping is the right rule on an island, where which boss to kill is a
+      choice; the cycle is not a choice. All 19 of its rows now name the same three mobs, but three
+      of them in a different order — so first-named would *still* split the cycle across a "Noble
+      Dojorn" heading and a "The Hand of Veeshan" one, for a distinction that means nothing on the
+      ground. The heading is literally accurate for every row under it.
     - **`EFREETI_CYCLE` replaces "No island listed".** An untagged item is not a gap in the wiki's
       data: those items are not *on* an island. The old label described the table it came from, the
       new one describes where you go. It still sorts last, and `IslandNeeds.island` is now a plain
@@ -1044,10 +1056,11 @@ interface MetricStat {                // every metric group has this one shape
     weight (they answer one question, "why is this on our side?", with different answers). Both
     carry the owner's name as a tag: whose pet it is stays readable without the damage moving.
   - `ownerName` on an encounter card is therefore the **summoner or the charmer**, no longer the
-    charmer alone. The row styling pets already had is reused for both. The mob keeps its own name, which reads exactly like the enemy it was a
-  moment ago, so a **⛓ glyph** carries the identity — at 540px the name is the first thing
-  the ellipsis eats — and the charmer's name rides beside it as a quiet tag when known.
-  Surfaced 91,180 damage across the real log that was previously invisible.
+    charmer alone, and the row styling pets already had is reused for both.
+  - **The glyph carries the identity, not the text.** A charmed mob keeps its own name, which reads
+    exactly like the enemy it was a moment ago — and at 540px the name is the first thing the
+    ellipsis eats. Giving charmed mobs a row at all surfaced **91,180 damage** across the real log
+    that had been invisible.
   - An `ambiguous` row adds a **`~`** tag in the `--partial` amber: its figures are the whole
     exchange between two same-named mobs, so they bound the pet rather than measure it. The
     tag qualifies the numbers rather than naming anyone, which is the same job the `time`

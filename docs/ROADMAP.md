@@ -1411,7 +1411,8 @@ first-named source is right on an island, where which boss to kill is a choice �
 not a choice, and the wiki gives nearly every Efreeti item a different overlapping subset of the
 same three names, so the rule split one thing you do into four headings. Rows the wiki sources
 elsewhere or not at all (`Efreeti Statuette`, `Brass Knuckles`) sit under it too; each row's
-tooltip still names its own sources, so the shared heading hides nothing.
+tooltip still names its own sources, so the shared heading hides nothing. *(Both of those were
+later shown to be cycle drops like the rest — see the two entries below.)*
 
 **`Gem of Invigoration` moves to "no mob listed"** — the wiki credits the Protector of Sky, which
 does not drop it. This one is a *data* fix, and the catalogue is generated, so it went into the
@@ -1446,9 +1447,12 @@ supply-chain hole for a table of mob names.
 - Matching on the raw name missed `Crown Of Elemental Mastery` against their `Crown of Elemental
   Mastery`; the two sites disagree on capitalisation exactly as the game does, so it now folds on
   the same key `sky.ts` uses at runtime.
-- Islands were looked up in the wiki's shorthand map with eqlposky's *numbers*, so every island fill
-  silently resolved to nothing. `Efreeti Statuette` stayed in the Efreeti cycle it never belonged
-  to; it is Island 4, essence mobs.
+- Islands were looked up in the wiki's shorthand map with eqlposky's *numbers*, so every island
+  fill silently resolved to nothing — a rule that appeared to work while doing nothing at all. It
+  was caught on `Efreeti Statuette`, which the fix then moved to Island 4 with the essence mobs
+  both sources name. *(That move was wrong, though the bug was real: the next entry has the log
+  proving it a cycle drop. What the rule is actually for is holding the cycle together, not
+  filling islands — nothing in the current data needs filling.)*
 - Once the fold worked, `Crown Of Elemental Mastery` picked up the wiki's `Various` — which sorts
   first in a comma list and became the **group heading**. `Various` and `None?` are the wiki
   declining to answer, and are now discarded at the source.
