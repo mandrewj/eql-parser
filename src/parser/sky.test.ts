@@ -71,15 +71,50 @@ test("catalogue — all 16 classes, each with quests, a giver and a reward", () 
   }
 });
 
-/** The catalogue is generated, so a correction we make against the wiki only survives because
- *  `DROPS_FROM_OVERRIDES` in the generator re-applies it. This is what notices if a re-run drops
- *  the override — the file would look freshly generated and quietly carry the wiki's answer back. */
-test("catalogue — corrections against the wiki survive regeneration", () => {
-  const gem = SKY_CLASSES.flatMap((c) => c.quests)
+const component = (name: string) =>
+  SKY_CLASSES.flatMap((c) => c.quests)
     .flatMap((q) => q.items)
-    .find((i) => i.name === "Gem of Invigoration");
+    .find((i) => i.name === name);
+
+/** The catalogue is generated, so a correction we make against both sources only survives because
+ *  `DROPS_FROM_OVERRIDES` in the generator re-applies it. This is what notices if a re-run drops
+ *  one — the file would look freshly generated and quietly carry a source's answer back. */
+test("catalogue — corrections against both sources survive regeneration", () => {
+  const gem = component("Gem of Invigoration");
   assert.ok(gem, "Gem of Invigoration is still a component");
-  assert.equal(gem.dropsFrom, null, "the Protector of Sky does not drop it — no mob listed");
+  assert.equal(gem.dropsFrom, "a greater sphinx", "not the Protector of Sky the wiki credits");
+
+  // The player's own correction: both sources also list the Efreeti cycle for this one, and the
+  // override replaces rather than unions — which is also what moves it onto Island 8.
+  const staff = component("Efreeti Great Staff");
+  assert.ok(staff, "Efreeti Great Staff is still a component");
+  assert.equal(staff.dropsFrom, "Eye of Veeshan");
+  assert.equal(staff.island, "Island 8 — Veeshan", "with the mob that drops it, not the cycle");
+});
+
+/** The reason the generator reads a second site at all. The wiki's loot table left 25 of the 113
+ *  components with no mob, which the panel could only render as "no mob listed" — a whole heading
+ *  meaning "we don't know". If this ever fails, the merge silently stopped merging. */
+test("catalogue — every component names the mob that drops it", () => {
+  const unsourced = SKY_CLASSES.flatMap((c) => c.quests)
+    .flatMap((q) => q.items)
+    .filter((i) => !i.dropsFrom)
+    .map((i) => i.name);
+  assert.deepEqual([...new Set(unsourced)], [], "components with no drop source");
+});
+
+/** A source string is a mob you can go and kill. "Various" and "None?" are the wiki declining to
+ *  answer, and they sort to the front of a comma list — straight into the group heading. */
+test("catalogue — no non-answer ever reaches a drop source", () => {
+  for (const c of SKY_CLASSES) {
+    for (const q of c.quests) {
+      for (const i of q.items) {
+        for (const mob of (i.dropsFrom ?? "").split(",").map((s) => s.trim())) {
+          assert.ok(!/^(various|none\??|unknown)$/i.test(mob), `${i.name} lists "${mob}" as a mob`);
+        }
+      }
+    }
+  }
 });
 
 /** The engine leans on this: one lookup answers "what is this", with no disambiguation. If the

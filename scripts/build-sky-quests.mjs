@@ -20,6 +20,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SOURCE = "https://eqlwiki.com/Plane_of_Sky";
+/** A second source for *where things drop*, which the wiki's loot table covers badly: it leaves
+ *  25 of the 113 components with no mob at all, and gives the Efreeti items a different arbitrary
+ *  subset of the same three cycle mobs each. This page states one `source` per item, as
+ *  `Island <n>: <mob>` joined by ` / `. Quests, runes and rewards still come from the wiki alone. */
+const DROPS_SOURCE = "https://eqlposky.com/data.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "src", "parser", "sky-catalogue.ts");
 
@@ -31,8 +36,13 @@ const OUT = path.join(ROOT, "src", "parser", "sky-catalogue.ts");
  *  Keep this short and each entry justified: the wiki is the source of record, and every line here
  *  is a claim that it is mistaken. */
 const DROPS_FROM_OVERRIDES = {
-  // The wiki credits the Protector of Sky. It does not drop this.
-  "Gem of Invigoration": null,
+  // The wiki credits the Protector of Sky and eqlposky a greater sphinx. The sphinx matches the
+  // item's own island tag (`7-Trash`), so it wins and the Protector is dropped outright.
+  "Gem of Invigoration": { dropsFrom: "a greater sphinx" },
+  // Both sources also list the Efreeti cycle for this one; the player says it comes off the Eye
+  // and not the cycle. Replacing rather than unioning is the point — it moves the item out of
+  // the cycle group and onto Island 8, where the mob that drops it lives.
+  "Efreeti Great Staff": { dropsFrom: "Eye of Veeshan", island: "Island 8 — Veeshan" },
 };
 
 /** The island shorthand the quest tables use, spelled out. Keys are verbatim from the wiki —
@@ -48,6 +58,19 @@ const ISLANDS = {
   "7-Trash": "Island 7 — trash",
   6: "Island 6 — Bee",
   7: "Island 7 — Drake",
+};
+
+/** eqlposky numbers its islands where the wiki abbreviates them. Islands 1 and 1.5 (the entry
+ *  island and the Efreeti quest room) have no entry here on purpose: nothing is *tagged* to them,
+ *  and a source naming only those resolves to no island, which is the honest answer. */
+const POSKY_ISLANDS = {
+  "2": "Island 2 — Azarack",
+  "3": "Island 3 — Harpy",
+  "4": "Island 4 — Pegasus",
+  "5": "Island 5 — Spiroc",
+  "6": "Island 6 — Bee",
+  "7": "Island 7 — Drake",
+  "8": "Island 8 — Veeshan",
 };
 
 const CLASS_CODES = {
@@ -98,6 +121,11 @@ function cells(rowHtml) {
  *  forms to the same key anyway. */
 const tidyName = (s) => s.replace(/[`‘’ʼ]/g, "'").replace(/\s+/g, " ").trim();
 
+/** Item names for *matching between sources*, which disagree on capitalisation — the wiki writes
+ *  `Crown Of Elemental Mastery`, eqlposky `Crown of Elemental Mastery`. The same folding `sky.ts`
+ *  does at runtime for the game's own spelling, for the same reason. Never a display name. */
+const foldKey = (s) => tidyName(s).toLowerCase();
+
 /** The wiki renders an item as its own name twice (tooltip title + body) followed by its stats.
  *  Halving the doubled prefix is what recovers the plain name. */
 function undouble(text) {
@@ -125,17 +153,96 @@ async function main() {
       const c = cells(r);
       if (c.length < 2) continue;
       const from = c[1].replace(/\|\|/g, ", ").replace(/^[,\s]+|[,\s]+$/g, "");
-      if (from && from !== "None?") dropsFrom.set(undouble(c[0]), from);
+      // "None?" and "Various" are the wiki saying it does not know, not naming a mob. Kept out
+      // rather than filtered downstream: "Various" sorts first in a comma list and would become
+      // a group heading, which is the one job a mob name has here.
+      if (from && !/^(None\?|Various)$/i.test(from)) dropsFrom.set(foldKey(undouble(c[0])), from);
     }
     break;
   }
-  // …then our corrections, which must outlive a re-run. An override naming an item the page no
-  // longer lists is a stale correction, and saying so is the point: it fails rather than sitting
-  // there doing nothing.
-  for (const [item, from] of Object.entries(DROPS_FROM_OVERRIDES)) {
-    if (!dropsFrom.has(item)) throw new Error(`override for an item the wiki no longer sources: ${item}`);
-    if (from === null) dropsFrom.delete(item);
-    else dropsFrom.set(item, from);
+  // …then the second source, which is where most of the drop data actually comes from. Read by
+  // regex rather than evaluated: this is a remote script, and a build step that runs one is a
+  // supply-chain hole for a table of mob names. Their file quotes every string with `"` and
+  // escapes nothing, which the strictness below re-checks on every run.
+  const posky = await fetch(DROPS_SOURCE);
+  if (!posky.ok) throw new Error(`${DROPS_SOURCE} → HTTP ${posky.status}`);
+  const poskyText = await posky.text();
+  // Either quote style: an entry whose source contains a quoted nickname is written with single
+  // quotes instead (`source: 'Island 6: Bazzt Zzzt "Bees"'`), and a double-quote-only pattern
+  // silently skipped exactly those. Nothing in the file is backslash-escaped, which the count
+  // check below is what re-verifies.
+  const quoted = `("[^"]*"|'[^']*')`;
+  const pairRe = new RegExp(`name:\\s*${quoted}\\s*,\\s*source:\\s*${quoted}`, "g");
+  const unquote = (s) => s.slice(1, -1);
+  const poskySources = new Map();
+  for (const m of poskyText.matchAll(pairRe)) poskySources.set(foldKey(unquote(m[1])), unquote(m[2]).trim());
+  if (poskySources.size < 120) throw new Error(`${DROPS_SOURCE}: only ${poskySources.size} item sources parsed — shape changed?`);
+
+  /** `Island 7: Sister of the Spire / Island 8: Eye of Veeshan` → the mob names, in order.
+   *  A leading article is title-cased so "the Hand of Veeshan" and the wiki's "The Hand of
+   *  Veeshan" are one name rather than two spellings across neighbouring rows. */
+  const poskyMobs = (source) =>
+    source
+      // ` / ` separates islands; within one, a comma separates mobs. Exactly one entry uses the
+      // comma form ("Island 4: essence/soul mobs, Eternal Spirit") and no mob name contains one,
+      // which is what makes splitting on it safe rather than clever.
+      .split(/ \/ |,\s+/)
+      .map((s) =>
+        s
+          .replace(/^Island [\d.]+:\s*/, "")
+          .replace(/\s*"[^"]*"\s*$/, "")
+          .replace(/^the (?=[A-Z])/, "The ")
+          .trim(),
+      )
+      .filter(Boolean);
+
+  /** A collective ("bee mobs", "drake/sphinx/spirit mobs") rather than a mob's name. Worth having
+   *  when it is all we know, and pure noise beside the wiki's specific names — appending it to
+   *  "a greater sphinx, a heartsbane drake, an undine spirit" says the same thing twice, vaguely
+   *  the second time. */
+  const isCollective = (mob) => /\bmobs\b/i.test(mob);
+
+  /** …and the island, but only when every mob it names is on the same one. Several islands means
+   *  the Efreeti cycle, which is precisely the case the wiki tags with no island — so "no island"
+   *  survives as the answer rather than being overwritten by whichever number came first. */
+  const poskyIsland = (source) => {
+    const nums = [...new Set([...source.matchAll(/Island ([\d.]+)/g)].map((m) => m[1]))];
+    return nums.length === 1 ? POSKY_ISLANDS[nums[0]] ?? null : null;
+  };
+
+  // Union, wiki first: the second source **fills gaps and adds names, never removes one**. The
+  // wiki is often the more specific of the two ("Bazzzazzt, Bizazzzt, Bzzzt" against "bee mobs"),
+  // and a rule that simply preferred the newer source would throw that away.
+  const islandFromDrops = new Map();
+  for (const [item, source] of poskySources) {
+    const mobs = poskyMobs(source);
+    if (!mobs.length) continue;
+    const existing = dropsFrom.get(item);
+    const have = existing ? existing.split(",").map((s) => s.trim()) : [];
+    // `Bazzt Zzzt (Island 6 Boss)` and `Bazzt Zzzt` are one mob — the wiki's parenthetical is a
+    // note, not part of the name, so it must not make the same mob look like two.
+    const norm = (s) => s.replace(/\s*\([^)]*\)\s*$/, "").toLowerCase().replace(/^(the|a|an)\s+/, "").trim();
+    for (const mob of mobs) {
+      if (isCollective(mob) && have.length) continue;
+      if (!have.some((h) => norm(h) === norm(mob))) have.push(mob);
+    }
+    if (have.length) dropsFrom.set(item, have.join(", "));
+    const isl = poskyIsland(source);
+    if (isl) islandFromDrops.set(item, isl);
+  }
+
+  // …then our corrections, which outrank both and **replace** rather than union — the whole point
+  // of one is that a source is wrong, and a union would keep the wrong answer alongside the right.
+  // An override naming an item neither page lists is a stale correction, and saying so is the
+  // point: it fails rather than sitting there doing nothing.
+  for (const [name, o] of Object.entries(DROPS_FROM_OVERRIDES)) {
+    const item = foldKey(name);
+    if (!dropsFrom.has(item) && !poskySources.has(item)) {
+      throw new Error(`override for an item neither source lists: ${name}`);
+    }
+    if (o.dropsFrom === null) dropsFrom.delete(item);
+    else if (o.dropsFrom) dropsFrom.set(item, o.dropsFrom);
+    if (o.island) islandFromDrops.set(item, o.island);
   }
 
   // Walk headings and tables in document order: an `<h3>` names the class the next table belongs to.
@@ -171,7 +278,13 @@ async function main() {
         const name = (tagged ? tagged[1] : item).trim();
         const tag = tagged ? tagged[2].trim() : null;
         if (tag && !(tag in ISLANDS)) unknownTags.add(tag);
-        items.push({ name: tidyName(name), island: tag ? ISLANDS[tag] ?? null : null, dropsFrom: dropsFrom.get(name) ?? null });
+        const clean = tidyName(name);
+        // The wiki's own tag wins when it has one; otherwise the island implied by the mob that
+        // drops it, which is how `Efreeti Statuette` stops being an Efreeti-cycle item. An
+        // override's island beats both, since it is the one claim a person made deliberately.
+        const overrideIsland = DROPS_FROM_OVERRIDES[clean]?.island;
+        const island = overrideIsland ?? (tag ? ISLANDS[tag] ?? null : null) ?? islandFromDrops.get(foldKey(clean)) ?? null;
+        items.push({ name: clean, island, dropsFrom: dropsFrom.get(foldKey(clean)) ?? null });
       }
       // A quest awarding two items writes them as one cell joined by ", ".
       const rewards = c[5].split(/\|\|,\s*/).map(undouble).map(tidyName).filter(Boolean);

@@ -50,7 +50,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Light Woolen Mask",
             "island": "Island 3 — Harpy",
-            "dropsFrom": null
+            "dropsFrom": "Gorgalosk"
           }
         ],
         "rewards": [
@@ -65,7 +65,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Light Woolen Mantle",
             "island": "Island 4 — Pegasus",
-            "dropsFrom": null
+            "dropsFrom": "Keeper of Souls"
           }
         ],
         "rewards": [
@@ -95,7 +95,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Amulet of Woven Hair",
             "island": "Island 6 — Bee",
-            "dropsFrom": null
+            "dropsFrom": "Bazzt Zzzt"
           }
         ],
         "rewards": [
@@ -135,7 +135,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti War Spear",
             "island": null,
-            "dropsFrom": "Noble Dojorn, Overseer of Air"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -172,7 +172,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Azarack Skin",
             "island": "Island 2 — Azarack",
-            "dropsFrom": null
+            "dropsFrom": "Protector of Sky"
           }
         ],
         "rewards": [
@@ -197,7 +197,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Brass Knuckles",
             "island": null,
-            "dropsFrom": null
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -213,7 +213,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Leather Cord",
             "island": "Island 3 — Harpy",
-            "dropsFrom": null
+            "dropsFrom": "Gorgalosk"
           }
         ],
         "rewards": [
@@ -255,7 +255,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti Standard",
             "island": null,
-            "dropsFrom": "Noble Dojorn"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -315,7 +315,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Azarack Blood",
             "island": "Island 2 — Azarack",
-            "dropsFrom": null
+            "dropsFrom": "Protector of Sky"
           }
         ],
         "rewards": [
@@ -334,8 +334,8 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           },
           {
             "name": "Efreeti Great Staff",
-            "island": null,
-            "dropsFrom": "Eye of Veeshan, Noble Dojorn"
+            "island": "Island 8 — Veeshan",
+            "dropsFrom": "Eye of Veeshan"
           }
         ],
         "rewards": [
@@ -387,7 +387,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Shiny Pauldrons",
             "island": "Island 5 — Spiroc",
-            "dropsFrom": null
+            "dropsFrom": "The Spiroc Lord"
           }
         ],
         "rewards": [
@@ -402,7 +402,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Silvered Spiroc Necklace",
             "island": "Island 6 — Bee",
-            "dropsFrom": null
+            "dropsFrom": "Bazzt Zzzt"
           }
         ],
         "rewards": [
@@ -422,7 +422,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti Mace",
             "island": null,
-            "dropsFrom": "Noble Dojorn, Overseer of Air"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -442,7 +442,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti Standard",
             "island": null,
-            "dropsFrom": "Noble Dojorn"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -498,8 +498,8 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           },
           {
             "name": "Efreeti Statuette",
-            "island": null,
-            "dropsFrom": "an essence harvester, an essence tamer"
+            "island": "Island 4 — Pegasus",
+            "dropsFrom": "an essence harvester, an essence tamer, Eternal Spirit"
           }
         ],
         "rewards": [
@@ -554,7 +554,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti Scimitar",
             "island": null,
-            "dropsFrom": "Noble Dojorn, Overseer of Air"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -576,7 +576,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Finely Woven Cloth Cord",
             "island": "Island 3 — Harpy",
-            "dropsFrom": null
+            "dropsFrom": "Gorgalosk"
           }
         ],
         "rewards": [
@@ -621,7 +621,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Adamantium Earring",
             "island": "Island 6 — Bee",
-            "dropsFrom": null
+            "dropsFrom": "Bazzt Zzzt"
           }
         ],
         "rewards": [
@@ -651,12 +651,12 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Large Sky Sapphire",
             "island": "Island 8 — Veeshan",
-            "dropsFrom": null
+            "dropsFrom": "Eye of Veeshan"
           },
           {
             "name": "Efreeti Wind Staff",
             "island": null,
-            "dropsFrom": "Noble Dojorn, The Hand of Veeshan"
+            "dropsFrom": "Noble Dojorn, The Hand of Veeshan, Overseer of Air"
           }
         ],
         "rewards": [
@@ -758,7 +758,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti Magi Staff",
             "island": null,
-            "dropsFrom": "Noble Dojorn, Overseer of Air"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -773,7 +773,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Crown Of Elemental Mastery",
             "island": "Island 7 — trash",
-            "dropsFrom": null
+            "dropsFrom": "Sister of the Spire"
           },
           {
             "name": "Large Opal",
@@ -835,7 +835,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Dove Slippers",
             "island": "Island 5 — Spiroc",
-            "dropsFrom": null
+            "dropsFrom": "The Spiroc Lord"
           }
         ],
         "rewards": [
@@ -870,7 +870,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Brass Knuckles",
             "island": null,
-            "dropsFrom": null
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -907,7 +907,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Griffon's Beak",
             "island": "Island 3 — Harpy",
-            "dropsFrom": null
+            "dropsFrom": "Gorgalosk"
           }
         ],
         "rewards": [
@@ -986,8 +986,8 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           },
           {
             "name": "Efreeti Great Staff",
-            "island": null,
-            "dropsFrom": "Eye of Veeshan, Noble Dojorn"
+            "island": "Island 8 — Veeshan",
+            "dropsFrom": "Eye of Veeshan"
           }
         ],
         "rewards": [
@@ -1064,7 +1064,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti Zweihander",
             "island": null,
-            "dropsFrom": "Noble Dojorn, Overseer of Air"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -1116,7 +1116,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Spiroc Earth Totem",
             "island": "Island 5 — Spiroc",
-            "dropsFrom": null
+            "dropsFrom": "The Spiroc Lord"
           }
         ],
         "rewards": [
@@ -1151,7 +1151,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti Long Sword",
             "island": null,
-            "dropsFrom": "Noble Dojorn"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -1253,7 +1253,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Fine Wool Cloak",
             "island": "Island 6 — Bee",
-            "dropsFrom": null
+            "dropsFrom": "Bazzt Zzzt"
           }
         ],
         "rewards": [
@@ -1268,7 +1268,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Bixie Stinger",
             "island": "Island 6 — Bee",
-            "dropsFrom": null
+            "dropsFrom": "Bazzt Zzzt"
           },
           {
             "name": "Bloodsky Sapphire",
@@ -1340,7 +1340,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Rusted Pauldrons",
             "island": "Island 6 — Bee",
-            "dropsFrom": null
+            "dropsFrom": "Bazzt Zzzt"
           }
         ],
         "rewards": [
@@ -1355,7 +1355,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti War Shield",
             "island": null,
-            "dropsFrom": "Noble Dojorn, Overseer of Air"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -1375,7 +1375,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Fae Pauldrons",
             "island": "Island 8 — Veeshan",
-            "dropsFrom": null
+            "dropsFrom": "Eye of Veeshan"
           }
         ],
         "rewards": [
@@ -1395,7 +1395,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti War Axe",
             "island": null,
-            "dropsFrom": "Noble Dojorn, Overseer of Air"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -1417,7 +1417,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Leather Cord",
             "island": "Island 3 — Harpy",
-            "dropsFrom": null
+            "dropsFrom": "Gorgalosk"
           }
         ],
         "rewards": [
@@ -1462,12 +1462,12 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Corrosive Venom",
             "island": "Island 6 — Bee",
-            "dropsFrom": null
+            "dropsFrom": "Bazzt Zzzt"
           },
           {
             "name": "Efreeti War Club",
             "island": null,
-            "dropsFrom": "Noble Dojorn"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -1507,7 +1507,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti War Maul",
             "island": null,
-            "dropsFrom": "Noble Dojorn, Overseer of Air"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -1529,7 +1529,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Azure Ring",
             "island": "Island 3 — Harpy",
-            "dropsFrom": null
+            "dropsFrom": "Gorgalosk"
           }
         ],
         "rewards": [
@@ -1579,7 +1579,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti Belt",
             "island": null,
-            "dropsFrom": "Noble Dojorn, The Hand of Veeshan"
+            "dropsFrom": "Noble Dojorn, The Hand of Veeshan, Overseer of Air"
           }
         ],
         "rewards": [
@@ -1599,7 +1599,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Gem of Invigoration",
             "island": "Island 7 — trash",
-            "dropsFrom": null
+            "dropsFrom": "a greater sphinx"
           }
         ],
         "rewards": [
@@ -1619,7 +1619,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Efreeti Battle Axe",
             "island": null,
-            "dropsFrom": "Noble Dojorn, Overseer of Air"
+            "dropsFrom": "Noble Dojorn, Overseer of Air, The Hand of Veeshan"
           }
         ],
         "rewards": [
@@ -1656,7 +1656,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Woven Skull Cap",
             "island": "Island 4 — Pegasus",
-            "dropsFrom": null
+            "dropsFrom": "Keeper of Souls"
           }
         ],
         "rewards": [
@@ -1690,8 +1690,8 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           },
           {
             "name": "Efreeti Statuette",
-            "island": null,
-            "dropsFrom": "an essence harvester, an essence tamer"
+            "island": "Island 4 — Pegasus",
+            "dropsFrom": "an essence harvester, an essence tamer, Eternal Spirit"
           }
         ],
         "rewards": [
@@ -1721,7 +1721,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Large Sky Lapis",
             "island": "Island 8 — Veeshan",
-            "dropsFrom": null
+            "dropsFrom": "Eye of Veeshan"
           },
           {
             "name": "Efreeti War Staff",

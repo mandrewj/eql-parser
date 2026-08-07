@@ -1422,6 +1422,49 @@ sitting there, and a test asserts the correction is actually present in the ship
 
 Regenerating produced exactly that one line plus the date stamp — no wiki drift since 2026-08-02.
 
+## Post-v1 — A second source for where things drop  ✅
+The wiki's loot table is the weakest part of the catalogue: it left **25 of the 113 components with
+no mob at all**, so a quarter of the panel's rows sat under a "no mob listed" heading meaning *we
+don't know*. eqlposky.com's `data.js` states one source per item as `Island <n>: <mob>`. The
+generator now reads both. **Every component names a mob; the "no mob listed" heading is gone.**
+
+Every one of our 113 components is on their page — 0 unmatched either way, which is the check that
+made the merge trustworthy rather than hopeful.
+
+**Union, wiki first: the second source fills gaps and adds names, never removes one.** The wiki is
+often the *more* specific of the two (`Bazzzazzt, Bizazzzt, Bzzzt` against `"bee" mobs`), so a rule
+that preferred the newer source would have thrown that away. Collectives like
+`drake/sphinx/spirit mobs` are taken only when nothing else is known — beside three named mobs they
+repeat the same thing, vaguely.
+
+**Read by regex, never evaluated.** It is a remote script; a build step that runs one is a
+supply-chain hole for a table of mob names.
+
+**Four bugs the diff caught, each found by looking at the output rather than trusting the rule:**
+- A double-quote-only pattern silently skipped every entry written with single quotes — which is
+  how one with a nickname inside is written (`'Island 6: Bazzt Zzzt "Bees"'`). One item lost.
+- Matching on the raw name missed `Crown Of Elemental Mastery` against their `Crown of Elemental
+  Mastery`; the two sites disagree on capitalisation exactly as the game does, so it now folds on
+  the same key `sky.ts` uses at runtime.
+- Islands were looked up in the wiki's shorthand map with eqlposky's *numbers*, so every island fill
+  silently resolved to nothing. `Efreeti Statuette` stayed in the Efreeti cycle it never belonged
+  to; it is Island 4, essence mobs.
+- Once the fold worked, `Crown Of Elemental Mastery` picked up the wiki's `Various` — which sorts
+  first in a comma list and became the **group heading**. `Various` and `None?` are the wiki
+  declining to answer, and are now discarded at the source.
+
+**An island is adopted only when every mob it names is on one.** Several islands means the Efreeti
+cycle, which is precisely the case the wiki tags with no island — so the cycle survives as its own
+category instead of being overwritten by whichever number came first. Their data independently
+confirms it: `Island 1.5: Noble Dojorn / Island 4: Overseer of Air / Island 8: the Hand of Veeshan`
+is the same three mobs the panel already grouped under one heading.
+
+**Discrepancies worth naming.** Both sources list the Efreeti cycle for `Efreeti Great Staff`; the
+player says it comes off the **Eye of Veeshan** and not the cycle, so an override replaces it and
+moves it to Island 8. And eqlposky sources `Gem of Invigoration` to **a greater sphinx** — which
+contradicts the previous session's instruction to leave it with no mob listed, though it agrees
+with the item's own `7-Trash` island tag, and is the more useful answer than a blank.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

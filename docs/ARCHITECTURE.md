@@ -159,13 +159,40 @@ difficulty) and the Plane of Sky pair below.
   header row, and the script **throws** on a class heading it cannot name, an island tag it does
   not recognise or a reward it cannot parse — a wiki change fails the run rather than silently
   writing a thinner catalogue. Baked into the binary because the app is offline-first.
-  - **`DROPS_FROM_OVERRIDES` is where we disagree with the wiki**, applied after the page is read
-    so a re-run keeps the correction rather than quietly reverting to the wiki's answer. It throws
-    if an override names an item the page no longer sources — a stale correction should fail, not
-    sit there doing nothing. One entry so far: the wiki credits `Gem of Invigoration` to the
-    Protector of Sky, which does not drop it, so it is filed with no mob listed. A test in
-    `sky.test.ts` asserts the correction survived, because a regenerated file looks freshly
-    generated whether or not it did.
+  - **Drop sources come from a second site**, [`eqlposky.com/data.js`](https://eqlposky.com/), because
+    the wiki's loot table covers them badly: it left **25 of the 113 components with no mob at all**,
+    which the panel could only render as a "no mob listed" heading meaning *we don't know*. The
+    second source states one `source` per item as `Island <n>: <mob>`, joined by ` / `. Quests,
+    runes and rewards still come from the wiki alone.
+    - **Read by regex, never evaluated.** It is a remote script, and a build step that runs one is a
+      supply-chain hole for a table of mob names. Both quote styles are handled — an entry whose
+      source contains a nickname is written with single quotes (`'Island 6: Bazzt Zzzt "Bees"'`),
+      and a double-quote-only pattern silently skipped exactly those.
+    - **Union, wiki first: the second source fills gaps and adds names, never removes one.** The
+      wiki is often the more specific of the two — `Bazzzazzt, Bizazzzt, Bzzzt` against `"bee"
+      mobs` — so a rule that simply preferred the newer source would throw that away. Collectives
+      (`drake/sphinx/spirit mobs`) are taken only when nothing else is known: beside three named
+      mobs they say the same thing again, vaguely.
+    - **Names are matched on a folded key**, since the two sites disagree on capitalisation
+      (`Crown Of Elemental Mastery` against `Crown of Elemental Mastery`) — the same folding
+      `sky.ts` does for the game's own spelling, for the same reason.
+    - **An island is adopted only when every mob it names is on one.** Several islands means the
+      Efreeti cycle, which is exactly the case the wiki tags with no island — so "no island"
+      survives as the answer instead of being overwritten by whichever number came first. This is
+      what moved `Efreeti Statuette` (Island 4, essence mobs) out of the cycle it never belonged to.
+    - **`Various` and `None?` are discarded** rather than filtered downstream. They are the wiki
+      declining to answer, and `Various` sorts to the front of a comma list — straight into the
+      group heading, which is the one job a mob name has here.
+  - **`DROPS_FROM_OVERRIDES` is where we disagree with *both* sources**, applied last and
+    **replacing** rather than unioning — the point of an override is that a source is wrong, and a
+    union would keep the wrong answer beside the right one. It throws if an override names an item
+    neither page lists, so a stale correction fails instead of sitting there. Two entries: the wiki
+    credits `Gem of Invigoration` to the Protector of Sky (eqlposky names a greater sphinx, which
+    matches the item's own `7-Trash` tag), and `Efreeti Great Staff` comes off the Eye of Veeshan
+    rather than the Efreeti cycle both sources also list — which is what moves it onto Island 8.
+    Tests assert both survived, because a regenerated file looks freshly generated whether or not
+    they did, plus one that **every** component names a mob — if that fails, the merge silently
+    stopped merging.
 - **[`sky.ts`](../src/parser/sky.ts) owns the matching**, which is where the wiki and the game
   disagree: the game writes a backtick apostrophe, appends `+N` to an upgraded item and
   `(Exaltation)` to an exalted copy, and disagrees on capitalisation (`Crown Of Elemental
