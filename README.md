@@ -16,8 +16,14 @@ engaged with, so two mobs at once are two readable tables. Each card shows every
 damage, healing and damage taken, with a timeline of the exchange and a drill-down into damage
 types and individual abilities.
 
-**Pets counted properly.** The pet you summon folds into your row. A mob you or a groupmate
-*charms* gets a row of its own, with the charmer named where the log makes that knowable.
+**Pets counted as the fighters they are.** Every pet gets its own row — the one you summon (🐾) and
+a mob you or a groupmate *charms* (⛓) — with the owner named beside it. Nothing is folded into
+anybody, because a pet's damage is not yours: in one ordinary pull the pet dealt **two thirds** of
+the damage, and the old row quietly presented all of it as the owner's.
+
+A pet's rates also divide by *its* time, not the fight's. It is summoned into a fight already
+running and it dies inside one, and it is the only participant whose leaving the log actually
+shows — so its window runs from its first blow to its last. Re-summon it and it stays one row.
 
 **Your own performance over time.** A chart of your last 50 encounters — damage dealt above the
 line, damage taken below — coloured by the stance combo you were in, with level-ups, AAs and
@@ -58,7 +64,11 @@ You need [Node.js](https://nodejs.org) 20 or newer. Nothing else.
 
 **Easiest:** double-click **`start.command`** (macOS/Linux) or **`start.bat`** (Windows). The first
 run installs dependencies and builds the interface, then opens `http://localhost:8787` in your
-browser. Close the window or press `Ctrl+C` to stop.
+browser.
+
+**To stop it:** press `Ctrl+C` in that window, or click **⚙ → Stop server** in the page itself.
+The button is worth knowing about — closing the launcher's window does not always stop the parser,
+which then carries on with no terminal left to interrupt it.
 
 From a terminal instead:
 
@@ -69,8 +79,9 @@ npm run dev      # builds the UI, reads your log, serves the app
 ```
 
 On startup it looks for your logs folder in the usual place, picks the newest character log, reads
-the whole thing to reconstruct your history, and then follows it live. A large log takes a few
-seconds to catch up.
+the whole thing to reconstruct your history, and then follows it live. **The page is up straight
+away** and fills in as the log is read — a 180MB log takes about ten seconds to catch up, and you
+can watch it happen rather than waiting on a dead port.
 
 ### If it cannot find your logs
 
@@ -113,6 +124,11 @@ What is happening now, top to bottom:
 
 Click any combatant row to expand it into a damage-type split and a per-ability breakdown. Your own
 row stays open, so your numbers are always on screen.
+
+A card opens on six rows and says what it is holding back — `▸ 4 more · 13.2%`, the share of the
+mob's damage those rows account for, so you can tell four stray arrows from half a raid. Opening it
+shows everyone who fought, each with their own breakdown already expanded. Your row is always among
+the six, however far down the damage ranking you land — on a night spent healing, that matters.
 
 ### History
 
@@ -198,11 +214,18 @@ answers.
 
 - **By class** — one class at a time. Each quest shows its rune, its components and its reward,
   with a state: ○ nothing yet, ◐ partway, ◆ everything in hand, ✓ finished. Hover an item to see
-  which mob drops it.
+  which mob drops it — **every one of the 113 components names a mob**, which took reading two
+  sources against each other and correcting both from the log where they agreed and were wrong.
 - **By island** — everything outstanding, grouped by where it drops and then by the mob that drops
-  it, most-wanted first. Things you already have sort to the foot of each island. **Wind Runes lead
-  the list**, because they drop from any mob in the zone and one rune is wanted by six or seven
-  quests on average.
+  it, most-wanted first. **Wind Runes lead the list**, because they drop from any mob in the zone
+  and one rune is wanted by six or seven quests on average.
+
+  Holding something is not the same as being done with it, so an item an unfinished quest still
+  wants **stays on the list** even when it is already in your bags — it is a trip to the quest
+  giver rather than a trip to a mob, and each island counts the two apart (`7 +1 +6` is seven to
+  find, one to hand in, six finished). Only genuinely turned-in items drop to the foot. The count
+  beside a row reads *held / still wanted*, so `2/1` is two in the bag and one more turn-in
+  wanting one.
 
 The box at the top is the actionable part: what is **ready to turn in** right now — with the quest
 giver and the phrase to say — and what you have recently completed.
