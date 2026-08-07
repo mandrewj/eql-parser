@@ -18,6 +18,11 @@ export interface AppData {
   snapshot: Snapshot | null;
   logs: LogsResponse | null;
   connected: boolean;
+  /** The server was stopped **deliberately**, from this panel. An SSE drop on its own cannot say
+   *  that — a crash, a rebuild and a stop all look identical from here — so the server announces
+   *  it before going, and this latches. It never clears: a stopped server sends nothing further,
+   *  and a reload is how you find out one is running again. */
+  stopped: boolean;
   /** The Plane of Sky catalogue, fetched once. Null until it arrives, and on an older
    *  server that has no such route — the tab reports that rather than rendering nothing. */
   skyQuests: SkyClass[] | null;
@@ -25,6 +30,8 @@ export interface AppData {
   setLogDir: (dir: string) => Promise<{ ok: boolean; error?: string }>;
   fetchFight: (id: string) => Promise<Fight | null>;
   refreshLogs: () => Promise<void>;
+  /** Ask the server to exit. Resolves once it has accepted, not once it is gone. */
+  stopServer: () => Promise<{ ok: boolean; error?: string }>;
 }
 
 /** The server is a **separate long-lived process**, so the browser can be holding a snapshot from
@@ -77,6 +84,7 @@ export function useAppData(): AppData {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [logs, setLogs] = useState<LogsResponse | null>(null);
   const [connected, setConnected] = useState(false);
+  const [stopped, setStopped] = useState(false);
   const [skyQuests, setSkyQuests] = useState<SkyClass[] | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
@@ -134,6 +142,12 @@ export function useAppData(): AppData {
         });
       } else if (msg.t === "activeLogChanged") {
         void refreshLogs();
+      } else if (msg.t === "shutdown") {
+        // Close first: EventSource reconnects on its own every 2s, and against a dead port that
+        // is a retry loop for as long as the tab is open.
+        setStopped(true);
+        setConnected(false);
+        esRef.current?.close();
       }
     };
     return () => es.close();
@@ -171,5 +185,24 @@ export function useAppData(): AppData {
     return (await res.json()) as Fight;
   }, []);
 
-  return { snapshot, logs, connected, skyQuests, selectLog, setLogDir, fetchFight, refreshLogs };
+  const stopServer = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      // The content type is not decoration: the server requires it so that a cross-origin caller
+      // has to clear a preflight it will never get an answer to.
+      const res = await fetch("/api/shutdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (res.ok) return { ok: true };
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, error: data.error ?? `server said ${res.status}` };
+    } catch {
+      // The socket dropping here means it went down before answering — which is the thing we
+      // asked for, so it is a success rather than a failure.
+      return { ok: true };
+    }
+  }, []);
+
+  return { snapshot, logs, connected, stopped, skyQuests, selectLog, setLogDir, fetchFight, refreshLogs, stopServer };
 }

@@ -36,7 +36,7 @@ function currentSummary(f: Fight): FightSummary {
 }
 
 export default function App() {
-  const { snapshot, logs, connected, skyQuests, selectLog, setLogDir, fetchFight } = useAppData();
+  const { snapshot, logs, connected, stopped, skyQuests, selectLog, setLogDir, fetchFight, stopServer } = useAppData();
   const [tab, setTab] = useState<"live" | "history" | "crits" | "sky">("live");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -46,6 +46,9 @@ export default function App() {
   const [dirError, setDirError] = useState<string | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** Two clicks to stop, in the button itself rather than a `confirm()` — the second click is a
+   *  different word in the same place, so it cannot be muscle memory. Resets if you look away. */
+  const [confirmStop, setConfirmStop] = useState(false);
 
   useEffect(() => {
     if (logs?.logDir) setDirInput((prev) => (prev === "" ? logs.logDir! : prev));
@@ -199,6 +202,25 @@ export default function App() {
             </option>
           ))}
         </select>
+        {/* Stopping lives with the log settings, not in the topbar: it is an app-level action you
+            go looking for, and the topbar is read at a glance during a fight. */}
+        <button
+          className={confirmStop ? "btn danger armed" : "btn danger"}
+          onClick={() => {
+            if (!confirmStop) return setConfirmStop(true);
+            setConfirmStop(false);
+            void stopServer();
+          }}
+          onBlur={() => setConfirmStop(false)}
+          title={
+            "Stop the parser. The page stays open but goes dead — nothing is lost, since every " +
+            "figure is derived from the log and rebuilt on the next start.\n\n" +
+            "Worth having because the launcher's terminal is not always still there to Ctrl+C: " +
+            "start.command exits its shell and the process carries on without it."
+          }
+        >
+          {confirmStop ? "Really stop?" : "Stop server"}
+        </button>
         {pickerOpen && (
           <FolderPicker
             onClose={() => setPickerOpen(false)}
@@ -212,6 +234,22 @@ export default function App() {
           />
         )}
       </div>
+      )}
+
+      {/* A stop you asked for should not read like a crash. Latched, because a stopped server
+          sends nothing further — reloading is how you find out one is running again. */}
+      {stopped && (
+        <div className="stopped-banner">
+          <span className="stopped-dot">■</span>
+          {/* One element, not loose text: the banner is a flex row, and bare text nodes beside
+              the `<code>` spans become separate flex items — which laid the sentence out in the
+              wrong order entirely. */}
+          <span>
+            Server stopped. Nothing was lost — every figure is rebuilt from the log on the next
+            start. Run <code>./start.command</code> (or <code>start.bat</code>), then reload this
+            page.
+          </span>
+        </div>
       )}
 
       <nav className="tabs">

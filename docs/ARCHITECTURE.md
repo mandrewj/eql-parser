@@ -75,6 +75,24 @@ Events (SSE)**, and sends control actions (pick log, set filters) via plain HTTP
     multi-chunk backfill, a line longer than one chunk, and a character split across the seam.
 - **Switchable at runtime**: the active log is chosen by the UI; the tailer can stop and re-open on a new path without restarting the process.
 
+### Stopping it
+- **One path for every way of stopping** — Ctrl+C, a `kill`, or the button in the panel all reach
+  the same `shutdown()` in `index.ts`, which logs why, closes the server and exits. Re-entrant
+  (a second Ctrl+C during the first is ignored) and backed by a 3s **hard-exit timer**: a stop that
+  hangs is worse than no stop.
+  - Ending the SSE responses is what lets `close()` finish — they are the only connections held
+    open indefinitely. `closeAllConnections()` was tried and measured against a real browser
+    holding the page: **0.15s with it, 0.17s without**, so it was insurance against nothing and
+    came back out. The guarantee is the timer.
+  - **The server announces it before going** (`{ t: "shutdown" }` over SSE). A dropped stream alone
+    cannot distinguish a stop from a crash or a rebuild, and the panel should say *you did this*
+    rather than blink to offline and retry every 2s forever. The client latches that, closes its
+    `EventSource` so it stops reconnecting to a dead port, and shows what to run to get it back.
+  - **Why it exists at all**: the launcher's terminal is not always still there to Ctrl+C.
+    `start.command` exits its shell and the process reparents to `launchd`, after which the only
+    way to stop it is `lsof` and `kill` — which is exactly how every restart in this repo's
+    development has been done.
+
 ### Parser
 - Pure function `parseLine(raw) → CombatEvent | null`.
 - **Keyword prefilter** before regex (skip lines lacking `damage`/`slain`/`but miss`/`assume`/…).
@@ -667,6 +685,12 @@ difficulty) and the Plane of Sky pair below.
   - `GET  /api/fights` → fight summaries (history).
   - `GET  /api/fights/:id` → full combatant + ability + stance detail for one fight.
   - `GET  /api/config` / `POST /api/config` → inactivityTimeout, etc.
+  - `POST /api/shutdown` → stop the process. **Requires `Content-Type: application/json`**, which
+    is the whole guard: this server answers no CORS headers, so demanding a non-simple content type
+    forces a preflight that never comes back — without it, any page you happened to be visiting
+    could stop your parser with a no-preflight form post at localhost. `charset` is tolerated,
+    since that is what `fetch` actually sends. Tests cover the refusals as well as the acceptance:
+    a guard that returns 415 while still stopping the server would be theatre.
   - `GET  /api/browse?dir=` → directories inside `dir`, each with its `eqlog_*.txt` count, plus the
     parent and the platform's shortcuts. Omit `dir` to open wherever the app is already pointed.
     **The browser cannot do this itself**: `showDirectoryPicker()` returns an opaque handle and

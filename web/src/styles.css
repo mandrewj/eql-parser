@@ -786,6 +786,21 @@ body { margin: 0; }
 .pickpath-tail { flex: none; font-weight: 600; }
 .btn.primary { background: var(--player); border-color: var(--player); color: #08120c; font-weight: 700; }
 .btn.on { background: var(--panel2); border-color: var(--border-strong); color: var(--text); }
+/* Stopping the server. Quiet until it is armed: the first click is a question, and a control that
+   already looks alarming while it is still asking has spent its warning too early. */
+.btn.danger { color: #c98d8d; border-color: #4a3436; }
+.btn.danger:hover { background: #3a2a2c; color: var(--npc); }
+.btn.danger.armed { background: var(--npc); border-color: var(--npc); color: #14161a; font-weight: 700; }
+/* The aftermath. Full width and above the tabs, because a dead panel with no explanation reads as
+   the app having broken — the one thing a deliberate stop must not look like. */
+.stopped-banner {
+  display: flex; align-items: baseline; gap: 0.4rem;
+  margin: 0.35rem 0.5rem 0; padding: 0.4rem 0.55rem;
+  background: #2a1f21; border: 1px solid #4a3436; border-radius: 4px;
+  font-size: 0.72rem; line-height: 1.45; color: #d6bcbc;
+}
+.stopped-dot { color: var(--npc); font-size: 0.6rem; }
+.stopped-banner code { background: #0b0f16aa; border-radius: 3px; padding: 0 0.25rem; font-size: 0.7rem; }
 .pickshort { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.35rem 0.45rem 0; }
 
 .picklist { max-height: 15rem; overflow-y: auto; padding: 0.25rem; }

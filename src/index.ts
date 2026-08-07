@@ -2,7 +2,7 @@
 
 import { loadConfig, listLogs } from "./config.js";
 import { App } from "./app.js";
-import { startServer } from "./server/server.js";
+import { startServer, type ServerHandle } from "./server/server.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -31,7 +31,27 @@ async function main(): Promise<void> {
   }
 
   const app = new App(config);
-  const server = await startServer(config, app);
+  // Declared before the server so the shutdown handler can close over it — it is only ever
+  // called later, by a signal or by the stop button, long after this is assigned.
+  let server: ServerHandle;
+
+  /** One path for every way of stopping: Ctrl+C, a `kill`, or the button in the panel. */
+  let stopping = false;
+  const shutdown = async (why: string) => {
+    if (stopping) return; // a second Ctrl+C while the first is still unwinding
+    stopping = true;
+    console.log(`\nStopping (${why})…`);
+    // A stop that hangs is worse than no stop: whatever the sockets do, the process goes.
+    const hardExit = setTimeout(() => {
+      console.log("…forced.");
+      process.exit(0);
+    }, 3000);
+    hardExit.unref();
+    await server.close();
+    process.exit(0);
+  };
+
+  server = await startServer(config, app, () => void shutdown("asked from the panel"));
   app.setUpdateHandler(() => server.broadcaster.send({ t: "snapshot", ...app.snapshot() }));
 
   if (active) {
@@ -42,12 +62,8 @@ async function main(): Promise<void> {
   console.log("---------------------");
   console.log(`Open ${server.url} in your browser`);
 
-  const shutdown = async () => {
-    await server.close();
-    process.exit(0);
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => void shutdown("interrupted"));
+  process.on("SIGTERM", () => void shutdown("terminated"));
 }
 
 main().catch((err) => {

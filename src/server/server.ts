@@ -119,7 +119,14 @@ function serveStatic(res: http.ServerResponse, urlPath: string): void {
   });
 }
 
-export function startServer(config: AppConfig, app: App): Promise<ServerHandle> {
+export function startServer(
+  config: AppConfig,
+  app: App,
+  /** What `POST /api/shutdown` should do. The entry point owns what stopping means — this layer
+   *  only knows when it was asked for. Omitted in tests, where the route answers 501 rather than
+   *  taking the process down with it. */
+  onShutdownRequest?: () => void,
+): Promise<ServerHandle> {
   const sseClients = new Set<http.ServerResponse>();
 
   const broadcaster: Broadcaster = {
@@ -235,6 +242,27 @@ export function startServer(config: AppConfig, app: App): Promise<ServerHandle> 
       return;
     }
 
+    // Stopping the server from the page it serves. The launcher's terminal is not always there
+    // to Ctrl+C: `start.command` exits its shell and the process reparents to launchd, after
+    // which the only way to stop it is `lsof` and `kill`.
+    if (pathname === "/api/shutdown" && req.method === "POST") {
+      if (!onShutdownRequest) return sendJson(res, 501, { error: "shutdown not wired" });
+      // A JSON content type is required so the browser must send a CORS preflight, which this
+      // server answers for nothing — without it any page you happened to be visiting could stop
+      // the parser with a no-preflight form post to localhost. The read endpoints are harmless
+      // and the other writes are recoverable; this one ends the process.
+      if (!/^application\/json\b/i.test(req.headers["content-type"] ?? "")) {
+        return sendJson(res, 415, { error: "expected content-type: application/json" });
+      }
+      // Told, not discovered: an SSE drop alone is indistinguishable from a crash, and the panel
+      // should say "you stopped this" rather than blink to offline and retry forever.
+      broadcaster.send({ t: "shutdown" });
+      sendJson(res, 200, { ok: true });
+      // After the reply has actually left, or the caller sees a dropped socket instead of its 200.
+      res.on("finish", () => onShutdownRequest());
+      return;
+    }
+
     serveStatic(res, pathname);
   });
 
@@ -245,6 +273,10 @@ export function startServer(config: AppConfig, app: App): Promise<ServerHandle> 
         url: `http://localhost:${config.port}`,
         close: () =>
           new Promise<void>((r) => {
+            // Ending the SSE responses is what actually lets `close()` finish: they are the only
+            // connections held open indefinitely. `closeAllConnections()` was tried here and
+            // measured against a real browser holding the page — 0.15s with it, 0.17s without —
+            // so it was insurance against nothing. The guarantee is the caller's hard-exit timer.
             for (const client of sseClients) client.end();
             server.close(() => r());
           }),

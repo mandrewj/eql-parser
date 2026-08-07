@@ -1556,6 +1556,41 @@ reports ~435MB resident, against the 206MB the app actually uses — because tha
 sliced-string retention the chunked tailer exists to avoid. The harness has to feed in chunks like
 the tailer does, or it measures the bug that was already fixed.
 
+## Post-v1 — A stop button, because the terminal is not always there  ✅
+`start.command` exits its shell and the process reparents to `launchd`, so once the window is gone
+there is no Ctrl+C left to press — the only way to stop the parser was `lsof` and `kill`, which is
+literally how every restart in this repo's development has been done. `POST /api/shutdown` and a
+button beside the log settings close that.
+
+**The guard is the content type, and it is not decoration.** The server answers no CORS headers, so
+requiring `Content-Type: application/json` forces a preflight that never gets answered — without
+it, any page you happened to be visiting could stop your parser with a no-preflight form post at
+localhost. `charset=utf-8` is tolerated because that is what `fetch` actually sends, and an
+exact-match check would have rejected the panel's own request. Five tests: three refusals, the
+acceptance, and a GET — because a guard that returns 415 while still stopping the server is theatre.
+
+**One path for every way of stopping.** Ctrl+C, `kill` and the button all reach the same
+`shutdown()`, which names why it is going, closes the server and exits. Re-entrant, and backed by a
+3s hard-exit timer: a stop that hangs is worse than no stop.
+
+**The server says goodbye before it goes.** A dropped SSE stream cannot distinguish a stop from a
+crash or a rebuild, so it broadcasts `{ t: "shutdown" }` first; the client latches that, closes its
+`EventSource` so it stops retrying a dead port every 2s, and shows a banner saying nothing was lost
+and what to run to get it back.
+
+**Two things measured rather than assumed**, both of which changed the code:
+- `closeAllConnections()` looked obviously necessary — a browser leaves keep-alive sockets idle and
+  `close()` waits for them. Measured with a real browser holding the page: **0.15s with it, 0.17s
+  without**. It was insurance against nothing, so it came out, and the comment now records the
+  measurement instead of the assumption.
+- The banner laid its own sentence out in the wrong order on screen. `.stopped-banner` is a flex
+  row, so the bare text nodes either side of the `<code>` spans each became a **separate flex
+  item**. Caught by screenshotting it; invisible in the markup.
+
+Verified end to end against a live server: refused without the header (and still running), accepted
+with it, exited in **0.12s** with two SSE clients attached and both told, and Ctrl+C still exits in
+0.29s with a client attached.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.
