@@ -507,6 +507,22 @@ test("per-person DPS uses each character's own active window (late joiner)", () 
   assert.equal(enc.cards.map((c) => c.name)[0], "Feydie", "ranked by DPS: Feydie (100) first");
 });
 
+/** Payload the panel never renders is payload not worth sending ~5/sec. Pinned because an empty
+ *  array reads like a bug: someone will "fix" it back unless a test says it is the design. */
+test("an encounter card ships the tank total, not the abilities behind it", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 100 points of damage."),
+    L("01:00:02", "an orc hits Sanluen for 30 points of damage."),
+    L("01:00:03", "an orc slashes Sanluen for 20 points of damage."),
+    L("01:00:04", "You have slain an orc!"),
+  ]);
+  const self = engine.snapshot().recentEncounters[0]!.cards.find((c) => c.isSelf)!;
+  assert.equal(self.taken.total, 50, "the figures are whole…");
+  assert.equal(self.taken.hits, 2);
+  assert.deepEqual(self.taken.entries, [], "…but the per-ability list is not sent");
+  assert.ok(self.damage.entries.length > 0, "damage keeps its entries — that one has a drill-down");
+});
+
 test("cards report the engaged window their rates divide by", () => {
   const engine = feed([
     L("01:00:00", "You crush an orc for 100 points of damage."),
@@ -1180,8 +1196,8 @@ test("what killed me: the run-up is kept, broken down, and the last blow identif
   assert.equal(d.killer, "Najena");
   assert.equal(d.totalTaken, 268, "10 + 29 + 20 + 209");
   assert.equal(d.healed, 75, "healing received in the same window");
-  assert.deepEqual(d.blows[d.blows.length - 1]!.ability, "Blaze", "the last hit to land");
-  assert.equal(d.blows[d.blows.length - 1]!.amount, 209);
+  assert.equal(d.killingBlow!.ability, "Blaze", "the last hit to land");
+  assert.equal(d.killingBlow!.amount, 209);
   assert.deepEqual(
     d.byAttacker.map((a) => a.name),
     ["Najena", "a magician pet", "A magician", "Najena pet"],
@@ -1202,7 +1218,8 @@ test("what killed me: damage older than the window is not counted", () => {
   ], "Sanluen", 300);
   const d = engine.snapshot().deaths[0]!;
   assert.equal(d.totalTaken, 40, "only the blows inside the window");
-  assert.equal(d.blows.length, 1);
+  assert.equal(d.killingBlow!.amount, 40, "and the one kept is the late one, not the 500 before it");
+  assert.deepEqual(d.byAttacker, [{ name: "a rat", total: 40 }], "the rankings come off the same window");
 });
 
 test("encounter timeline: both halves share buckets, and each bucket carries its stance combo", () => {

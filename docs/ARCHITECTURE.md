@@ -452,6 +452,10 @@ difficulty) and the Plane of Sky pair below.
   resolution) and never more than **40** of them, widening instead. Leading zeros are real information —
   they are the seconds the mob was up before I engaged, the same gap the row's `time` column reports as
   a number. Dropped with the mob's other tracking in `resetNpcTracking`, so a respawn starts empty.
+- **An encounter card's `taken` ships no ability list.** Only `damage` opens a per-ability drill;
+  the tank column is a total. The breakdown behind it was 2.8KB of a 26KB card payload on a raid
+  pull, re-sent ~5/sec and never rendered. `entries: []` there means *not sent*, not *nothing
+  landed* — the totals and rates are whole, and a test pins it so nobody "fixes" the empty array.
 - **Two whole-encounter figures sit alongside those per-person rows**, both over the encounter span (the mob's first interaction → its end, which *is* the mob's own active window, so the same denominator is honest for both): `total`/`dps` — what everyone dealt to the NPC, and `npcDamage` — what it dealt back, summed over every friendly it hit by scanning `perTarget` for the mob's own attacker cells. Those cells are cleared by `resetNpcTracking` along with everything else on death, so a same-named respawn's output starts at zero too. Only the **total** is folded (via `rateStat`, not `toStat`): the header prints a rate, and each victim's card already ships that same damage broken down under `taken`, so merging the mob's abilities again would put ~1.4KB of duplicate detail in every snapshot. The header prints both; the rows below stay per-person, which is exactly why the header labels itself.
 - **The stance overview is the engine's most expensive rebuild**, and it happens on **every kill** — so
   it earns its algorithm. The merged encounter windows are sorted and disjoint and both combo logs are
@@ -557,6 +561,12 @@ difficulty) and the Plane of Sky pair below.
     209-damage nuke, a DoT tick and a damage shield all landed in the last three.
   - Verified against the raw log: the Najena death reports 723 damage taken, and a grep of every
     incoming-damage form over the same ten seconds also sums to 723.
+  - **The blow-by-blow does not ride the push.** The panel reads the *last* blow and the two
+    rankings, which the engine already derives at the moment of death — so `DeathReport` carries
+    `killingBlow` and the full array stays in the engine (`deathBlows`, trimmed with `deaths`).
+    It had been **21KB of a 25KB section**, the largest thing in the snapshot, re-sent ~5/sec for
+    one element. Kept rather than dropped because `selfBlows` is trimmed to the window: a report
+    is the only surviving record of a death's detail, and 5 × ~50 blows is ~20KB of heap.
 - **A friendly death ends nothing.** Only an NPC's death finalizes an encounter and resets its
   tracking; doing that for a player would erase the corpse's damage from every mob still being
   fought — which is precisely the run you want to keep looking at.
@@ -693,7 +703,7 @@ interface DeathReport {               // "what killed me", built at the moment o
   killer: string; tsMs: number;
   windowSec: number;                  // fixed: the log never states hit points
   totalTaken: number; healed: number; // damage in, healing in, over that window
-  blows: DeathBlow[];                 // chronological; the last is the killing blow
+  killingBlow: DeathBlow | null;      // the last hit to land; the blow-by-blow stays server-side
   byAttacker: { name: string; total: number }[];
   byAbility: { name: string; total: number; damageType: DamageType }[];
   melee: string; invocation: string;  // the stance combo I died in

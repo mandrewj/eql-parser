@@ -1516,6 +1516,46 @@ unchanged, so they kept their assertions and moved the row. One went further: *"
 turned-in within the settled block"* described an ordering that no longer has anything to order,
 and was replaced by the rule that took its place — needed above held, within the group.
 
+## Post-v1 — Efficiency audit: the push was mostly data nobody read  ✅
+Third audit, same discipline: measure first, and record the numbers so the next pass doesn't
+re-derive them. This one looked at the **client** as well, which the first two never did.
+
+**The find, and it was the largest thing in every snapshot.** A `DeathReport` shipped the full
+blow-by-blow of the ten seconds before dying — 59 blows on a bad death. The panel reads
+`blows[blows.length - 1]` and nothing else; the two rankings beside it are derived server-side at
+the moment of death. So **21KB of a 25KB section** went out ~5/sec to render one element. The
+report now carries `killingBlow`, and the array stays in the engine — kept rather than deleted
+because `selfBlows` is trimmed to the window, making a report the only surviving record of a
+death's detail, at ~20KB of heap for all five. Measured: **deaths 25,135 B → 5,241 B**.
+
+**The same shape again, smaller.** An encounter card's `taken` carried a per-ability list, but only
+`damage` opens a drill-down — the tank column is a total. 2.8KB of a 26KB card payload on a raid
+pull, never rendered. Both cuts together take a typical push from ~75KB to ~52KB.
+
+**Measured and rejected**, so the next audit can skip them:
+- Client per-render helpers, none of them memoised: `buildComboColors` **0.007ms**,
+  `rankedCombatants` **0.000ms**, `foldEncounterCards` across all encounters **0.002ms** — against
+  a **2.3ms** React render of the same tables. Memoising them would shave 0.3% of the work.
+- `buildIslands` **0.124ms**, already memoised.
+- Expanding a raid encounter (every row, every drill) renders in **2.18ms** against **1.56ms**
+  folded — 40% more for ~1% of a core at 5 pushes/sec.
+- `snapshot()` **0.076ms** idle; `JSON.stringify` **0.111ms**.
+- Trimming `damage.entries` to the four the drill shows would save another 2.8KB per raid push,
+  **not taken**: the server would have to guess what the UI renders, and `web/` imports nothing
+  from `src/`, so the two constants would drift in silence. A payload cut is only worth it when
+  the field is read *never*, not *partly*.
+
+**Regression checks against the 2026-08-06 baselines**, all holding: first response on the port
+**0.136s** (was 0.13s), peak RSS during backfill **603MB** (was 580MB — the log has grown ~5%),
+settled RSS 339MB, replay **13.4s for 1.71M events** at **128k events/sec** (was 12.6s / 1.5M /
+119k — throughput up 8%). `pairLast`, added this session, is created, written and deleted in
+lockstep with `pairFirst` and dies with its `FightState`: no leak.
+
+**One measurement trap worth recording.** A bench that feeds the engine from `readFileSync().split()`
+reports ~435MB resident, against the 206MB the app actually uses — because that is the V8
+sliced-string retention the chunked tailer exists to avoid. The harness has to feed in chunks like
+the tailer does, or it measures the bug that was already fixed.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

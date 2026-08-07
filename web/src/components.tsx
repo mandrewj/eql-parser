@@ -797,7 +797,7 @@ export function StatTabs({
  *  bone 150 · a barbed bone skeleton 106 · a dusty werebat 63" — that is an add problem, not a
  *  tanking one, and no single number says so. */
 function DeathRow({ d }: { d: DeathReport }) {
-  const last = d.blows[d.blows.length - 1];
+  const last = d.killingBlow;
   return (
     <div className="death">
       <div className="death-th">

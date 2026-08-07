@@ -391,6 +391,12 @@ const rateStat = (total: number, dur: number): MetricStat => ({
   byType: emptyByType(),
   entries: [],
 });
+/** The same figures without the per-ability breakdown. An encounter card's `taken` is read as a
+ *  tank total and nothing else — only `damage.entries` reaches a drill-down — so shipping the
+ *  ability list behind it was 2.8KB of a 26KB card payload on a raid pull, re-sent ~5/sec and
+ *  never rendered. `entries: []` here means "not sent", not "nothing landed"; the figures above it
+ *  are whole. */
+const withoutEntries = (m: MetricStat): MetricStat => ({ ...m, entries: [] });
 const newMetric = (): MetricAcc => ({
   total: 0,
   hits: 0,
@@ -518,6 +524,9 @@ export class Engine {
   private readonly selfBlows: DeathBlow[] = [];
   private readonly selfHealsIn: Array<{ tsMs: number; amount: number }> = [];
   private readonly deaths: DeathReport[] = []; // newest first, last 5
+  /** deathId → the blow-by-blow behind it, trimmed with `deaths`. Deliberately not on the wire —
+   *  see `DeathReport.killingBlow`. */
+  private readonly deathBlows = new Map<string, DeathBlow[]>();
   private deathSeq = 0;
 
   // Critical hits, self only and session-wide. Deliberately outside the encounter window every
@@ -2151,7 +2160,7 @@ export class Engine {
       windowSec: DEATH_WINDOW_SEC,
       totalTaken: blows.reduce((n, b) => n + b.amount, 0),
       healed: this.selfHealsIn.filter((h) => h.tsMs >= from && h.tsMs <= tsMs).reduce((n, h) => n + h.amount, 0),
-      blows,
+      killingBlow: blows[blows.length - 1] ?? null,
       byAttacker: rank(byAttacker).map(([name, total]) => ({ name, total })),
       byAbility: rank(byAbility).map(([name, total]) => ({
         name,
@@ -2161,7 +2170,15 @@ export class Engine {
       melee,
       invocation,
     });
+    // The blow-by-blow is kept, but off the wire. `selfBlows` is trimmed to the window, so a
+    // death report is the only surviving record of one — and nothing reads it, so it is not worth
+    // a third of every push either. 5 deaths of ~50 blows is ~20KB of heap; if a timeline view
+    // ever wants them, they are here to serve from an endpoint.
+    this.deathBlows.set(this.deaths[0]!.id, blows);
     if (this.deaths.length > 5) this.deaths.length = 5;
+    for (const id of [...this.deathBlows.keys()]) {
+      if (!this.deaths.some((d) => d.id === id)) this.deathBlows.delete(id);
+    }
   }
 
   private recordMiss(attacker: string, target: string, tsMs: number): void {
@@ -2446,7 +2463,7 @@ export class Engine {
         ...(isTwinKey(aKey) ? { ambiguous: true } : {}),
         damage: this.toStat(acc, activeDur),
         healing: rateStat(healByHealer.get(aKey) ?? 0, activeDur),
-        taken: this.toStat(takenAcc, activeDur),
+        taken: withoutEntries(this.toStat(takenAcc, activeDur)),
         activeSec: Math.round(activeDur),
         /** Where that window sits inside the encounter, so a row can say *which* end it is
          *  short at. Without it a pet that died at the halfway mark and a player who arrived

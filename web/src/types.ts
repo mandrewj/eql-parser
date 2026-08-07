@@ -126,7 +126,7 @@ export interface DeathReport {
   windowSec: number;
   totalTaken: number;
   healed: number;
-  blows: DeathBlow[]; // chronological; the last is the killing blow
+  killingBlow: DeathBlow | null; // the last hit to land; the full blow-by-blow stays server-side
   byAttacker: Array<{ name: string; total: number }>;
   byAbility: Array<{ name: string; total: number; damageType: DamageType }>;
   melee: string;

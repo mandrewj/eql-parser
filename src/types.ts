@@ -396,10 +396,15 @@ export interface DeathReport {
   id: string;
   tsMs: number;
   killer: string;
-  windowSec: number; // how far back `blows` reaches
+  windowSec: number; // how far back the window reaches
   totalTaken: number; // damage taken inside that window
   healed: number; // healing received inside it — was anyone trying?
-  blows: DeathBlow[]; // chronological; the last is the killing blow
+  /** The last hit to land before the death line. The panel shows this and the two rankings below,
+   *  which is the whole of what the blow-by-blow was ever read for — so the blow-by-blow itself
+   *  stays in the engine rather than riding every push. It was **21KB of a 25KB section**, the
+   *  largest thing in the snapshot, re-sent ~5/sec for one element. Null only if nothing landed
+   *  inside the window, which a death line alone can produce. */
+  killingBlow: DeathBlow | null;
   byAttacker: Array<{ name: string; total: number }>; // biggest first
   byAbility: Array<{ name: string; total: number; damageType: DamageType }>;
   melee: string; // the stance combo I died in
@@ -677,7 +682,10 @@ export interface EncounterCard {
   ownerGuess?: boolean;
   damage: MetricStat; // damage this character did to the NPC (per-person active window)
   healing: MetricStat; // healing this character did during their active window
-  taken: MetricStat; // damage this character took from the NPC
+  /** Damage this character took from the NPC. `entries` is deliberately **empty**: the row shows a
+   *  tank total and only `damage` ever opens a per-ability drill, so the breakdown behind this one
+   *  was payload nobody rendered. The totals and rates are whole. */
+  taken: MetricStat;
   /** The window every rate on this row divides by. For most rows it runs from first contact
    *  with the NPC to the encounter's end. **A pet's ends when the pet does** — last contact
    *  either way — because it is the one participant whose leaving the log shows; a re-summon
