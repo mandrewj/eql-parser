@@ -126,10 +126,19 @@ export interface MobGroup {
  *  farm this" about something there is no reason to farm. */
 export interface IslandNeeds {
   island: string;
+  /** Everything an unfinished quest still wants — **including what you already hold**. Holding a
+   *  component is not the same as being finished with it: the turn-in has still to happen, and a
+   *  row that disappears into "turned in" the moment it lands in your bags is telling you a job is
+   *  over when it is not. Farming and handing in are different jobs, so `state` still separates
+   *  them and the rows sort `needed` first. */
   outstanding: MobGroup[];
+  /** Only the genuinely finished: every quest that wanted it has been turned in. */
   settled: NeedRow[];
-  /** Counts for the header: rows still short, and rows already answered. */
+  /** Counts for the header, in the order the work happens: still to find, in hand but still owed,
+   *  and done with. `needCount` deliberately excludes the held ones — "still needed" has to keep
+   *  meaning "go and get this", or the headline stops being a to-do list. */
   needCount: number;
+  heldCount: number;
   settledCount: number;
 }
 
@@ -309,18 +318,23 @@ export function buildIslands(
 
   const out: IslandNeeds[] = [];
   for (const [island, list] of byIsland) {
-    const outstanding = list.filter((r) => r.state === "needed");
-    // Most-wanted first: a component two classes still need is the one worth recognising on sight.
-    outstanding.sort((a, b) => b.need - a.need || a.name.localeCompare(b.name));
-    // Held before done — one is a thing you have, the other a thing you no longer think about.
-    const settled = list
-      .filter((r) => r.state !== "needed")
-      .sort((a, b) => (a.state === b.state ? a.name.localeCompare(b.name) : a.state === "held" ? -1 : 1));
+    const outstanding = list.filter((r) => r.state !== "done");
+    outstanding.sort(
+      (a, b) =>
+        // What you must still find comes before what you already have: the group is headed by the
+        // mob that drops it, and a row you hold is not a reason to go there.
+        Number(a.state === "held") - Number(b.state === "held") ||
+        // Then most-wanted: a component two classes still need is worth recognising on sight.
+        b.need - a.need ||
+        a.name.localeCompare(b.name),
+    );
+    const settled = list.filter((r) => r.state === "done").sort((a, b) => a.name.localeCompare(b.name));
     out.push({
       island,
       outstanding: groupByMob(outstanding, island === EFREETI_CYCLE ? EFREETI_MOBS : undefined),
       settled,
-      needCount: outstanding.length,
+      needCount: outstanding.filter((r) => r.state === "needed").length,
+      heldCount: outstanding.filter((r) => r.state === "held").length,
       settledCount: settled.length,
     });
   }

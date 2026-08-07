@@ -918,7 +918,24 @@ interface MetricStat {                // every metric group has this one shape
       any one island would be a claim it contradicts. They lead the list because they are what you
       can farm while doing anything, and because a rune is wanted by **six or seven quests on
       average**: the biggest single thing to collect, not a footnote.
-    - **Rows sit under the mob that drops them**, because you kill mobs, not islands — and on a
+    - **Outstanding means "an unfinished quest still wants it", not "you are short of it".** Holding
+    a component is not being finished with it — the turn-in has still to happen — so a held row
+    stays in the list under its mob instead of dropping into the settled block. It had been landing
+    in a group headed *"have / turned in"*, which reads as done: on the real inventory **30 rows**
+    were sitting there while a quest was still asking for them. Only genuinely finished rows are
+    settled now, and that heading is plain **"turned in"**.
+    - **Farming and handing in are different jobs**, so the two are still told apart rather than
+      merged. `state` keeps its three values; within each mob group `needed` sorts above `held`,
+      because the heading is the mob that drops it and a row in your bags is no reason to go there.
+      A held row is dimmed a little and keeps its green ✓.
+    - **Counted apart, in the order the work happens**: `needCount` (still to find) `+heldCount`
+      (in hand, still owed — amber, the same "qualifies the number beside it" job `--partial` does
+      in the encounter table) `+settledCount` (done — green). `needCount` deliberately excludes the
+      held rows, or the headline stops being a to-do list.
+    - **The count column reads `held/need`** for anything still wanted. `×2` alone answered "how
+      many are in my bags", which is the wrong question once the row is in the needs group: `2/1`
+      says you hold two and one more turn-in wants one.
+  - **Rows sit under the mob that drops them**, because you kill mobs, not islands — and on a
       real island one boss owes you nearly everything (The Spiroc Lord holds 13 of Island 5's 16,
       Sister of the Spire 15 of Island 7's 16). The wiki lists several mobs per item in no fixed
       order, so grouping on the whole string fragments one boss across several headings: the

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { time } from "./format";
+import { plural, time } from "./format";
 import {
   buildIslands,
   completedQuestNames,
@@ -62,23 +62,28 @@ function NeedRowLine({ r, where }: { r: NeedRow; where?: string | null }) {
       className={`skyrow need-${r.state}`}
       title={
         (r.dropsFrom ? `Drops from ${r.dropsFrom}\n` : "") +
-        r.wants.map((w) => `${w.done ? "✓ " : ""}${w.quest}`).join("\n")
+        (r.state === "done"
+          ? `Every quest that wanted it is finished.\n`
+          : `You hold ${r.held}; ${plural(r.need, "unfinished quest")} still ${r.need === 1 ? "wants" : "want"} one` +
+            (r.held >= r.need ? " — enough in hand, so this is a turn-in rather than a hunt.\n" : ".\n")) +
+        r.wants.map((w) => `${w.done ? "✓ " : "• "}${w.quest}`).join("\n")
       }
     >
       <span className="skymark">{mark}</span>
       <span className="skyname">{r.name}</span>
       {r.held > 0 && where && <span className="skywhere">{where}</span>}
       <span className="skywants">{codes}</span>
+      {/* Held against still-wanted, for every row an unfinished quest wants. `×2` alone answered
+          "how many are in my bags", which is the wrong question once the row is in the needs
+          group — `2/1` says you have two and one more turn-in wants one. */}
       <span className="skycount">
         {r.state === "done"
           ? "turned in"
-          : r.state === "held"
-            ? `×${r.held}`
-            : r.held > 0
-              ? `${r.held}/${r.need}`
-              : r.need > 1
-                ? `×${r.need}`
-                : ""}
+          : r.held > 0
+            ? `${r.held}/${r.need}`
+            : r.need > 1
+              ? `×${r.need}`
+              : ""}
       </span>
     </div>
   );
@@ -96,7 +101,11 @@ function IslandView({
   where: Map<string, string | null>;
 }) {
   const islands = useMemo(() => buildIslands(catalogue, held, completed), [catalogue, held, completed]);
+  // Counted apart on purpose. "Still needed" has to keep meaning "go and get this", or the
+  // headline stops being a to-do list — what you already hold is a trip to the quest giver, not
+  // a trip to a mob, and lumping the two together hides both numbers.
   const total = islands.reduce((n, i) => n + i.needCount, 0);
+  const owed = islands.reduce((n, i) => n + i.heldCount, 0);
   const places = islands.filter((i) => i.needCount > 0).length;
 
   return (
@@ -104,16 +113,37 @@ function IslandView({
       <div className="skyneedtotal">
         {total > 0
           ? `${total} components still needed, across ${places} locations`
-          : "Nothing outstanding — every component is either held or already turned in."}
+          : owed > 0
+            ? "Nothing left to farm — what remains is already in your bags."
+            : "Nothing outstanding — every component is either held or already turned in."}
+        {owed > 0 && (
+          <span className="skyowed" title="Already in your bags, but an unfinished quest still wants them — these are turn-ins, not hunts.">
+            {" · "}
+            {owed} more held, waiting to be turned in
+          </span>
+        )}
       </div>
       <div className="skyislands">
         {islands.map((isl) => (
           <div className="skyisland" key={isl.island}>
             <div className="section-title">
               {isl.island}
+              {/* Three numbers, in the order the work happens: still to find, in hand but still
+                  owed, finished with. */}
               <span className="skyclsdone">
                 {isl.needCount}
-                {isl.settledCount > 0 && <span className="skyisldone"> +{isl.settledCount}</span>}
+                {isl.heldCount > 0 && (
+                  <span className="skyislheld" title="Held already — an unfinished quest still wants them, so they are turn-ins rather than hunts">
+                    {" "}
+                    +{isl.heldCount}
+                  </span>
+                )}
+                {isl.settledCount > 0 && (
+                  <span className="skyisldone" title="Every quest that wanted these is finished">
+                    {" "}
+                    +{isl.settledCount}
+                  </span>
+                )}
               </span>
             </div>
             {/* Under the mob that drops it, not a flat list: you kill mobs, not islands, and on a
@@ -132,7 +162,8 @@ function IslandView({
                 rows do not raise. */}
             {isl.settled.length > 0 && (
               <div className="skysettled">
-                <div className="skymobname">have / turned in</div>
+                {/* Only the finished now — anything still wanted sits above, under its mob. */}
+                <div className="skymobname">turned in</div>
                 {isl.settled.map((r) => (
                   <NeedRowLine key={r.name} r={r} where={where.get(r.name) ?? null} />
                 ))}

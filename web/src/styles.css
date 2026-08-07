@@ -757,6 +757,14 @@ body { margin: 0; }
 .skyrow.need-done .skycount { color: var(--muted); font-size: 0.66rem; }
 /* The island header's second figure: how many of its rows are already answered. */
 .skyisldone { color: var(--player); }
+/* Held but still owed. Amber, the same "qualifies the number beside it" job `--partial` does in
+   the encounter table — it must not read as done (green) nor as outstanding (plain), because it
+   is neither: the item is found, the errand is not run. */
+.skyislheld { color: var(--partial); }
+.skyowed { color: var(--partial); }
+/* In the needs group a held row is a turn-in, not a hunt. Dimmed just enough to sink below the
+   rows above it while staying plainly part of the list — it is still work you owe. */
+.skymob .skyrow.need-held { opacity: 0.82; }
 
 /* --- Logs-folder picker ------------------------------------------------------
    Sits inside the log bar rather than floating over the app: it is a setting, not an alert,

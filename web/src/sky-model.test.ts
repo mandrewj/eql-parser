@@ -123,13 +123,19 @@ test("islands — a finished quest's component stays, marked done and sorted bel
   assert.equal(done.settled[0]!.need, 0);
 });
 
-test("islands — holding enough moves a row to settled without calling it done", () => {
+/** Holding it is not being finished with it: the turn-in has still to happen, so the row stays in
+ *  the outstanding list. It is counted apart from the rows you must still find, because those are
+ *  a trip to a mob and this is a trip to the quest giver. */
+test("islands — holding enough keeps the row outstanding, counted apart", () => {
   const cat = [cls("WAR", [quest()])];
   const isl = islandOf(buildIslands(cat, holding({ "Azure Ring": 1 })), HARPY);
-  assert.equal(isl.needCount, 0);
-  assert.equal(isl.settled[0]!.state, "held");
-  assert.equal(isl.settled[0]!.held, 1);
-  assert.equal(isl.settled[0]!.need, 1);
+  assert.equal(isl.settled.length, 0, "nothing is turned in yet");
+  const row = isl.outstanding[0]!.rows[0]!;
+  assert.equal(row.state, "held");
+  assert.equal(row.held, 1);
+  assert.equal(row.need, 1);
+  assert.equal(isl.needCount, 0, "nothing left to farm…");
+  assert.equal(isl.heldCount, 1, "…but one still to hand in");
 });
 
 /** A turn-in consumes the item, so "do I have one" is the wrong test when two classes want it —
@@ -147,8 +153,10 @@ test("islands — an item wanted by two quests needs two, and one in hand is not
   assert.equal(row.held, 1);
   assert.deepEqual(row.wants.map((w) => w.code), ["BST", "SHM"]);
 
-  // Two in hand settles both.
-  assert.equal(islandOf(buildIslands(cat, holding({ "Leather Cord": 2 })), HARPY).settled[0]!.state, "held");
+  // Two in hand covers both — still outstanding, because neither has been handed in.
+  const both = islandOf(buildIslands(cat, holding({ "Leather Cord": 2 })), HARPY);
+  assert.equal(both.outstanding[0]!.rows[0]!.state, "held");
+  assert.equal(both.settled.length, 0);
 });
 
 /** Finishing one of the two quests reduces what the item is *for*, so one copy now suffices —
@@ -159,10 +167,14 @@ test("islands — a finished quest stops asking for its share of a shared compon
     cls("SHM", [quest({ quest: "SHM test", items: [item("Leather Cord")], rewards: ["B"] })]),
   ];
   const isl = islandOf(buildIslands(cat, holding({ "Leather Cord": 1, A: 1 })), HARPY);
-  const row = isl.settled[0]!;
+  // One turned in, one still wanting a copy — the row stays on the list rather than dropping into
+  // "turned in", which would say the job was over while a quest was still asking.
+  const row = isl.outstanding[0]!.rows[0]!;
   assert.equal(row.need, 1); // only the Shaman quest still wants one
   assert.equal(row.state, "held");
+  assert.equal(row.held, 1);
   assert.deepEqual(row.wants.map((w) => w.done), [true, false]);
+  assert.equal(isl.settled.length, 0);
 });
 
 /** Runes are farmed like everything else, so they are rows — in a group of their own, because
@@ -236,7 +248,7 @@ test("islands — within an island the most-wanted component sorts first", () =>
   );
 });
 
-test("islands — held sorts above turned-in within the settled block", () => {
+test("islands — only the finished reach the settled block", () => {
   const cat = [
     cls("WAR", [
       quest({ quest: "a", items: [item("StillHave")], rewards: ["ra"] }),
@@ -244,13 +256,29 @@ test("islands — held sorts above turned-in within the settled block", () => {
     ]),
   ];
   const isl = islandOf(buildIslands(cat, holding({ StillHave: 1, rb: 1 })), HARPY);
+  assert.deepEqual(isl.settled.map((r) => [r.name, r.state]), [["SpentIt", "done"]]);
+  assert.deepEqual(isl.outstanding.flatMap((g) => g.rows).map((r) => [r.name, r.state]), [["StillHave", "held"]]);
+});
+
+/** Within the group, what you must still find comes before what you already hold — the heading is
+ *  the mob that drops them, and a row in your bags is not a reason to go there. */
+test("islands — rows to farm sort above rows merely waiting on a turn-in", () => {
+  const cat = [
+    cls("WAR", [
+      quest({ quest: "a", items: [item("HaveIt")], rewards: ["ra"] }),
+      quest({ quest: "b", items: [item("NeedIt")], rewards: ["rb"] }),
+    ]),
+  ];
+  const isl = islandOf(buildIslands(cat, holding({ HaveIt: 1 })), HARPY);
   assert.deepEqual(
-    isl.settled.map((r) => [r.name, r.state]),
+    isl.outstanding.flatMap((g) => g.rows).map((r) => [r.name, r.state]),
     [
-      ["StillHave", "held"],
-      ["SpentIt", "done"],
+      ["NeedIt", "needed"],
+      ["HaveIt", "held"],
     ],
   );
+  assert.equal(isl.needCount, 1);
+  assert.equal(isl.heldCount, 1);
 });
 
 /** Island 7 contributes both a named-mob group and a trash group, and they must stay adjacent

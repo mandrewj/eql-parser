@@ -1486,6 +1486,36 @@ nothing to justify it. **`island: null` is the load-bearing half**: the override
 become "is the key present" rather than "is the value truthy", or "belongs to no island" fell
 through to the island the second source infers from the mob, and the row left the cycle again.
 
+## Post-v1 — Holding it is not being finished with it  ✅
+A component you hold was filed under *"have / turned in"* at the foot of its island — the same
+group as things you had already handed over, struck through and done with. But an unfinished quest
+was still asking for it. On the real inventory **30 rows** were sitting in that group while a quest
+still wanted them: `Jester's Mask` (two quests, one turned in, one in the bank), `Efreeti Mace`,
+most of the Wind Runes.
+
+Outstanding now means **"an unfinished quest still wants it"** rather than "you are short of it".
+Only genuinely finished rows are settled, and that heading is plain **"turned in"**.
+
+**Farming and handing in are different jobs, so the two are still told apart** rather than merged
+into one undifferentiated list. `state` keeps its three values; within each mob group `needed`
+sorts above `held`, because the heading is the mob that drops it and a row already in your bags is
+no reason to go there. The header counts them separately, in the order the work happens —
+`7 +1 +6` is seven to find, one to hand in, six done — with the middle figure amber, doing the same
+"qualifies the number beside it" job `--partial` does in the encounter table. `needCount` excludes
+the held rows deliberately: "still needed" has to keep meaning *go and get this*, or the headline
+stops being a to-do list.
+
+**The count column now reads `held/need`.** `×2` answered "how many are in my bags", which is the
+wrong question once the row is in the needs group — `2/1` says you hold two and one more turn-in
+wants one.
+
+Four tests changed, and they are the interesting part: each asserted that holding enough moved a
+row to `settled`, which is precisely the behaviour being removed. Their real content was the
+arithmetic — `need` counting only unfinished quests, `wants` marking which are done — and that is
+unchanged, so they kept their assertions and moved the row. One went further: *"held sorts above
+turned-in within the settled block"* described an ordering that no longer has anything to order,
+and was replaced by the rule that took its place — needed above held, within the group.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.
