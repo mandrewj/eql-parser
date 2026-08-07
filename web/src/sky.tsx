@@ -108,9 +108,9 @@ function IslandView({
       </div>
       <div className="skyislands">
         {islands.map((isl) => (
-          <div className="skyisland" key={isl.island ?? "none"}>
+          <div className="skyisland" key={isl.island}>
             <div className="section-title">
-              {isl.island ?? "No island listed"}
+              {isl.island}
               <span className="skyclsdone">
                 {isl.needCount}
                 {isl.settledCount > 0 && <span className="skyisldone"> +{isl.settledCount}</span>}

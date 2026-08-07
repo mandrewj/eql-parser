@@ -159,6 +159,13 @@ difficulty) and the Plane of Sky pair below.
   header row, and the script **throws** on a class heading it cannot name, an island tag it does
   not recognise or a reward it cannot parse — a wiki change fails the run rather than silently
   writing a thinner catalogue. Baked into the binary because the app is offline-first.
+  - **`DROPS_FROM_OVERRIDES` is where we disagree with the wiki**, applied after the page is read
+    so a re-run keeps the correction rather than quietly reverting to the wiki's answer. It throws
+    if an override names an item the page no longer sources — a stale correction should fail, not
+    sit there doing nothing. One entry so far: the wiki credits `Gem of Invigoration` to the
+    Protector of Sky, which does not drop it, so it is filed with no mob listed. A test in
+    `sky.test.ts` asserts the correction survived, because a regenerated file looks freshly
+    generated whether or not it did.
 - **[`sky.ts`](../src/parser/sky.ts) owns the matching**, which is where the wiki and the game
   disagree: the game writes a backtick apostrophe, appends `+N` to an upgraded item and
   `(Exaltation)` to an exalted copy, and disagrees on capitalisation (`Crown Of Elemental
@@ -875,6 +882,16 @@ interface MetricStat {                // every metric group has this one shape
       taken as the primary source, with a trailing parenthetical dropped so `Bazzt Zzzt (Island 6
       Boss)` files with `Bazzt Zzzt`; the full list stays in the tooltip. Mobs are ordered by how
       much they owe you, and the unsourced group sorts last.
+    - **The Efreeti cycle is one heading, not one per mob** (`EFREETI_MOBS` — `Dojorn / Overseer /
+      Hand`). First-named grouping is the right rule on an island, where the mobs are a choice; the
+      cycle is not a choice, and the wiki's per-item source lists are overlapping subsets of the
+      same three names, so the rule split one thing you do into four headings. Rows the wiki
+      sources elsewhere or not at all (`Efreeti Statuette`, `Brass Knuckles`) sit under it too —
+      the category is a place, and each row's own tooltip still names its sources.
+    - **`EFREETI_CYCLE` replaces "No island listed".** An untagged item is not a gap in the wiki's
+      data: those items are not *on* an island. The old label described the table it came from, the
+      new one describes where you go. It still sorts last, and `IslandNeeds.island` is now a plain
+      `string` — the null was only ever standing in for this name.
   - **State is derived from what is held, in four steps**: `done` (every reward held — *every*,
     since Beastlord's Test of Claw awards a weapon per hand), `ready` (all components, nothing to
     farm), `partial`, `open`. Carried by a coloured left border and a glyph, so a class's shape is

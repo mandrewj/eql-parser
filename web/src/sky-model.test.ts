@@ -10,16 +10,18 @@ import {
   readyQuests,
   recentCompletions,
   RECENT_COMPLETIONS,
+  EFREETI_CYCLE,
+  EFREETI_MOBS,
   RUNE_GROUP,
   RUNE_SOURCE,
   type NeedRow,
 } from "./sky-model.js";
 import type { SkyClass, SkyQuest } from "./types.js";
 
-const item = (name: string, island: string | null = "Island 3 — Harpy") => ({
+const item = (name: string, island: string | null = "Island 3 — Harpy", dropsFrom: string | null = null) => ({
   name,
   island,
-  dropsFrom: null,
+  dropsFrom,
 });
 
 const quest = (over: Partial<SkyQuest> = {}): SkyQuest => ({
@@ -186,7 +188,7 @@ test("islands — one rune wanted by several quests needs one copy each", () => 
   assert.equal(row.state, "needed");
 });
 
-test("islands — islands come out in visiting order, unplaced last", () => {
+test("islands — islands come out in visiting order, the Efreeti cycle last", () => {
   const cat = [
     cls("WAR", [
       quest({ quest: "a", items: [item("Late", "Island 8 — Veeshan")], rewards: ["ra"] }),
@@ -194,9 +196,32 @@ test("islands — islands come out in visiting order, unplaced last", () => {
       quest({ quest: "c", items: [item("Unplaced", null)], rewards: ["rc"] }),
     ]),
   ];
+  // An untagged item is not missing an island — it is not on one. It files under the cycle it
+  // actually drops from, which still sorts last because that is where you go last.
   assert.deepEqual(
     buildIslands(cat, holding({})).map((i) => i.island),
-    [RUNE_GROUP, "Island 2 — Azarack", "Island 8 — Veeshan", null],
+    [RUNE_GROUP, "Island 2 — Azarack", "Island 8 — Veeshan", EFREETI_CYCLE],
+  );
+});
+
+test("islands — the whole Efreeti cycle sits under one heading, whatever the wiki names", () => {
+  // The wiki gives nearly every Efreeti item a different subset of the same three mobs. Grouped
+  // by first-named they became four headings for one thing you do.
+  const cat = [
+    cls("WAR", [
+      quest({ quest: "a", items: [item("Efreeti War Horn", null, "Noble Dojorn, Overseer of Air, The Hand of Veeshan")], rewards: ["ra"] }),
+      quest({ quest: "b", items: [item("Efreeti Standard", null, "Noble Dojorn")], rewards: ["rb"] }),
+      quest({ quest: "c", items: [item("Efreeti Great Staff", null, "Eye of Veeshan, Noble Dojorn")], rewards: ["rc"] }),
+      quest({ quest: "d", items: [item("Brass Knuckles", null, null)], rewards: ["rd"] }),
+    ]),
+  ];
+  const cycle = islandOf(buildIslands(cat, holding({})), EFREETI_CYCLE);
+  assert.equal(cycle.outstanding.length, 1, "one group, not one per source list");
+  assert.equal(cycle.outstanding[0]!.mob, EFREETI_MOBS);
+  assert.deepEqual(
+    cycle.outstanding[0]!.rows.map((r) => r.name).sort(),
+    ["Brass Knuckles", "Efreeti Great Staff", "Efreeti Standard", "Efreeti War Horn"],
+    "including the ones the wiki sources elsewhere or not at all — their tooltips still say so",
   );
 });
 
@@ -252,7 +277,7 @@ test("primary mob — the first named, with a trailing parenthetical dropped", (
  *  alone spread across eight variants of "Noble Dojorn, …". */
 test("group by mob — variants of one mob's list collapse to one heading", () => {
   const mk = (name: string, from: string): NeedRow => ({
-    name, island: null, dropsFrom: from, wants: [], need: 1, held: 0, state: "needed",
+    name, island: "Island 3 — Harpy", dropsFrom: from, wants: [], need: 1, held: 0, state: "needed",
   });
   const rows = [
     mk("a", "Noble Dojorn, Overseer of Air"),
@@ -267,7 +292,7 @@ test("group by mob — variants of one mob's list collapse to one heading", () =
 
 test("group by mob — biggest debt first, and the unsourced group always last", () => {
   const row = (name: string, from: string | null): NeedRow => ({
-    name, island: null, dropsFrom: from, wants: [], need: 1, held: 0, state: "needed",
+    name, island: "Island 3 — Harpy", dropsFrom: from, wants: [], need: 1, held: 0, state: "needed",
   });
   const g = groupByMob([row("a", null), row("b", "Small Fry"), row("c", "Big Boss"), row("d", "Big Boss")]);
   assert.deepEqual(

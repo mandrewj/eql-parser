@@ -23,6 +23,18 @@ const SOURCE = "https://eqlwiki.com/Plane_of_Sky";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "src", "parser", "sky-catalogue.ts");
 
+/** Where the wiki's loot table is wrong, and we know better from playing. Applied after the page
+ *  is read, so a re-run keeps the correction instead of quietly reverting to the wiki's answer.
+ *  `null` means "no mob listed" — the panel groups those rows under a heading of their own rather
+ *  than naming a mob that does not drop the item.
+ *
+ *  Keep this short and each entry justified: the wiki is the source of record, and every line here
+ *  is a claim that it is mistaken. */
+const DROPS_FROM_OVERRIDES = {
+  // The wiki credits the Protector of Sky. It does not drop this.
+  "Gem of Invigoration": null,
+};
+
 /** The island shorthand the quest tables use, spelled out. Keys are verbatim from the wiki —
  *  a few rows carry a bare island number, and Magician's Test of Displacement cites `7-Trash`. */
 const ISLANDS = {
@@ -116,6 +128,14 @@ async function main() {
       if (from && from !== "None?") dropsFrom.set(undouble(c[0]), from);
     }
     break;
+  }
+  // …then our corrections, which must outlive a re-run. An override naming an item the page no
+  // longer lists is a stale correction, and saying so is the point: it fails rather than sitting
+  // there doing nothing.
+  for (const [item, from] of Object.entries(DROPS_FROM_OVERRIDES)) {
+    if (!dropsFrom.has(item)) throw new Error(`override for an item the wiki no longer sources: ${item}`);
+    if (from === null) dropsFrom.delete(item);
+    else dropsFrom.set(item, from);
   }
 
   // Walk headings and tables in document order: an `<h3>` names the class the next table belongs to.

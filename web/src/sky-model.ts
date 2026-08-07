@@ -21,6 +21,19 @@ export const RUNE_SOURCE = "any mob in the Plane of Sky";
  *  anything else. */
 export const RUNE_GROUP = "Wind Runes";
 
+/** The wiki tags the Efreeti items with no island, which is not a gap in the data — they are not
+ *  *on* an island. They drop from the Efreeti cycle, so the panel files them under its name
+ *  rather than under the absence of one: "No island listed" described the wiki's table, and this
+ *  describes where you go. Sorted last, as the unlabelled group already was. */
+export const EFREETI_CYCLE = "Efreeti Cycle";
+
+/** One heading for the whole cycle, rather than one per mob. The wiki names a different subset of
+ *  the three for nearly every item — "Noble Dojorn", "Noble Dojorn, Overseer of Air", "The Hand of
+ *  Veeshan, Noble Dojorn, Overseer of Air" — which split the cycle into headings that were really
+ *  one thing. You run the cycle; you do not pick which of the three to kill. Each row's full source
+ *  list stays in its tooltip, so nothing is hidden by the shared heading. */
+export const EFREETI_MOBS = "Dojorn / Overseer / Hand";
+
 export interface QuestProgress {
   state: QuestState;
   /** Everything the turn-in wants, held / total — **including the rune**. */
@@ -65,7 +78,8 @@ export type NeedState =
 /** One component of an island, and who wants it. */
 export interface NeedRow {
   name: string;
-  island: string | null;
+  /** Never null: an item the wiki left untagged is filed under `EFREETI_CYCLE`. */
+  island: string;
   dropsFrom: string | null;
   /** Every quest wanting it, finished or not — one entry per quest. Fourteen components are
    *  wanted by two different classes, and a turn-in consumes the item, so one in the bag does
@@ -80,8 +94,8 @@ export interface NeedRow {
 /** Islands in the order you visit them. The label carries the number, so sorting on it is
  *  enough — except that Island 7 contributes both a named-mob group and a trash group, which
  *  the secondary sort on the label keeps adjacent and in a stable order. */
-export function islandOrder(label: string | null): [number, string] {
-  if (label === null) return [99, ""]; // no island listed — last
+export function islandOrder(label: string): [number, string] {
+  if (label === EFREETI_CYCLE) return [99, label]; // not on an island at all — last
   if (label === RUNE_GROUP) return [0, label]; // farmable anywhere, so it leads
   const n = /^Island (\d+)/.exec(label);
   return [n ? Number(n[1]) : 98, label];
@@ -111,7 +125,7 @@ export interface MobGroup {
  *  The settled ones are reassurance, and grouping *them* by mob would be answering "where would I
  *  farm this" about something there is no reason to farm. */
 export interface IslandNeeds {
-  island: string | null;
+  island: string;
   outstanding: MobGroup[];
   settled: NeedRow[];
   /** Counts for the header: rows still short, and rows already answered. */
@@ -121,7 +135,10 @@ export interface IslandNeeds {
 
 /** Group one island's rows by their primary mob. Mobs are ordered by how much they owe you,
  *  since that is the order you would kill them in; the unsourced group always sorts last. */
-export function groupByMob(rows: NeedRow[]): MobGroup[] {
+export function groupByMob(rows: NeedRow[], singleGroup?: string): MobGroup[] {
+  // One heading for the lot, when the caller knows the mobs are not a choice you make — the
+  // Efreeti cycle, where the wiki's per-item source lists are subsets of the same three mobs.
+  if (singleGroup) return rows.length ? [{ mob: singleGroup, rows }] : [];
   const byMob = new Map<string | null, NeedRow[]>();
   for (const r of rows) {
     const mob = primaryMob(r.dropsFrom);
@@ -267,7 +284,8 @@ export function buildIslands(
       for (const it of parts) {
         const row = rows.get(it.name) ?? {
           name: it.name,
-          island: it.island,
+          // An untagged item is an Efreeti-cycle item; the panel has a name for that place.
+          island: it.island ?? EFREETI_CYCLE,
           dropsFrom: it.dropsFrom,
           wants: [],
           need: 0,
@@ -280,7 +298,7 @@ export function buildIslands(
     }
   }
 
-  const byIsland = new Map<string | null, NeedRow[]>();
+  const byIsland = new Map<string, NeedRow[]>();
   for (const r of rows.values()) {
     r.need = r.wants.filter((w) => !w.done).length;
     r.state = r.need === 0 ? "done" : r.held >= r.need ? "held" : "needed";
@@ -300,7 +318,7 @@ export function buildIslands(
       .sort((a, b) => (a.state === b.state ? a.name.localeCompare(b.name) : a.state === "held" ? -1 : 1));
     out.push({
       island,
-      outstanding: groupByMob(outstanding),
+      outstanding: groupByMob(outstanding, island === EFREETI_CYCLE ? EFREETI_MOBS : undefined),
       settled,
       needCount: outstanding.length,
       settledCount: settled.length,

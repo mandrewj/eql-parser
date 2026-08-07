@@ -1,5 +1,5 @@
 // Plane of Sky class quests — generated from https://eqlwiki.com/Plane_of_Sky
-// by scripts/build-sky-quests.mjs on 2026-08-02. Do not edit by hand.
+// by scripts/build-sky-quests.mjs on 2026-08-07. Do not edit by hand.
 //
 // 16 classes, 95 quests, 127 required-item slots. Names are the wiki's, with
 // its mixed apostrophes settled on the straight quote so the panel does not show two spellings
@@ -1599,7 +1599,7 @@ export const SKY_CLASSES: readonly SkyClass[] = [
           {
             "name": "Gem of Invigoration",
             "island": "Island 7 — trash",
-            "dropsFrom": "Protector of Sky"
+            "dropsFrom": null
           }
         ],
         "rewards": [

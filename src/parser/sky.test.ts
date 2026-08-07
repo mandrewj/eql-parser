@@ -71,6 +71,17 @@ test("catalogue — all 16 classes, each with quests, a giver and a reward", () 
   }
 });
 
+/** The catalogue is generated, so a correction we make against the wiki only survives because
+ *  `DROPS_FROM_OVERRIDES` in the generator re-applies it. This is what notices if a re-run drops
+ *  the override — the file would look freshly generated and quietly carry the wiki's answer back. */
+test("catalogue — corrections against the wiki survive regeneration", () => {
+  const gem = SKY_CLASSES.flatMap((c) => c.quests)
+    .flatMap((q) => q.items)
+    .find((i) => i.name === "Gem of Invigoration");
+  assert.ok(gem, "Gem of Invigoration is still a component");
+  assert.equal(gem.dropsFrom, null, "the Protector of Sky does not drop it — no mob listed");
+});
+
 /** The engine leans on this: one lookup answers "what is this", with no disambiguation. If the
  *  wiki ever names a reward the same as some other quest's component, this fails rather than
  *  letting one role silently shadow the other. */

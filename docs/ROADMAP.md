@@ -1397,6 +1397,31 @@ died at the halfway mark and a player who arrived at the halfway mark are otherw
 absence is not something the log states: a groupmate who stops swinging is still there, and
 guessing otherwise would move every rate in the app on no evidence.
 
+## Post-v1 — The Efreeti cycle is a place, not a missing island  ✅
+Three corrections to the Sky tracker, all of them the panel describing the wiki's table instead of
+the zone:
+
+**"No island listed" → "Efreeti Cycle".** An untagged item is not a gap in the data — those items
+are not *on* an island. The old label named the absence of a wiki tag; the new one names where you
+go. It still sorts last, and `IslandNeeds.island` drops to a plain `string`: the null was only ever
+standing in for this name.
+
+**One heading for the cycle** (`Dojorn / Overseer / Hand`) instead of one per mob. Grouping by
+first-named source is right on an island, where which boss to kill is a choice — but the cycle is
+not a choice, and the wiki gives nearly every Efreeti item a different overlapping subset of the
+same three names, so the rule split one thing you do into four headings. Rows the wiki sources
+elsewhere or not at all (`Efreeti Statuette`, `Brass Knuckles`) sit under it too; each row's
+tooltip still names its own sources, so the shared heading hides nothing.
+
+**`Gem of Invigoration` moves to "no mob listed"** — the wiki credits the Protector of Sky, which
+does not drop it. This one is a *data* fix, and the catalogue is generated, so it went into the
+generator as `DROPS_FROM_OVERRIDES` rather than into the file it produces: a hand-edit would have
+vanished at the next re-run and looked freshly generated while doing it. The override table throws
+if it names an item the wiki no longer sources, so a stale correction fails loudly instead of
+sitting there, and a test asserts the correction is actually present in the shipped catalogue.
+
+Regenerating produced exactly that one line plus the date stamp — no wiki drift since 2026-08-02.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.
