@@ -361,7 +361,14 @@ export interface EncounterCard {
   damage: MetricStat; // damage this character did to the NPC (per-person active window)
   healing: MetricStat; // healing this character did during their active window
   taken: MetricStat; // damage this character took from the NPC
-  activeSec: number; // that window: their first contact with the NPC → the encounter's end
+  /** The window every rate on this row divides by. For most rows it runs from first contact
+   *  with the NPC to the encounter's end. **A pet's ends when the pet does** — last contact
+   *  either way — because it is the one participant whose leaving the log shows; a re-summon
+   *  or re-charm extends the same window rather than starting a second one. */
+  activeSec: number;
+  /** Seconds into the encounter that the window opened, so a row can say which end it is short
+   *  at: a pet that died halfway and a player who arrived halfway are otherwise one number. */
+  startedSec: number;
   pct: number; // share of total damage dealt to the NPC (for the bar)
 }
 

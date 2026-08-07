@@ -967,9 +967,27 @@ interface MetricStat {                // every metric group has this one shape
   - It was not a rounding difference. In a real bandit pull the pet dealt **117 of the 175** damage
     — **66.9%** — and the old row presented all 175 as mine. Its `taken` went the same way: 134
     points of tanking the pet did, credited to me.
-  - A pet also has **its own window**. It is summoned into fights already in progress and dies
-    mid-fight; dividing its damage by its owner's engaged time was another thing the fold got
-    wrong. In that same pull: pet 42s against my 45s.
+  - A pet also has **its own window**, and it is the only participant whose window has a real
+    **end**. Everyone else's runs to the encounter's close because they are still standing there;
+    a pet is summoned into a fight and dies inside it, and the log shows both. So a pet's window
+    is **first contact to last contact with that mob** (`FightState.pairLast`), never past the
+    encounter's end — dividing by the whole encounter answered "what did it average over a fight
+    it spent half of dead", which is a question nobody asks.
+    - Measured over the pet-era stretch of the real log, **9 of 13 pet rows read differently**
+      than they would over the whole encounter. The extreme: a pet summoned **18s into a 24s
+      fight** that fought for 5 seconds — 6 dps on its own clock against 1 over the encounter.
+      Both ends of two such windows were checked against the raw contact lines and matched.
+    - **Re-summons and re-charms are not separate lives.** One row spans first to last with
+      whatever gaps in between, because a row per instance splits a pet's fight into slivers too
+      short for any of their rates to mean anything. `resetNpcTracking` is the other half of that:
+      it prunes contact times the way it prunes damage — what *reached* the mob resets (a respawn
+      wearing the name is a fresh instance), what it **dealt to another mob** survives, because
+      that is pet damage banked in a still-running encounter. Without the second half, a pet
+      re-charmed mid-fight restarted its window and read as seconds old.
+  - `EncounterCard.startedSec` says where the window sits inside the encounter, so a row can name
+    *which* end it is short at. A pet that died at the halfway mark and a player who arrived at
+    the halfway mark are otherwise the same number, and the `time` tooltip called both "joined
+    late".
   - The two kinds stay distinguishable, because they need different things said about them —
     `petKind: "summoned" | "charmed"`, drawn as **🐾** and **⛓** in the same slot at the same
     weight (they answer one question, "why is this on our side?", with different answers). Both

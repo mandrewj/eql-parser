@@ -349,6 +349,11 @@ interface FightState {
   hitsOn: Map<string, Array<{ ts: number; amount: number }>>;
   hitsBy: Map<string, Array<{ ts: number; amount: number }>>;
   pairFirst: Map<string, number>; // "attackerKey>targetKey" → first contact ms (per-person start)
+  /** The mirror: last contact for the same pair. Only a pet's row reads it — a pet is summoned
+   *  into a fight and dies inside it, so its window has a real end that everyone else's lacks.
+   *  Per *pair* and not per entity, because a pet that moves on to the next mob must not have
+   *  its window on this one stretched by what it did to the next. */
+  pairLast: Map<string, number>;
   firstSeen: Map<string, number>; // entityKey → first event ms (encounter start)
   lastSeen: Map<string, number>; // entityKey → last event ms (for per-NPC staleness)
   aliveEngaged: Set<string>;
@@ -1723,6 +1728,7 @@ export class Engine {
       hitsOn: new Map(),
       hitsBy: new Map(),
       pairFirst: new Map(),
+      pairLast: new Map(),
       firstSeen: new Map(),
       lastSeen: new Map(),
       aliveEngaged: new Set(),
@@ -1832,6 +1838,7 @@ export class Engine {
     if (!settling || tsMs - settling.sinceMs > CHARM_GRACE_MS) f.damagePairs.push([aKey, tKey]);
     const pk = `${aKey}>${tKey}`;
     if (!f.pairFirst.has(pk)) f.pairFirst.set(pk, tsMs); // first attack/contact (hit or miss)
+    f.pairLast.set(pk, tsMs); // …and the last, which is where a pet's window closes
     if (!f.firstSeen.has(aKey)) f.firstSeen.set(aKey, tsMs);
     if (!f.firstSeen.has(tKey)) f.firstSeen.set(tKey, tsMs);
     f.lastSeen.set(aKey, tsMs);
@@ -2281,8 +2288,20 @@ export class Engine {
     f.firstSeen.delete(npcKey);
     f.lastSeen.delete(npcKey);
     f.targetIncoming.delete(npcKey);
+    // Contact times follow the damage above, key for key. What *reached* this mob resets — a
+    // respawn wearing the name is a fresh instance and nobody has fought it yet. What it dealt
+    // to another **mob** survives, exactly as its damage does: that is pet damage banked in
+    // that mob's still-running encounter, and this reset fires on every re-charm and every
+    // death of anything sharing the name. Dropping it restarted the pet's window each time,
+    // so a pet re-charmed four times read as four seconds old and its dps was nonsense —
+    // "one instance of that pet the whole time" is the rule, and this is where it lives.
     for (const k of [...f.pairFirst.keys()]) {
-      if (k.startsWith(`${npcKey}>`) || k.endsWith(`>${npcKey}`)) f.pairFirst.delete(k);
+      const outgoing = k.startsWith(`${npcKey}>`);
+      const drop = outgoing ? friendly?.has(k.slice(npcKey.length + 1)) === true : k.endsWith(`>${npcKey}`);
+      if (drop) {
+        f.pairFirst.delete(k);
+        f.pairLast.delete(k);
+      }
     }
   }
 
@@ -2383,7 +2402,6 @@ export class Engine {
       const npcToActor = f.pairFirst.get(`${npcKey}>${aKey}`);
       if (npcToActor !== undefined) first = Math.min(first, npcToActor);
       const activeStart = Number.isFinite(first) ? first : startMs;
-      const activeDur = Math.max(1, (endMs - activeStart) / 1000);
 
       const takenAcc = f.perTarget.get(aKey)?.get(npcKey) ?? newMetric();
       const charm = this.charmed.get(aKey);
@@ -2397,11 +2415,30 @@ export class Engine {
       // them: a charm is temporary, breakable and often not even ours.
       const summonerKey = charmed ? undefined : this.petOwners.get(aKey);
       const ownerKey = charm?.ownerKey ?? summonerKey;
+      const isPet = charmed || summonerKey !== undefined;
+
+      // **A pet's window closes when the pet does.** Everyone else's runs to the encounter's
+      // end, because they are still standing there — but a pet is summoned into a fight and
+      // dies inside it, and it is the one participant whose leaving the log actually shows.
+      // Dividing its damage by the whole encounter answered "what did it average over a fight
+      // it spent half of dead", which is a question nobody asks: a pet that hit for 30 seconds
+      // and died did 30 seconds of damage.
+      //
+      // Last *contact with this mob*, in either direction, and never past the encounter's end.
+      // Re-summons and re-charms are deliberately not separate lives: one row spans first to
+      // last with whatever gaps in between, because a row per instance would split a pet's
+      // fight into fragments too short for any of their rates to mean anything (`resetNpcTracking`
+      // is the other half of that, keeping the pair times a re-charm would otherwise wipe).
+      const lastOut = f.pairLast.get(`${aKey}>${npcKey}`);
+      const lastIn = f.pairLast.get(`${npcKey}>${aKey}`);
+      const lastSeen = Math.max(lastOut ?? 0, lastIn ?? 0);
+      const activeEnd = isPet && lastSeen > activeStart ? Math.min(lastSeen, endMs) : endMs;
+      const activeDur = Math.max(1, (activeEnd - activeStart) / 1000);
       return {
         name: this.nameOf(aKey),
-        kind: aKey === this.selfKey ? "self" : charmed || summonerKey ? "pet" : "player",
+        kind: aKey === this.selfKey ? "self" : isPet ? "pet" : "player",
         isSelf: aKey === this.selfKey,
-        ...(charmed || summonerKey ? { petKind: charmed ? ("charmed" as const) : ("summoned" as const) } : {}),
+        ...(isPet ? { petKind: charmed ? ("charmed" as const) : ("summoned" as const) } : {}),
         ...(ownerKey ? { ownerName: this.nameOf(ownerKey) } : {}),
         ...(charm?.ownerKey && charm.ownerGuess ? { ownerGuess: true } : {}),
         // This row is the charmed half of a same-named pair, so its figures are the whole
@@ -2411,6 +2448,10 @@ export class Engine {
         healing: rateStat(healByHealer.get(aKey) ?? 0, activeDur),
         taken: this.toStat(takenAcc, activeDur),
         activeSec: Math.round(activeDur),
+        /** Where that window sits inside the encounter, so a row can say *which* end it is
+         *  short at. Without it a pet that died at the halfway mark and a player who arrived
+         *  at the halfway mark are the same number, and the tooltip called both "joined late". */
+        startedSec: Math.round((activeStart - startMs) / 1000),
         pct: total > 0 ? Math.round((acc.total / total) * 1000) / 10 : 0,
       };
     });

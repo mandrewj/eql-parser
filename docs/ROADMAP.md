@@ -1362,6 +1362,41 @@ only your own pet — so this makes your pet behave like everyone else's, rather
 rule. `mergeStat` and `mergeAcc`'s paw-tagging went with the fold: a pet's abilities belong on the
 pet's row, where they need no `🐾` prefix to say whose they are.
 
+## Post-v1 — A pet's window closes when the pet does  ✅
+Giving pets their own row left their rates dividing by the encounter's length, which for a pet is
+the wrong denominator: it is the one participant whose *leaving* the log actually shows. Everyone
+else is still standing there at the kill; a pet is summoned into a fight and dies inside it. So a
+pet's window now runs **first contact to last contact with that mob** (`FightState.pairLast`),
+never past the encounter's end.
+
+**It is not a small correction.** Over the stretch of the real log where a pet was out, **9 of 13
+pet rows read differently** than they would over the whole encounter. The extreme: a pet summoned
+**18 seconds into a 24-second fight**, fighting for five of them — **6 dps on its own clock against
+1** over the encounter. Both ends of two such windows were checked line-by-line against the raw
+contact lines and matched exactly.
+
+**Re-summons and re-charms are one instance, not one life each.** A row per instance would split a
+pet's fight into slivers too short for any of their rates to mean anything, so one row spans first
+to last with whatever gaps in between. The other half of that lives in `resetNpcTracking`, which
+now prunes contact times the way it already pruned damage: what *reached* the mob resets — a
+respawn wearing the name is a fresh instance — but what it **dealt to another mob** survives,
+because that is pet damage banked in a still-running encounter. Without it a pet re-charmed
+mid-fight restarted its window and read as seconds old.
+
+**A caution worth recording: the first version of that test passed against both the old and new
+code**, because the charm-break line it fed (`Your charm spell has worn off.`) does not parse —
+the real form names the spell and the mob (`Your <spell> spell has worn off of <mob>.`). A test
+that never reaches the branch it is guarding is worse than no test. Both new rules were then
+checked by reverting the fix and confirming the test fails: 32 against 2.
+
+`EncounterCard.startedSec` came with it, so a row can say *which* end it is short at — a pet that
+died at the halfway mark and a player who arrived at the halfway mark are otherwise the same
+`activeSec`, and the `time` tooltip called both "joined late".
+
+**Players and the self keep the old rule** — window to the encounter's end — deliberately. Their
+absence is not something the log states: a groupmate who stops swinging is still there, and
+guessing otherwise would move every rate in the app on no evidence.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

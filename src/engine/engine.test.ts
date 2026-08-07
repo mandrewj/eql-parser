@@ -450,6 +450,49 @@ test("every contributor gets a card, however far down the damage ranking", () =>
   assert.equal(Math.round(enc.cards.reduce((s, c) => s + c.damage.total, 0)), enc.total);
 });
 
+test("a pet's window closes when the pet does, not when the fight does", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 10 points of damage."),
+    L("01:00:00", "Gore says, 'Attacking an orc Master.'"),
+    L("01:00:02", "Gore bites an orc for 100 points of damage."), // pet engages at +2
+    L("01:00:12", "Gore bites an orc for 100 points of damage."), // …and lands its last at +12
+    L("01:00:42", "You crush an orc for 10 points of damage."), // I fight on for another 30s
+    L("01:00:42", "You have slain an orc!"),
+  ], "Sanluen", 90); // a 90s timeout, or the 30s lull would close the fight and split the encounter
+  const enc = engine.snapshot().recentEncounters[0]!;
+  const gore = enc.cards.find((c) => c.name === "Gore")!;
+  const self = enc.cards.find((c) => c.isSelf)!;
+  assert.equal(enc.durationSec, 42);
+  assert.equal(self.activeSec, 42, "I was there start to finish");
+  assert.equal(gore.activeSec, 10, "+2 to +12, not +2 to the kill");
+  assert.equal(gore.damage.perSec, 20); // 200 over its own 10s
+  // Over the whole encounter it would read as 5/s — a quarter of the truth, and an answer to
+  // "what did it average over a fight it spent three quarters of dead".
+  assert.equal(Math.round(gore.damage.total / enc.durationSec), 5);
+  assert.equal(gore.startedSec, 2, "and the row can say which end it is short at");
+});
+
+test("a re-summoned pet is one instance spanning the whole fight", () => {
+  const engine = feed([
+    L("01:00:00", "You crush an orc for 10 points of damage."),
+    L("01:00:00", "Gore says, 'Attacking an orc Master.'"),
+    L("01:00:02", "Gore bites an orc for 50 points of damage."),
+    L("01:00:10", "an orc has slain Gore!"), // the pet dies…
+    L("01:00:30", "Gore says, 'Attacking an orc Master.'"), // …and is summoned again
+    L("01:00:32", "Gore bites an orc for 50 points of damage."),
+    L("01:00:40", "You have slain an orc!"),
+  ], "Sanluen", 90); // long enough that the pet's 20s absence is a lull, not a new fight
+  const enc = engine.snapshot().recentEncounters[0]!;
+  const gore = enc.cards.find((c) => c.name === "Gore")!;
+  assert.equal(gore.damage.total, 100, "both lives count once, on one row");
+  assert.equal(enc.cards.filter((c) => c.name === "Gore").length, 1, "one row, not one per life");
+  // First blow to last, gap included — a row per life would be two four-second slivers whose
+  // rates mean nothing.
+  assert.equal(gore.startedSec, 2);
+  assert.equal(gore.activeSec, 30);
+  assert.equal(gore.damage.perSec, 3);
+});
+
 test("per-person DPS uses each character's own active window (late joiner)", () => {
   const engine = feed([
     L("01:00:00", "You crush an orc for 100 points of damage."), // self engages at t0
@@ -853,6 +896,34 @@ test("charm: a charmed mob's damage joins the table of the mob it is sent at", (
   assert.equal(pet.ownerName, "Sanluen", "the charm cast two seconds earlier names the owner");
   assert.equal(enc.cards.find((c) => c.isSelf)!.damage.total, 100);
   assert.equal(enc.total, 200, "the encounter total counts both");
+});
+
+test("charm: a re-charmed pet is one instance, not one per charm", () => {
+  // Re-charming resets that mob's tracking — it has to, or a same-named respawn would inherit
+  // the last one's fight. That reset used to take the pet's contact times with it, so a pet
+  // charmed three times read as seconds old and its dps was whatever the last charm's sliver
+  // happened to be. Its damage already survived; now its window does too.
+  let clock = at("01:01:00");
+  const engine = new Engine({ selfName: "Sanluen", inactivityTimeoutSec: 90, now: () => clock });
+  feedInto(engine, [
+    L("01:00:00", "You begin singing Solon's Bewitching Bravura V."),
+    L("01:00:02", "a lava beetle's eyes glaze over."),
+    L("01:00:04", "You strike a death beetle for 100 points of damage."),
+    L("01:00:06", "A lava beetle pierces a death beetle for 40 points of damage."),
+    L("01:00:20", "Your Solon's Bewitching Bravura V spell has worn off of a lava beetle."), // it breaks…
+    L("01:00:24", "You begin singing Solon's Bewitching Bravura V."),
+    L("01:00:26", "a lava beetle's eyes glaze over."), // …and is re-charmed
+    L("01:00:36", "A lava beetle kicks a death beetle for 60 points of damage."),
+  ]);
+  const enc = engine.snapshot().activeEncounters.find((e) => e.name.toLowerCase() === "a death beetle")!;
+  const pets = enc.cards.filter((c) => c.name.toLowerCase() === "a lava beetle");
+  assert.equal(pets.length, 1, "one row for the pet, however many times it was charmed");
+  const pet = pets[0]!;
+  assert.equal(pet.damage.total, 100, "both charms' damage on the one row");
+  // 2, not 6: the encounter's own clock starts when the death beetle is first seen (01:00:04),
+  // and the pet's first blow lands two seconds later.
+  assert.equal(pet.startedSec, 2, "the window opens at the first charm's first blow…");
+  assert.equal(pet.activeSec, 30, "…and runs to the last, across the break in between");
 });
 
 test("charm: the mob's life before the charm is banked as its own encounter", () => {

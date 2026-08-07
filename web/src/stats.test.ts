@@ -61,6 +61,7 @@ const card = (name: string, total: number, isSelf = false): EncounterCard => {
     healing: nil,
     taken: nil,
     activeSec: 10,
+    startedSec: 0,
     pct: 0,
   };
 };

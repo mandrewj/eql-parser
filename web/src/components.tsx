@@ -860,7 +860,11 @@ function EncounterRow({
   onToggle: () => void;
 }) {
   const d = card.damage;
-  const late = encSec - card.activeSec;
+  // Which end the window is short at, now that it can be short at either. A pet's closes when
+  // the pet does, so "engaged for 20s of a 45s fight" is two different stories — arriving at the
+  // halfway mark and dying at it — and the row has to tell them apart.
+  const late = card.startedSec;
+  const leftEarly = Math.max(0, encSec - card.startedSec - card.activeSec);
   const partial = isPartialWindow(card.activeSec, encSec);
   return (
     <>
@@ -934,6 +938,10 @@ function EncounterRow({
           title={
             `${card.name} was engaged for ${card.activeSec}s of the ${encSec}s encounter` +
             (late > 0 ? `, joining ${late}s in` : " — there from the start") +
+            (leftEarly > 0
+              ? `, and last landed a blow ${leftEarly}s before the end` +
+                (card.kind === "pet" ? " (a pet's window closes when the pet does)" : "")
+              : "") +
             ". Their dps, hps and tank figures all divide by that window, not the encounter's."
           }
         >
