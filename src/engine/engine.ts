@@ -1612,7 +1612,7 @@ export class Engine {
     f.everCharmed.add(aKey);
     this.everCharmedSession.add(aKey);
     if (npc.has(aKey)) {
-      this.pushEncounter(f, aKey, tsMs, friendly);
+      this.pushEncounter(f, aKey, tsMs, friendly, npc);
       this.resetNpcTracking(f, aKey, friendly);
     }
     f.npcSeeds.delete(aKey);
@@ -1640,7 +1640,7 @@ export class Engine {
     const { friendly, npc } = kinds;
     f.everCharmed.add(key);
     if (npc.has(key)) {
-      this.pushEncounter(f, key, tsMs, friendly);
+      this.pushEncounter(f, key, tsMs, friendly, npc);
       this.resetNpcTracking(f, key, friendly);
     }
     f.npcSeeds.delete(key);
@@ -1798,7 +1798,7 @@ export class Engine {
   private finalizeOpenEncounters(f: FightState, endMs: number): void {
     const { friendly, npc } = this.resolveKinds(f);
     for (const tKey of [...f.perTarget.keys()]) {
-      if (npc.has(tKey)) this.pushEncounter(f, tKey, f.lastSeen.get(tKey) ?? endMs, friendly);
+      if (npc.has(tKey)) this.pushEncounter(f, tKey, f.lastSeen.get(tKey) ?? endMs, friendly, npc);
     }
   }
 
@@ -2287,12 +2287,12 @@ export class Engine {
     const { friendly, npc } = this.resolveKinds(f);
     if (!npc.has(victimKey)) return;
     this.totals.kills++;
-    this.pushEncounter(f, victimKey, deathMs, friendly);
+    this.pushEncounter(f, victimKey, deathMs, friendly, npc);
     this.resetNpcTracking(f, victimKey, friendly);
   }
 
-  private pushEncounter(f: FightState, npcKey: string, endMs: number, friendly: Set<string>): void {
-    const view = this.encounterView(f, npcKey, endMs, false, `enc-${this.encounterSeq + 1}`, friendly);
+  private pushEncounter(f: FightState, npcKey: string, endMs: number, friendly: Set<string>, npc: Set<string>): void {
+    const view = this.encounterView(f, npcKey, endMs, false, `enc-${this.encounterSeq + 1}`, friendly, npc);
     if (!view) return;
     this.encounterSeq++;
     this.finishedEncounters.unshift(view);
@@ -2367,7 +2367,7 @@ export class Engine {
       const ownerKey = tKey.endsWith(" pet") ? tKey.slice(0, -4) : null;
       if (ownerKey && slain.has(ownerKey) && !f.perTarget.has(ownerKey)) continue; // pet despawns with owner
       if (now - (f.lastSeen.get(tKey) ?? now) > idleMs) continue; // gone stale
-      const view = this.encounterView(f, tKey, now, true, `live-${tKey}`, friendly);
+      const view = this.encounterView(f, tKey, now, true, `live-${tKey}`, friendly, npc);
       if (view) out.push(view);
     }
     return out.sort((a, b) => b.total - a.total);
@@ -2381,6 +2381,7 @@ export class Engine {
     active: boolean,
     id: string,
     friendly: Set<string>,
+    npc: Set<string>,
   ): EncounterView | null {
     const attackers = f.perTarget.get(npcKey);
     if (!attackers) return null;
@@ -2394,14 +2395,13 @@ export class Engine {
     const byActor = new Map<string, MetricAcc>();
     const actorFirst = new Map<string, number>();
     for (const [aKey, cell] of attackers) {
-      // `everCharmed` and not just `friendly`: a charm on a name we are *also* fighting is
-      // broken and re-applied over and over, because our swings at the other mobs of that
-      // name land on the shared key. The mob is therefore un-charmed for most of the fight
-      // by the flag's reckoning, while plainly still fighting for us. What settles it is
-      // that it is hitting a *mob*: nothing hostile has a reason to do that, so its damage
-      // here is ours no matter what the flag said at the time. (A charmed fire giant warrior
-      // dealt 36,439 to Lord Nagafen over 609 hits and the table showed none of it.)
-      if (aKey !== this.selfKey && !friendly.has(aKey) && !f.everCharmed.has(aKey)) continue;
+      // **Everything that hit it gets a row.** This used to demand proof the attacker was ours —
+      // self, `friendly`, or charmed in this fight — and threw the rest away, which cost 2.79% of
+      // all attributed damage across the log. Most of it was not even exotic: a groupmate who
+      // fought a mob *you* never touched is never classified, because `resolveKinds` seeds enemies
+      // from your own interactions, so `mirad` alone lost 642,479 over 328 encounters. Proof of
+      // allegiance is not something a damage table should require before it will show you a number
+      // the log states outright.
       let dst = byActor.get(aKey);
       if (!dst) {
         dst = newMetric();
@@ -2462,6 +2462,11 @@ export class Engine {
       const summonerKey = charmed ? undefined : this.petOwners.get(aKey);
       const ownerKey = charm?.ownerKey ?? summonerKey;
       const isPet = charmed || summonerKey !== undefined;
+      // A mob landing on another mob with no charm behind it is splash, not help — a raid boss's
+      // AoE catching its neighbours (Lord Nagafen's Lava Breath put 63,586 into fire giants across
+      // 26 encounters). It is real damage the subject took, so it is on the table and in the
+      // total; `npc` is what stops it reading as a groupmate who quietly out-damaged everyone.
+      const hostile = !isPet && aKey !== this.selfKey && npc.has(aKey);
 
       // **A pet's window closes when the pet does.** Everyone else's runs to the encounter's
       // end, because they are still standing there — but a pet is summoned into a fight and
@@ -2482,7 +2487,7 @@ export class Engine {
       const activeDur = Math.max(1, (activeEnd - activeStart) / 1000);
       return {
         name: this.nameOf(aKey),
-        kind: aKey === this.selfKey ? "self" : isPet ? "pet" : "player",
+        kind: aKey === this.selfKey ? "self" : isPet ? "pet" : hostile ? "npc" : "player",
         isSelf: aKey === this.selfKey,
         ...(isPet ? { petKind: charmed ? ("charmed" as const) : ("summoned" as const) } : {}),
         ...(ownerKey ? { ownerName: this.nameOf(ownerKey) } : {}),

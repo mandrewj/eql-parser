@@ -486,6 +486,25 @@ difficulty) and the Plane of Sky pair below.
   resolution) and never more than **40** of them, widening instead. Leading zeros are real information —
   they are the seconds the mob was up before I engaged, the same gap the row's `time` column reports as
   a number. Dropped with the mob's other tracking in `resetNpcTracking`, so a respawn starts empty.
+- **Everything that damaged the mob gets a row**, whether or not it was ours. The filter used to
+  demand proof — self, `friendly`, or charmed in this fight — and discarded the rest, which cost
+  **2.79% of all attributed damage** across the log (1,712,722 of 61.3M over 8,086 encounters).
+  Most of it was not exotic: `resolveKinds` seeds enemies from *your* interactions, so a groupmate
+  who fought a mob you never touched is never classified at all, and `mirad` alone lost 642,479
+  across 328 encounters. A damage table should not require proof of allegiance before showing a
+  number the log states outright.
+  - **Hostile splash is shown and labelled, not hidden.** A raid boss's AoE catches its neighbours
+    (Lord Nagafen's Lava Breath put 63,586 into fire giants across 26 encounters). That is real
+    damage the subject took, so it is on the table and in the total — with `kind: "npc"` and a
+    **`splash`** tag, because an unlabelled row in a damage table reads as a contributor.
+  - **The label is only as good as the classifier.** An attacker with no evidence either way falls
+    back to `player`; a splashing boss reads as hostile because it is also fighting *you*, which is
+    what put it in `npc`. This is a labelling limit, not an attribution one — the damage is counted
+    either way.
+  - **It decides who appears on an encounter, not which mobs have one.** A mob only a groupmate
+    fought still gets no encounter: `npcSeeds` is seeded from your own interactions. What changed
+    is that an encounter whose every attacker was previously filtered away now produces a view at
+    all — **81 more encounters** over the log, 7,988 → 8,069.
 - **An encounter card's `taken` ships no ability list.** Only `damage` opens a per-ability drill;
   the tank column is a total. The breakdown behind it was 2.8KB of a 26KB card payload on a raid
   pull, re-sent ~5/sec and never rendered. `entries: []` there means *not sent*, not *nothing

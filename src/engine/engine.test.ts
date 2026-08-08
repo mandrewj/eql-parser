@@ -918,6 +918,35 @@ test("charm: a charmed mob's damage joins the table of the mob it is sent at", (
  *  aged out of `pendingCharms`, that line was filed as a *summon* — which put the key on the enemy
  *  side of `resolveKinds`, so `encounterView` dropped every blow it landed and the pet vanished
  *  from the table of the mob it was sent at. Real case: 17,282 damage, 53.9% of the fight. */
+/** Damaging the subject is qualification enough for a row. Demanding proof the attacker was ours
+ *  cost 2.79% of all attributed damage across the log — mostly groupmates who fought a mob the self
+ *  never touched, so `resolveKinds` never classified them at all. */
+test("encounter: everything that damaged the mob gets a row, ours or not", () => {
+  const engine = feed([
+    // I engage the rat, so it is a known enemy and has an encounter. (A mob *only* a groupmate
+    // fought still gets none — `npcSeeds` is seeded from my own interactions, and this change
+    // decides who appears on an encounter, not which mobs have one.)
+    L("01:00:00", "You crush a rat for 100 points of damage."),
+    // A groupmate the log never classifies, because nothing connects them to a mob I know.
+    L("01:00:01", "Mirad slashes a rat for 60 points of damage."),
+    // …and a boss catching the rat in its own AoE. Not help — but the rat really took it. He is
+    // fighting me too, which is what makes him a *known* enemy: with no evidence either way an
+    // attacker falls back to "player", so the hostile label is only as good as the classifier.
+    L("01:00:02", "Lord Nagafen hit YOU for 5 points of fire damage by Lava Breath."),
+    L("01:00:02", "Lord Nagafen hit a rat for 40 points of fire damage by Lava Breath."),
+    L("01:00:08", "You have slain a rat!"),
+  ], "Sanluen", 90);
+  const rat = engine.snapshot().recentEncounters.find((e) => /rat/i.test(e.name))!;
+  assert.ok(rat, "the encounter exists because I engaged it");
+  const by = Object.fromEntries(rat.cards.map((c) => [c.name, c]));
+  assert.equal(by.Mirad!.damage.total, 60);
+  assert.equal(by.Mirad!.kind, "player", "an unclassified groupmate is still a person, not splash");
+  assert.equal(by["Lord Nagafen"]!.damage.total, 40);
+  assert.equal(by["Lord Nagafen"]!.kind, "npc", "labelled hostile so it cannot read as a contributor");
+  assert.equal(by.Sanluen!.damage.total, 100);
+  assert.equal(rat.total, 200, "and all three count toward what the mob took");
+});
+
 test("charm: a mob calling you Master is charmed, not summoned", () => {
   const engine = feed([
     // We fight it, so it is a known enemy — which is what tells a charm from a summon.

@@ -1638,6 +1638,41 @@ would have called it fixed.
 Both halves are pinned by tests that were confirmed to fail against the old engine before being
 kept.
 
+## Post-v1 — Damaging the mob is qualification enough  ✅
+The attacker filter demanded proof the attacker was ours — self, `friendly`, or charmed in this
+fight — and threw the rest away. Measured over the whole log: **1,712,722 damage dropped across
+8,086 encounters, 2.79% of everything attributed.**
+
+**The bulk of it was not charmed pets at all.** `resolveKinds` seeds enemies from *your* own
+interactions, so a groupmate who fought a mob you never touched is never classified — and their
+damage to it was discarded. `mirad` alone lost 642,479 over 328 encounters, `ranshi` 293,001,
+`futor` 236,931. A damage table should not require proof of allegiance before it will show a number
+the log states outright.
+
+**Hostile splash is shown too, and labelled.** A raid boss's AoE catches its neighbours —
+`Lord Nagafen hit a fire giant warrior for 470 points of fire damage by Lava Breath`, 63,586 across
+26 encounters. That is real damage the subject took, so it belongs on the table and in the total;
+it carries `kind: "npc"` and a **`splash`** tag, because an unlabelled row in a damage table reads
+as a contributor.
+
+**Validated by matching encounters across a frozen log prefix**, which is what made it readable at
+all — the log grows while a replay runs, and the rolling 60-encounter cap slides when the encounter
+count changes, so two naive full-replay totals disagree for reasons that have nothing to do with
+the change. Comparing only the 59 encounters present in both dumps:
+
+- **self damage delta: 0** — nothing moved onto or off the self row
+- subject totals **+925**, every change an addition, none a subtraction
+- five card lists changed, gaining `Sister of the Spire[npc]` splash rows and a `Bazzzazzt[pet]`
+
+**Two corrections found by testing rather than reasoning**, both of which changed what I believed:
+- It decides *who appears on* an encounter, not *which mobs have* one. A mob only a groupmate
+  fought still gets none — `npcSeeds` comes from your own interactions. What did change is that an
+  encounter whose every attacker was previously filtered away now produces a view: **81 more**
+  over the log, 7,988 → 8,069.
+- The hostile label is only as good as the classifier. An attacker with no evidence either way
+  falls back to `player`; a splashing boss reads as hostile because it is also fighting *you*.
+  A labelling limit, not an attribution one — the damage is counted regardless.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

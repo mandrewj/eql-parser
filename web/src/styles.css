@@ -302,6 +302,8 @@ body { margin: 0; }
 .ename .tag.owner.guess { color: #93a2b8; font-style: italic; }
 /* "~": this row's figures are a pair's exchange, not one mob's output. Amber, because it
    qualifies the numbers rather than naming anyone — same job as the `time` column's flag. */
+/* Not on our side. Red like `.erow.npc`'s bar, so the row and its tag say the same thing. */
+.ename .tag.splash { background: #0b0f16aa; color: var(--npc); font-weight: 600; }
 .ename .tag.approx { background: #0b0f16aa; color: var(--partial); font-weight: 700; padding: 0 0.3rem; }
 .epct { font-variant-numeric: tabular-nums; opacity: 0.9; font-weight: 600; }
 .enum { text-align: right; font-size: 0.74rem; font-weight: 600; font-variant-numeric: tabular-nums; }

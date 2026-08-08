@@ -894,6 +894,21 @@ function EncounterRow({
               )}
               {card.name}
               {card.isSelf && <span className="tag you">you</span>}
+              {/* A hostile mob that caught the subject in its own AoE. Real damage the subject
+                  took, so it counts — but it is not help, and an unlabelled row in a damage table
+                  reads as a contributor. */}
+              {card.kind === "npc" && (
+                <span
+                  className="tag splash"
+                  title={
+                    `${card.name} is not on our side. This is its own damage catching the mob in ` +
+                    `the crossfire — usually a boss AoE hitting its neighbours. It counts toward the ` +
+                    `encounter total because the mob really took it, not because anyone helped.`
+                  }
+                >
+                  splash
+                </span>
+              )}
               {card.ownerName && (
                 <span
                   className={`tag owner ${card.ownerGuess ? "guess" : ""}`}
