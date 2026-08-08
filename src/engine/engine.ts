@@ -683,8 +683,28 @@ export class Engine {
         return;
       }
       const charmKey = this.charmed.has(pk) ? pk : this.charmed.has(twinKey(pk)) ? twinKey(pk) : null;
-      if (charmKey) this.charmed.get(charmKey)!.ownerKey = ownerKey;
-      else this.petOwners.set(pk, ownerKey);
+      if (charmKey) {
+        this.charmed.get(charmKey)!.ownerKey = ownerKey;
+        return;
+      }
+      // **A mob saying this is charmed, not summoned**, and by here it is the only evidence left:
+      // the landing has aged out of `pendingCharms` and never reached `charmed`. Filing it as a
+      // summon is not a cosmetic mistake — `resolveKinds` keeps the key on the enemy side, so
+      // `encounterView` drops every blow it lands, and the pet vanishes from the table of the mob
+      // it was sent at. Real case: a charmed essence carrier dealt **17,282 to Keeper of Souls,
+      // 53.9% of that fight**, and the card showed only me.
+      //
+      // Fighting it is what tells the two apart. A summoned pet is something the game named for
+      // you and you have never swung at; anything in `npcSeeds` you have. Routed through the same
+      // promotion a landing takes, so the enemy life it just finished is banked as its own
+      // encounter rather than merged into the pet's.
+      const f = this.current;
+      if (f && f.npcSeeds.has(pk)) {
+        this.pendingCharms.set(pk, { ownerKey, ownerGuess: false, spell: null, sinceMs: ev.tsMs });
+        this.confirmCharmByMaster(pk, ev.tsMs);
+        return;
+      }
+      this.petOwners.set(pk, ownerKey);
       return;
     }
     if (ev.type === "loot") {
@@ -1433,6 +1453,13 @@ export class Engine {
    *  moment is also exactly where the two lives divide, so it is the right instant to bank the
    *  first one. A charm that flickers off before then simply never happened. */
   private readonly pendingCharms = new Map<string, CharmHold>();
+  /** Every key charmed at any point **this session**, never cleared. `FightState.everCharmed` is
+   *  the same idea scoped to one fight, and that scope is right for deciding whose damage counts
+   *  — but wrong for deciding what to *call* a row. A bee charmed twenty fights ago and charmed
+   *  again now is the same pet, and without this it read as a plain player the moment the charm
+   *  flag lapsed and the fight rolled over. Label only: attribution still goes through the
+   *  per-fight set, so this can never pull a hostile mob's damage onto our side. */
+  private readonly everCharmedSession = new Set<string>();
 
   private applyCharm(ev: CharmEvent): void {
     if (ev.state === "cast") {
@@ -1583,6 +1610,7 @@ export class Engine {
     this.pendingCharms.delete(aKey);
     this.charmed.set(aKey, hold);
     f.everCharmed.add(aKey);
+    this.everCharmedSession.add(aKey);
     if (npc.has(aKey)) {
       this.pushEncounter(f, aKey, tsMs, friendly);
       this.resetNpcTracking(f, aKey, friendly);
@@ -1607,6 +1635,7 @@ export class Engine {
     // below is only what happens when there is a fight with something in it to bank.
     this.pendingCharms.delete(key);
     this.charmed.set(key, hold);
+    this.everCharmedSession.add(key);
     if (!f || !kinds) return;
     const { friendly, npc } = kinds;
     f.everCharmed.add(key);
@@ -2425,7 +2454,7 @@ export class Engine {
       // A mob that was charmed at any point in this fight reads as a pet for the whole of it.
       // Flipping it back to a plain row for the stretches the flag happened to be off would
       // relabel the same combatant several times inside one encounter.
-      const charmed = charm !== undefined || f.everCharmed.has(aKey);
+      const charmed = charm !== undefined || f.everCharmed.has(aKey) || this.everCharmedSession.has(aKey);
       // Summoned pets are known only by a `Master` line, which in your own log only ever names
       // *your* pet — another player's pet has always had its own row here, and now yours does
       // too. The two kinds of pet are told apart because they need different things said about

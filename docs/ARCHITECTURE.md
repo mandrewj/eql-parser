@@ -419,6 +419,22 @@ difficulty) and the Plane of Sky pair below.
     said about them (`EncounterCard.petKind`, `⛓` against `🐾`). A `Master` line from a charmed
     mob therefore sets the *charm's* owner rather than a `petOwners` entry — filing it as a
     summon would name the wrong owner, and in the twin case would name the enemy's.
+  - **A mob calling you Master is charmed, not summoned — even with no charm on record.** The
+    landing ages out of `pendingCharms` in seconds, and after that the announcement is the only
+    evidence left that the mob is ours. Filing it as a summon was not cosmetic: `resolveKinds`
+    kept the key on the **enemy** side, so `encounterView`'s attacker filter dropped every blow it
+    landed and the pet vanished from the table of the mob it was sent at. A charmed essence carrier
+    dealt **17,282 to Keeper of Souls — 53.9% of that fight** — and the card showed only the self.
+    - **Being fought is what tells the two apart** (`npcSeeds`). A summoned pet is something the
+      game named for you and you have never swung at; anything you have fought and that now calls
+      you Master, you charmed. Routed through `confirmCharmByMaster` rather than a second promotion
+      path, so the enemy life it just finished is still banked as its own encounter.
+  - **`everCharmedSession` is the label's memory.** `FightState.everCharmed` is scoped to one
+    fight, which is right for deciding whose damage counts and wrong for deciding what to *call* a
+    row — a bee charmed twenty fights ago and charmed again now is the same pet, and without a
+    session-long record it read as a plain **player** the moment the flag lapsed and the fight
+    rolled over. Label only; attribution still goes through the per-fight set, so it can never pull
+    a hostile mob's damage onto our side.
   - **Breaks** that the log announces cover only your own charm, so two behavioural signals
     carry the rest: a pet turning on **its own charmer**, and blows traded with **me** in
     either direction (you cannot damage your own charmed pet, nor it you). Both wait out a

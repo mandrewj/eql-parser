@@ -1591,6 +1591,53 @@ Verified end to end against a live server: refused without the header (and still
 with it, exited in **0.12s** with two SSE clients attached and both told, and Ctrl+C still exits in
 0.29s with a client attached.
 
+## Post-v1 — A mob calling you Master is charmed, not summoned  ✅
+Reported as "my charmed pets are not showing up" — an essence carrier missing from a Keeper of
+Souls fight. It was missing, and the log said so plainly: **17,282 damage, 53.9% of that fight**,
+and the card showed only the self.
+
+**Not a regression, and worth saying so.** A worktree at `ca30139` — before any of this session's
+pet work — replays the full log to the identical result. What changed was *visibility*: while a pet
+folded into its owner, a misclassification only moved damage between rows nobody was comparing.
+Once pets had their own line, an absent one was obvious. The bug was older than the symptom.
+
+**The cause.** A charmed mob calls you Master exactly as a summoned pet does —
+`An essence carrier told you, 'Attacking Keeper of Souls Master.'` The landing had already aged out
+of `pendingCharms` and never reached `charmed`, so the line fell through to `petOwners`. That put
+the key on the **enemy** side of `resolveKinds`, and `encounterView`'s attacker filter — neither
+self, nor friendly, nor `everCharmed` — dropped every blow it landed. Being fought is what tells
+the two apart: a summoned pet is something the game named for you and you have never swung at.
+
+**The second bug, found only because the first fix exposed it.** With the Master line no longer
+creating a `petOwners` entry, `Bzzazzt` — a charmed bee — stopped reading as a pet at all and
+became a plain `player` row. `FightState.everCharmed` is scoped to one fight, which is right for
+deciding whose damage counts and wrong for deciding what to call a row. `everCharmedSession` is the
+label's memory. It also corrects rows that were **already wrong before any of this**: those bees
+had been reading `pet/summoned`, and they were charmed all along.
+
+**Validated by diffing the whole log, before against after**, which is the only way this was going
+to be trustworthy — the aggregates alone would have hidden it:
+
+| | before | after |
+|---|---|---|
+| self damage over 60 encounters | 413,550 | **413,550 — unchanged** |
+| pet damage | 535,998 | **574,960** (+38,962) |
+| encounter names | *identical* | *identical* |
+
+The +38,962 is exactly the three restored rows: the essence carrier's 17,282 on Keeper of Souls, a
+heart harpie's 20,754 on Gorgalosk, and 926 on a Bzzazzt pull. Each was then re-counted from the
+raw lines inside that encounter's own bounds — 17,282 / 18,404 / 16,265, all exact. Nothing moved
+onto or off the self row, and no player name appeared as an encounter (the regression this area has
+produced twice).
+
+**The intermediate state was worse than either end**, and the diff is the only reason that was
+caught: after the first fix the totals reconciled (+38,962 in card damage) while the `kind === "pet"`
+subtotal *fell* by 80,681 — cards keeping their damage but losing their label. An aggregate check
+would have called it fixed.
+
+Both halves are pinned by tests that were confirmed to fail against the old engine before being
+kept.
+
 ## Open questions to revisit
 - **Trash grouping** — per-pull (default) vs. per-mob rows; per-mob always visible in drill-down.
 - **Whose damage** — v1 parses everyone the log witnesses (group/raid for free); confirm vs. self-only.

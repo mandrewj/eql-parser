@@ -914,6 +914,52 @@ test("charm: a charmed mob's damage joins the table of the mob it is sent at", (
   assert.equal(enc.total, 200, "the encounter total counts both");
 });
 
+/** A charmed mob calls you Master exactly as a summoned pet does. When the landing has already
+ *  aged out of `pendingCharms`, that line was filed as a *summon* — which put the key on the enemy
+ *  side of `resolveKinds`, so `encounterView` dropped every blow it landed and the pet vanished
+ *  from the table of the mob it was sent at. Real case: 17,282 damage, 53.9% of the fight. */
+test("charm: a mob calling you Master is charmed, not summoned", () => {
+  const engine = feed([
+    // We fight it, so it is a known enemy — which is what tells a charm from a summon.
+    L("01:00:00", "You crush an essence carrier for 50 points of damage."),
+    L("01:00:01", "An essence carrier hits YOU for 20 points of damage."),
+    // No charm landing in earshot; the announcement is the only evidence left.
+    L("01:00:20", "An essence carrier told you, 'Attacking Keeper of Souls Master.'"),
+    L("01:00:22", "You crush Keeper of Souls for 100 points of damage."),
+    L("01:00:24", "An essence carrier pierces Keeper of Souls for 300 points of damage."),
+    L("01:00:30", "You have slain Keeper of Souls!"),
+  ], "Sanluen", 90);
+  const enc = engine.snapshot().recentEncounters.find((e) => /keeper/i.test(e.name))!;
+  const pet = enc.cards.find((c) => /essence carrier/i.test(c.name));
+  assert.ok(pet, "the pet is on the table of the mob it was sent at, not missing from it");
+  assert.equal(pet.kind, "pet");
+  assert.equal(pet.petKind, "charmed", "charmed — a summoned pet is not something you were fighting");
+  assert.equal(pet.ownerName, "Sanluen");
+  assert.equal(pet.damage.total, 300);
+  assert.equal(enc.total, 400, "and the encounter counts both");
+});
+
+/** A pet's label has to outlive the fight the charm happened in. `everCharmed` is per-fight, which
+ *  is right for deciding whose damage counts and wrong for deciding what to call a row — without a
+ *  session-long record the same bee read as a plain player the moment the fight rolled over. */
+test("charm: a mob charmed in an earlier fight is still a pet in a later one", () => {
+  const engine = feed([
+    L("01:00:00", "You crush Bzzazzt for 10 points of damage."),
+    L("01:00:02", "Bzzazzt told you, 'Attacking Bzzzt Master.'"),
+    L("01:00:04", "Bzzazzt stings Bzzzt for 60 points of damage."),
+    L("01:00:06", "You have slain Bzzzt!"),
+    // A long lull closes that fight; the next one is a different FightState entirely.
+    L("01:05:00", "You crush Bazzzazzt for 10 points of damage."),
+    L("01:05:02", "Bzzazzt stings Bazzzazzt for 40 points of damage."),
+    L("01:05:06", "You have slain Bazzzazzt!"),
+  ], "Sanluen", 60);
+  const later = engine.snapshot().recentEncounters.find((e) => /bazzzazzt/i.test(e.name))!;
+  const bee = later.cards.find((c) => c.name === "Bzzazzt")!;
+  assert.equal(bee.damage.total, 40, "its damage counts in the later fight…");
+  assert.equal(bee.kind, "pet", "…and it is still a pet there");
+  assert.equal(bee.petKind, "charmed");
+});
+
 test("charm: a re-charmed pet is one instance, not one per charm", () => {
   // Re-charming resets that mob's tracking — it has to, or a same-named respawn would inherit
   // the last one's fight. That reset used to take the pet's contact times with it, so a pet
